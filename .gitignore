@@ -54,6 +54,7 @@ settings.user.json
 ## ==========================================
 .workbuddy/
 scratch/
+Properties/
 
 ## ==========================================
 ## Crash dumps and Test outputs
