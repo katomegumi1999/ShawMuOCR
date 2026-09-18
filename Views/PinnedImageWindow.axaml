@@ -3,7 +3,6 @@
         x:Class="ShawMuOCR.Views.PinnedImageWindow"
         Title="置顶贴图"
         WindowDecorations="None"
-        ExtendClientAreaToDecorationsHint="True"
         Topmost="True"
         ShowInTaskbar="False"
         Background="Transparent"
@@ -23,16 +22,21 @@
     </Window.ContextMenu>
 
     <Border Name="RootBorder"
-            Background="#1E1E1E"
-            BorderBrush="#444444"
-            BorderThickness="1"
-            CornerRadius="6"
-            BoxShadow="0 8 32 #66000000"
+            Background="Transparent"
             ClipToBounds="True">
         <Panel Name="ImagePanel">
             <Image Name="PinnedImageControl"
-                   Stretch="Uniform"
+                   Stretch="Fill"
                    RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+            <!-- 置顶闪烁高亮提示边框 (像指示灯一样闪烁后缓缓暗下去提示位置) -->
+            <Border Name="FlashHintBorder"
+                    IsHitTestVisible="False"
+                    BorderBrush="#00B4FF"
+                    BorderThickness="3"
+                    Background="#1800B4FF"
+                    BoxShadow="inset 0 0 20 3 #9900B4FF, inset 0 0 6 2 #FFFFFF"
+                    Opacity="0" />
 
             <!-- 悬浮缩放比例指示卡片 -->
             <Border Name="ScaleBadge"
@@ -49,7 +53,7 @@
                            Text="100%" />
             </Border>
 
-            <!-- 右上角悬浮关闭按钮 -->
+            <!-- 右上角悬浮关闭按钮 (鼠标悬停时平滑显现) -->
             <Button Name="CloseBtn"
                     Classes="CloseHoverBtn"
                     HorizontalAlignment="Right"
@@ -71,6 +75,19 @@
     </Border>
 
     <Window.Styles>
+
+
+        <Style Selector="Button#CloseBtn">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.15" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Panel#ImagePanel:pointerover Button#CloseBtn">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="Button.CloseHoverBtn:hover">
             <Setter Property="Background" Value="#E81123" />
             <Setter Property="Foreground" Value="White" />

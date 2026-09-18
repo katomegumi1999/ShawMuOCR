@@ -185,6 +185,15 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
 
 ---
 
+## 👤 作者与社区
+
+- **开发作者**：沐洵羽
+- **哔哩哔哩 (B站)**：[@沐洵羽](https://space.bilibili.com/192158726)
+- **GitHub 仓库**：[katomegumi1999/ShawMuOCR](https://github.com/katomegumi1999/ShawMuOCR)
+- 欢迎在 GitHub 点上一颗 ⭐️ **Star**，您的支持是持续维护与迭代的最大动力！
+
+---
+
 ## 📜 开源协议
 
 本项目基于 [MIT License](LICENSE) 协议开源。

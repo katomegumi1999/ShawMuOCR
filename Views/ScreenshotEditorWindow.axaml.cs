@@ -599,7 +599,13 @@ public partial class ScreenshotEditorWindow : Window
             CommitInlineText();
 
             var rendered = _doc.RenderToBitmap();
-            var pinWin = new PinnedImageWindow(rendered, Position);
+
+            // 优先定位至原始截选区域的物理屏幕绝对坐标；若无则回退至当前编辑器坐标
+            PixelPoint pinPos = _selectionBounds.HasValue
+                ? new PixelPoint(_selectionBounds.Value.X, _selectionBounds.Value.Y)
+                : Position;
+
+            var pinWin = new PinnedImageWindow(rendered, pinPos);
             pinWin.Show();
 
             Close();

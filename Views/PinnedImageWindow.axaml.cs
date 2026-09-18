@@ -1,4 +1,6 @@
 using Avalonia;
+using Avalonia.Animation;
+using Avalonia.Animation.Easings;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -8,6 +10,8 @@ using Avalonia.Threading;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Windows.Clipboard;
 using SkiaSharp;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace ShawMuOCR.Views;
 
@@ -18,6 +22,7 @@ public partial class PinnedImageWindow : Window
     private readonly int _pixelHeight;
     private float _scale = 1.0f;
     private DispatcherTimer? _scaleBadgeTimer;
+    private CancellationTokenSource? _flashCts;
 
     public PinnedImageWindow() : this(new OcrImage(new SKBitmap(100, 100)))
     {
@@ -34,29 +39,29 @@ public partial class PinnedImageWindow : Window
         var wb = ConvertToBitmap(image);
         PinnedImageControl.Source = wb;
 
-        // 获取主屏幕 DPI 缩放并设置初始尺寸
-        double scaling = DesktopScaling;
-        Width = _pixelWidth / scaling;
-        Height = _pixelHeight / scaling;
-
         if (initialPos.HasValue)
         {
             Position = initialPos.Value;
         }
 
-        Opened += (s, e) =>
-        {
-            var handle = TryGetPlatformHandle();
-            if (handle != null)
-            {
-                var margins = ShawMuOCR.Windows.Win32.DwmApi.MARGINS.FullWindow;
-                ShawMuOCR.Windows.Win32.DwmApi.DwmExtendFrameIntoClientArea(handle.Handle, ref margins);
-            }
-        };
+        double scaling = GetCurrentScreenScaling();
+        Width = _pixelWidth / scaling;
+        Height = _pixelHeight / scaling;
 
         AddHandler(PointerPressedEvent, OnRootPointerPressed, RoutingStrategies.Tunnel);
         AddHandler(PointerWheelChangedEvent, OnRootPointerWheelChanged, RoutingStrategies.Tunnel);
         AddHandler(KeyDownEvent, OnRootKeyDown, RoutingStrategies.Tunnel);
+
+        // 窗口就绪上屏后，触发高亮呼吸灯脉冲提示
+        Opened += (s, e) =>
+        {
+            Dispatcher.UIThread.Post(async () =>
+            {
+                // 等待系统 DWM 与 GPU 完成首帧画面合成
+                await Task.Delay(100);
+                TriggerBreathingLight();
+            }, DispatcherPriority.Render);
+        };
     }
 
     private void OnRootPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -98,9 +103,22 @@ public partial class PinnedImageWindow : Window
         e.Handled = true;
     }
 
+    private double GetCurrentScreenScaling()
+    {
+        if (Screens != null)
+        {
+            var screen = Screens.ScreenFromPoint(Position) ?? Screens.Primary;
+            if (screen != null && screen.Scaling > 0.001)
+            {
+                return screen.Scaling;
+            }
+        }
+        return DesktopScaling > 0.001 ? DesktopScaling : 1.0;
+    }
+
     private void ApplyScale()
     {
-        double scaling = DesktopScaling;
+        double scaling = GetCurrentScreenScaling();
         Width = (_pixelWidth * _scale) / scaling;
         Height = (_pixelHeight * _scale) / scaling;
 
@@ -124,6 +142,85 @@ public partial class PinnedImageWindow : Window
     {
         _scale = 1.0f;
         ApplyScale();
+        TriggerBreathingLight();
+    }
+
+    public void TriggerFlashHint() => TriggerBreathingLight();
+
+    public void TriggerBreathingLight()
+    {
+        _flashCts?.Cancel();
+        _flashCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _flashCts = cts;
+
+        _ = RunBreathingAnimationAsync(cts.Token);
+    }
+
+    private async Task RunBreathingAnimationAsync(CancellationToken token)
+    {
+        try
+        {
+            // 阶段 1: 迅速通电点亮冲顶至 100% (耗时约 260ms)
+            FlashHintBorder.Transitions = new Transitions
+            {
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(260),
+                    Easing = new CubicEaseOut()
+                }
+            };
+            FlashHintBorder.Opacity = 1.0;
+            await Task.Delay(280, token);
+
+            // 阶段 2: 浅呼吸回落至 30% (耗时约 220ms)
+            FlashHintBorder.Transitions = new Transitions
+            {
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(220),
+                    Easing = new CubicEaseInOut()
+                }
+            };
+            FlashHintBorder.Opacity = 0.3;
+            await Task.Delay(240, token);
+
+            // 阶段 3: 再次充盈点亮至 100% (耗时约 240ms)
+            FlashHintBorder.Transitions = new Transitions
+            {
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(240),
+                    Easing = new CubicEaseOut()
+                }
+            };
+            FlashHintBorder.Opacity = 1.0;
+            await Task.Delay(260, token);
+
+            // 阶段 4: 优雅徐徐暗下熄灭至 0% (耗时约 1400ms)
+            FlashHintBorder.Transitions = new Transitions
+            {
+                new DoubleTransition
+                {
+                    Property = Visual.OpacityProperty,
+                    Duration = TimeSpan.FromMilliseconds(1400),
+                    Easing = new CubicEaseOut()
+                }
+            };
+            FlashHintBorder.Opacity = 0.0;
+            await Task.Delay(1450, token);
+        }
+        catch (OperationCanceledException)
+        {
+            // 被新的呼吸灯脉冲打断
+        }
+        catch (Exception)
+        {
+            FlashHintBorder.Opacity = 0.0;
+        }
     }
 
     private void OnRootKeyDown(object? sender, KeyEventArgs e)
@@ -153,6 +250,9 @@ public partial class PinnedImageWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
+        _flashCts?.Cancel();
+        _flashCts?.Dispose();
+        _flashCts = null;
         _scaleBadgeTimer?.Stop();
         _image.Dispose();
     }
