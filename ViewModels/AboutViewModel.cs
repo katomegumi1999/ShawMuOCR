@@ -1,7 +1,10 @@
 using System;
+using System.Diagnostics;
+using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Services;
 
 namespace ShawMuOCR.ViewModels;
@@ -9,8 +12,21 @@ namespace ShawMuOCR.ViewModels;
 public partial class AboutViewModel : ViewModelBase, IDisposable
 {
     private readonly IModelMemoryDiagnosticsService _diagnosticsService;
+    private readonly IClipboardService? _clipboardService;
     private readonly DispatcherTimer? _timer;
     private bool _disposed;
+
+    [ObservableProperty]
+    private string _gitHubUrl = "https://github.com/katomegumi1999/ShawMuOCR";
+
+    [ObservableProperty]
+    private string _gitHubRepoText = "katomegumi1999/ShawMuOCR";
+
+    [ObservableProperty]
+    private string _authorText = "沐洵羽 (B站 @沐洵羽)";
+
+    [ObservableProperty]
+    private string _bilibiliUrl = "https://space.bilibili.com/192158726";
 
     [ObservableProperty]
     private string _appName = "小沐 OCR (ShawMuOCR)";
@@ -57,9 +73,10 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     private bool _isTrimming;
 
-    public AboutViewModel(IModelMemoryDiagnosticsService diagnosticsService)
+    public AboutViewModel(IModelMemoryDiagnosticsService diagnosticsService, IClipboardService? clipboardService = null)
     {
         _diagnosticsService = diagnosticsService;
+        _clipboardService = clipboardService;
 
         RefreshMemory();
 
@@ -139,6 +156,48 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
         NativeEngineMemoryText = $"{report.NativeEngineMemoryMb:F1} MB";
         GdiHandlesText = $"{report.GdiHandles} / 10,000 (正常)";
         LastUpdatedText = report.Timestamp.ToString("HH:mm:ss");
+    }
+
+    [RelayCommand]
+    public void OpenGitHub()
+    {
+        OpenUrl(GitHubUrl);
+    }
+
+    [RelayCommand]
+    public void OpenBilibili()
+    {
+        OpenUrl(BilibiliUrl);
+    }
+
+    [RelayCommand]
+    public async Task CopyGitHubUrlAsync()
+    {
+        if (_clipboardService != null)
+        {
+            await _clipboardService.SetTextAsync(GitHubUrl);
+            StatusMessage = "✓ 已复制 GitHub 仓库链接至剪贴板";
+        }
+        else
+        {
+            StatusMessage = "剪贴板服务暂不可用";
+        }
+    }
+
+    private void OpenUrl(string url)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"打开链接失败: {ex.Message}";
+        }
     }
 
     public void Dispose()

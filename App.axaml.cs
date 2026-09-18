@@ -1,4 +1,6 @@
+using System.Diagnostics.CodeAnalysis;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
@@ -23,6 +25,16 @@ namespace ShawMuOCR;
 
 public partial class App : Application
 {
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(NativeMenuItem))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(NativeMenu))]
+    [DynamicDependency(DynamicallyAccessedMemberTypes.All, typeof(Comparison<IObserver<AvaloniaPropertyChangedEventArgs<NativeMenuItem>>>))]
+    static App()
+    {
+        // 显式固化 Native AOT 泛型比较器虚表，防止 MSVC 链接器在全程序优化时产生无法解析的外部符号 vftable
+        _ = typeof(Comparison<IObserver<AvaloniaPropertyChangedEventArgs<NativeMenuItem>>>);
+        _ = typeof(AvaloniaPropertyChangedEventArgs<NativeMenuItem>);
+    }
+
     private const int HOTKEY_ID_OCR = 1;
     private const int HOTKEY_ID_CAPTURE = 2;
     private const int HOTKEY_ID_ANNOTATE = 3;
@@ -252,7 +264,7 @@ public partial class App : Application
 
     private AboutViewModel CreateAboutViewModel()
     {
-        return new AboutViewModel(_memoryDiagnosticsService!);
+        return new AboutViewModel(_memoryDiagnosticsService!, _clipboardService);
     }
 
     private void ShowMainWindow()

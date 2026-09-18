@@ -4,7 +4,7 @@
         x:Class="ShawMuOCR.Views.AboutWindow"
         x:DataType="vm:AboutViewModel"
         Title="关于 - 小沐 OCR"
-        Width="520" Height="630"
+        Width="520" Height="680"
         CanResize="False"
         WindowStartupLocation="CenterOwner"
         Icon="/Assets/logo.ico">
@@ -35,6 +35,65 @@
         <!-- 中间内容卡片 -->
         <ScrollViewer Grid.Row="1">
             <StackPanel Spacing="16">
+                <!-- 开源项目与作者信息 -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <StackPanel Spacing="12">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Text="项目与作者" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="MIT 开源协议" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </Border>
+                        </Grid>
+
+                        <Grid ColumnDefinitions="85,*,Auto" RowDefinitions="Auto,Auto" Margin="0,4,0,0">
+                        <!-- GitHub 仓库 -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="开源仓库："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,6" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding GitHubRepoText}"
+                                   FontWeight="Medium" FontSize="13" VerticalAlignment="Center" Margin="0,6,12,6"
+                                   MinWidth="0"
+                                   ClipToBounds="True"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding GitHubUrl}" />
+                        <Button Grid.Row="0" Grid.Column="2"
+                                Content="🔗 访问仓库"
+                                Command="{Binding OpenGitHubCommand}"
+                                Width="96"
+                                Padding="0,4"
+                                HorizontalContentAlignment="Center"
+                                FontSize="12"
+                                VerticalAlignment="Center"
+                                Margin="0,4"
+                                ToolTip.Tip="在默认浏览器中打开 GitHub 仓库" />
+
+                        <!-- 作者信息 -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="开发作者："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,6" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AuthorText}"
+                                   FontWeight="Medium" FontSize="13" VerticalAlignment="Center" Margin="0,6,12,6"
+                                   MinWidth="0"
+                                   ClipToBounds="True"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding BilibiliUrl}" />
+                        <Button Grid.Row="1" Grid.Column="2"
+                                Content="📺 访问 B站"
+                                Command="{Binding OpenBilibiliCommand}"
+                                Width="96"
+                                Padding="0,4"
+                                HorizontalContentAlignment="Center"
+                                FontSize="12"
+                                VerticalAlignment="Center"
+                                Margin="0,4"
+                                ToolTip.Tip="在默认浏览器中访问作者 B站主页" />
+                    </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- 模型信息卡片 -->
                 <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"

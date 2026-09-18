@@ -1,4 +1,7 @@
 using System;
+using System.Threading.Tasks;
+using ShawMuOCR.Core.Clipboard;
+using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Services;
 using ShawMuOCR.ViewModels;
@@ -8,6 +11,18 @@ namespace ShawMuOCR.Tests;
 
 public class ModelMemoryDiagnosticsTests
 {
+    private sealed class FakeClipboardService : IClipboardService
+    {
+        public string? CopiedText { get; private set; }
+        public Task<bool> SetTextAsync(string text)
+        {
+            CopiedText = text;
+            return Task.FromResult(true);
+        }
+        public Task<string?> GetTextAsync() => Task.FromResult(CopiedText);
+        public Task<bool> SetImageAsync(OcrImage image) => Task.FromResult(true);
+    }
+
     private sealed class FakeSettingsService : ISettingsService
     {
         public AppSettings Current { get; set; } = new AppSettings { Model = "PP-OCRv6_small" };
@@ -64,12 +79,30 @@ public class ModelMemoryDiagnosticsTests
         Assert.Contains("MB", vm.ManagedMemoryText);
         Assert.Contains("PP-OCRv6", vm.ModelName);
         Assert.Contains("10,000", vm.GdiHandlesText);
+        Assert.Equal("https://github.com/katomegumi1999/ShawMuOCR", vm.GitHubUrl);
+        Assert.Equal("katomegumi1999/ShawMuOCR", vm.GitHubRepoText);
+        Assert.Contains("沐洵羽", vm.AuthorText);
+        Assert.Contains("B站 @沐洵羽", vm.AuthorText);
+        Assert.Equal("https://space.bilibili.com/192158726", vm.BilibiliUrl);
 
         vm.RefreshMemory();
         Assert.Contains("✓ 已刷新", vm.StatusMessage);
 
         vm.TrimMemory();
         Assert.Contains("✓ 内存整理完成", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task AboutViewModel_CopyGitHubUrl_CopiesToClipboard()
+    {
+        var settingsService = new FakeSettingsService();
+        var diag = new ModelMemoryDiagnosticsService(settingsService);
+        var clipboard = new FakeClipboardService();
+        using var vm = new AboutViewModel(diag, clipboard);
+
+        await vm.CopyGitHubUrlAsync();
+        Assert.Equal("https://github.com/katomegumi1999/ShawMuOCR", clipboard.CopiedText);
+        Assert.Contains("已复制", vm.StatusMessage);
     }
 
     [Fact]
