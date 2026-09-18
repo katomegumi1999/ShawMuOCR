@@ -1,0 +1,63 @@
+## ==========================================
+## Build and Publish Artifacts
+## ==========================================
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+publish/
+
+## ==========================================
+## User and Sensitive Configuration Files
+## ==========================================
+# 避免将本地包含个人 API 密钥的配置文件误传至公开仓库
+settings.json
+settings.user.json
+*.user
+*.userprefs
+*.suo
+
+## ==========================================
+## IDE and Editor Temporary Files
+## ==========================================
+.vs/
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+*.lock
+*~
+
+## ==========================================
+## External Large Model Weights & Data Cache
+## ==========================================
+# 排除外部下载的庞大 ONNX 权重文件，内置模型已内嵌于 DLL，保持 Git 仓库轻量
+[Mm]odels/**/*.onnx
+[Mm]odels/**/*.pdmodel
+[Mm]odels/**/*.pdiparams
+[Mm]odels/**/*.bin
+[Mm]odels/v6/
+
+## ==========================================
+## Archives and Large Compressed Files
+## ==========================================
+*.7z
+*.zip
+*.rar
+*.tar.gz
+
+## ==========================================
+## AI Tools and Local Scratch Folders
+## ==========================================
+.workbuddy/
+scratch/
+
+## ==========================================
+## Crash dumps and Test outputs
+## ==========================================
+*.crash
+*.dmp
+TestResults/

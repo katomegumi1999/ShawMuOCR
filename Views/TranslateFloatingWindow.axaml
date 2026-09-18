@@ -1,0 +1,238 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.TranslateFloatingWindow"
+        Title="选区翻译 - 小沐 OCR"
+        Width="390"
+        Height="430"
+        MinWidth="320"
+        MinHeight="280"
+        WindowStartupLocation="Manual"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="FloatingWindowBackground" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="FloatingWindowHeaderBg" Color="#F5F5F5" />
+                    <SolidColorBrush x:Key="FloatingWindowCardBg" Color="#F9F9F9" />
+                    <SolidColorBrush x:Key="FloatingWindowBorder" Color="#D0D0D0" />
+                    <SolidColorBrush x:Key="FloatingWindowDivider" Color="#E5E5E5" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="FloatingWindowBackground" Color="#1F1F1F" />
+                    <SolidColorBrush x:Key="FloatingWindowHeaderBg" Color="#262626" />
+                    <SolidColorBrush x:Key="FloatingWindowCardBg" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="FloatingWindowBorder" Color="#3E3E3E" />
+                    <SolidColorBrush x:Key="FloatingWindowDivider" Color="#333333" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Border Background="{DynamicResource FloatingWindowBackground}"
+            BorderBrush="{DynamicResource FloatingWindowBorder}"
+            BorderThickness="1"
+            CornerRadius="10"
+            BoxShadow="0 8 32 0 #50000000"
+            ClipToBounds="True">
+        <Grid RowDefinitions="Auto,Auto,*,Auto,Auto">
+            <!-- 1. 顶部标题栏与拖拽把手 -->
+            <Border Grid.Row="0"
+                    Background="{DynamicResource FloatingWindowHeaderBg}"
+                    BorderBrush="{DynamicResource FloatingWindowDivider}"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,7"
+                    PointerPressed="OnTitlePointerPressed">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <!-- 左侧：标题 -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Classes="emoji" Text="🌐" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="选区翻译" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- 右侧：置顶与关闭 -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                        <Button x:Name="PinButton"
+                                Classes="subtle"
+                                Width="28" Height="28"
+                                Padding="0"
+                                Click="OnPinClick"
+                                ToolTip.Tip="切换置顶状态">
+                            <TextBlock x:Name="PinIcon" Classes="emoji" Text="📌" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                        <Button Classes="subtle"
+                                Width="28" Height="28"
+                                Padding="0"
+                                Click="OnCloseClick"
+                                ToolTip.Tip="关闭 (Esc)">
+                            <TextBlock Text="✕" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 2. 工具栏：模型切换 + 语言指示 + 原文悬浮查看 -->
+            <Border Grid.Row="1"
+                    Background="{DynamicResource FloatingWindowHeaderBg}"
+                    BorderBrush="{DynamicResource FloatingWindowDivider}"
+                    BorderThickness="0,0,0,1"
+                    Padding="12,6">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <!-- 接口/模型选择 -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="模型:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                        <ComboBox x:Name="ProviderComboBox"
+                                  Width="140"
+                                  Height="30"
+                                  FontSize="12"
+                                  SelectionChanged="OnProviderSelectionChanged" />
+                    </StackPanel>
+
+                    <!-- 语言方向标签 -->
+                    <TextBlock Grid.Column="1"
+                               x:Name="LanguageDirectionText"
+                               Text="[自动 ➔ 中文]"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               VerticalAlignment="Center"
+                               Margin="8,0"
+                               TextTrimming="CharacterEllipsis" />
+
+                    <!-- 原文悬浮浮现 Button (鼠标 move 浮现，点击复制) -->
+                    <Button Grid.Column="2"
+                            x:Name="SourceHoverButton"
+                            Classes="subtle"
+                            Padding="8,4"
+                            Click="OnCopySourceClick"
+                            ToolTip.ServiceEnabled="True"
+                            ToolTip.ShowDelay="0">
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="📄" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="原文" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- 3. 主体译文展示区 (充满中间区域) -->
+            <Border Grid.Row="2"
+                    Margin="12,8,12,4"
+                    Background="{DynamicResource FloatingWindowCardBg}"
+                    BorderBrush="{DynamicResource FloatingWindowBorder}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="12">
+                <Grid>
+                    <!-- 加载指示器 -->
+                    <StackPanel x:Name="LoadingPanel"
+                                IsVisible="True"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="12">
+                        <ProgressBar IsIndeterminate="True" Width="180" Height="4" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="LoadingStatusText"
+                                   Text="正在 OCR 识别文字..."
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- 译文结果内容 -->
+                    <ScrollViewer x:Name="ResultScrollViewer" IsVisible="False" VerticalScrollBarVisibility="Auto">
+                        <SelectableTextBlock x:Name="ResultTextBlock"
+                                             TextWrapping="Wrap"
+                                             FontSize="13"
+                                             LineHeight="20" />
+                    </ScrollViewer>
+
+                    <!-- 错误提示 -->
+                    <StackPanel x:Name="ErrorPanel"
+                                IsVisible="False"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="8"
+                                Margin="12">
+                        <TextBlock Classes="emoji" Text="⚠️" FontSize="24" HorizontalAlignment="Center" />
+                        <TextBlock x:Name="ErrorTextBlock"
+                                   Text="翻译失败"
+                                   FontSize="12"
+                                   Foreground="#FF6B6B"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 4. 状态与额度提示区 (两行展示) -->
+            <StackPanel Grid.Row="3" Margin="14,4,14,4" Spacing="2">
+                <!-- 第一行：总耗时 -->
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="⏱ 耗时:" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock Grid.Column="1" x:Name="ElapsedText"
+                               Text="耗时: --"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- 第二行：当月累计已用与额度 -->
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Text="📊 累计:" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock Grid.Column="1" x:Name="QuotaInfoText"
+                               Text="当月已用: --"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+                </Grid>
+            </StackPanel>
+
+            <!-- 5. 底部操作栏 -->
+            <Border Grid.Row="4"
+                    Background="{DynamicResource FloatingWindowHeaderBg}"
+                    BorderBrush="{DynamicResource FloatingWindowDivider}"
+                    BorderThickness="0,1,0,0"
+                    Padding="12,8">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <!-- 左侧重试 -->
+                    <Button Grid.Column="0"
+                            x:Name="RetryButton"
+                            Classes="subtle"
+                            Click="OnRetryClick"
+                            HorizontalAlignment="Left"
+                            Padding="8,5"
+                            ToolTip.Tip="重新发起翻译">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="🔄" FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="重试" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 右侧复制原文与复制译文 -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                        <Button Classes="subtle"
+                                Click="OnCopySourceClick"
+                                Padding="8,5"
+                                ToolTip.Tip="复制 OCR 识别的原文">
+                            <TextBlock Text="复制原文" FontSize="12" VerticalAlignment="Center" />
+                        </Button>
+                        <Button Classes="accent"
+                                Click="OnCopyResultClick"
+                                Padding="12,5"
+                                ToolTip.Tip="复制翻译后的译文">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Classes="emoji" Text="📋" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock Text="复制译文" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+            </Border>
+        </Grid>
+    </Border>
+</Window>

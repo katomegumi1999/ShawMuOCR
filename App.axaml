@@ -1,0 +1,42 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="ShawMuOCR.App"
+             xmlns:local="using:ShawMuOCR"
+             RequestedThemeVariant="Default">
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Styles>
+        <FluentTheme />
+        <!-- 全局彩色 Emoji 样式：显式绑定彩色表情字体并锁定常规字重，防止父容器加粗或字体回退时退化为单色黑白轮廓 -->
+        <Style Selector="TextBlock.emoji">
+            <Setter Property="FontFamily" Value="Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, sans-serif" />
+            <Setter Property="FontWeight" Value="Normal" />
+        </Style>
+    </Application.Styles>
+
+    <TrayIcon.Icons>
+        <TrayIcons>
+            <TrayIcon Icon="/Assets/logo.ico"
+                      ToolTipText="小沐 OCR (ShawMuOCR)"
+                      Clicked="OnTrayIconClicked">
+                <TrayIcon.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="截图 OCR" Click="OnTrayCaptureClick" />
+                        <NativeMenuItem Header="截图复制" Click="OnTrayCaptureImageClick" />
+                        <NativeMenuItem Header="截图标注" Click="OnTrayAnnotateClick" />
+                        <NativeMenuItem Header="选区翻译" Click="OnTrayTranslateClick" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="打开主界面" Click="OnTrayOpenMainClick" />
+                        <NativeMenuItem Header="设置" Click="OnTraySettingsClick" />
+                        <NativeMenuItem Header="关于与内存检测" Click="OnTrayAboutClick" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="退出" Click="OnTrayExitClick" />
+                    </NativeMenu>
+                </TrayIcon.Menu>
+            </TrayIcon>
+        </TrayIcons>
+    </TrayIcon.Icons>
+</Application>

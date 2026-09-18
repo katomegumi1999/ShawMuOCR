@@ -1,0 +1,277 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.SaveImageDialog"
+        Title="保存图片设置"
+        Width="460"
+        CanResize="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyLevelHint="Transparent">
+
+    <Border Background="#1E1E1E"
+            BorderBrush="#383838"
+            BorderThickness="1"
+            CornerRadius="8"
+            BoxShadow="0 8 32 #AA000000"
+            ClipToBounds="True">
+        <Grid RowDefinitions="Auto,*,Auto">
+            <!-- 顶栏标题与拖拽 -->
+            <Border Grid.Row="0"
+                    Background="#252525"
+                    Height="36"
+                    BorderBrush="#333333"
+                    BorderThickness="0,0,0,1"
+                    PointerPressed="OnTitleBarPointerPressed">
+                <Grid ColumnDefinitions="Auto,*,Auto" Margin="12,0,8,0">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="💾" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="保存图片设置" Foreground="#FFFFFF" FontSize="13" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Button Grid.Column="2"
+                            Width="26" Height="26"
+                            Background="Transparent"
+                            Foreground="#999999"
+                            Content="✕"
+                            FontSize="11"
+                            Padding="0"
+                            HorizontalContentAlignment="Center"
+                            VerticalContentAlignment="Center"
+                            Click="OnCancelClick"
+                            ToolTip.Tip="取消 (Esc)" />
+                </Grid>
+            </Border>
+
+            <!-- 选项主体设置区 -->
+            <StackPanel Grid.Row="1" Margin="18,14" Spacing="14">
+                <!-- 1. 导出格式 -->
+                <Border Background="#252525" BorderBrush="#333333" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <StackPanel Spacing="8">
+                        <TextBlock Text="导出格式" FontWeight="SemiBold" FontSize="13" Foreground="#E0E0E0" />
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <RadioButton Name="FormatPngBtn"
+                                         Classes="FormatRadio"
+                                         Content="PNG (无损)"
+                                         GroupName="FormatGroup"
+                                         IsChecked="True"
+                                         IsCheckedChanged="OnFormatChanged" />
+                            <RadioButton Name="FormatJpgBtn"
+                                         Classes="FormatRadio"
+                                         Content="JPEG"
+                                         GroupName="FormatGroup"
+                                         IsCheckedChanged="OnFormatChanged" />
+                            <RadioButton Name="FormatWebpBtn"
+                                         Classes="FormatRadio"
+                                         Content="WEBP"
+                                         GroupName="FormatGroup"
+                                         IsCheckedChanged="OnFormatChanged" />
+                            <RadioButton Name="FormatBmpBtn"
+                                         Classes="FormatRadio"
+                                         Content="BMP"
+                                         GroupName="FormatGroup"
+                                         IsCheckedChanged="OnFormatChanged" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 2. 图像质量 -->
+                <Border Background="#252525" BorderBrush="#333333" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <StackPanel Spacing="8">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="图像质量" FontWeight="SemiBold" FontSize="13" Foreground="#E0E0E0" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Name="QualityValueText" Text="100% (无损)" Foreground="#42A5F5" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <Slider Name="QualitySlider"
+                                Minimum="10"
+                                Maximum="100"
+                                Value="90"
+                                SmallChange="1"
+                                LargeChange="5"
+                                ValueChanged="OnQualitySliderChanged" />
+
+                        <TextBlock Name="QualityHintText"
+                                   Text="ℹ️ 当前选中的格式采用无损编码，自动保持 100% 最高画质。"
+                                   FontSize="11"
+                                   Foreground="#888888"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 3. 导出尺寸大小 -->
+                <Border Background="#252525" BorderBrush="#333333" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <StackPanel Spacing="10">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="导出尺寸与缩放" FontWeight="SemiBold" FontSize="13" Foreground="#E0E0E0" VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1" Name="OriginalSizeText" Text="原始: 1920 × 1080 px" Foreground="#888888" FontSize="11" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <!-- 快捷比例档位 -->
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <Button Classes="PresetBtn" Content="50%" Click="OnPresetScaleClick" Tag="0.5" />
+                            <Button Classes="PresetBtn" Content="75%" Click="OnPresetScaleClick" Tag="0.75" />
+                            <Button Classes="PresetBtn" Content="100% (原始)" Click="OnPresetScaleClick" Tag="1.0" />
+                            <Button Classes="PresetBtn" Content="125%" Click="OnPresetScaleClick" Tag="1.25" />
+                            <Button Classes="PresetBtn" Content="150%" Click="OnPresetScaleClick" Tag="1.5" />
+                            <Button Classes="PresetBtn" Content="200%" Click="OnPresetScaleClick" Tag="2.0" />
+                        </StackPanel>
+
+                        <!-- 自定义宽高像素 -->
+                        <Grid ColumnDefinitions="Auto,80,Auto,Auto,80,Auto,*,Auto" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="0" Text="宽: " Foreground="#AAAAAA" FontSize="12" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="1" Name="WidthBox" TextChanged="OnWidthBoxChanged" Height="26" FontSize="12" Padding="6,2" VerticalContentAlignment="Center" />
+                            <TextBlock Grid.Column="2" Text=" px" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="2,0,12,0" />
+
+                            <TextBlock Grid.Column="3" Text="高: " Foreground="#AAAAAA" FontSize="12" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="4" Name="HeightBox" TextChanged="OnHeightBoxChanged" Height="26" FontSize="12" Padding="6,2" VerticalContentAlignment="Center" />
+                            <TextBlock Grid.Column="5" Text=" px" Foreground="#777777" FontSize="12" VerticalAlignment="Center" Margin="2,0,8,0" />
+
+                            <CheckBox Grid.Column="7" Name="KeepAspectBox" Content="锁定比例" IsChecked="True" FontSize="11" Foreground="#AAAAAA" VerticalAlignment="Center" />
+                        </Grid>
+
+                        <!-- 实时尺寸与预估大小提示条 -->
+                        <Border Background="#1C1C1C" CornerRadius="4" Padding="10,6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Name="ExportSummaryText"
+                                           Text="最终导出: 1920 × 1080 像素 (100% 原始尺寸) | PNG"
+                                           FontSize="11"
+                                           Foreground="#64B5F6"
+                                           VerticalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis" />
+                                <Border Grid.Column="1"
+                                        Background="#212F35"
+                                        BorderBrush="#00838F"
+                                        BorderThickness="1"
+                                        CornerRadius="4"
+                                        Padding="6,2"
+                                        Margin="8,0,0,0">
+                                    <TextBlock Name="EstimatedSizeText"
+                                               Text="预估大小: ~计算中..."
+                                               FontSize="11"
+                                               FontWeight="SemiBold"
+                                               Foreground="#80DEEA"
+                                               VerticalAlignment="Center" />
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </StackPanel>
+                </Border>
+
+                <!-- 4. 保存位置与自动记忆 -->
+                <Border Background="#252525" BorderBrush="#333333" BorderThickness="1" CornerRadius="6" Padding="12">
+                    <StackPanel Spacing="6">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="保存位置 (自动记忆上次路径)" FontWeight="SemiBold" FontSize="13" Foreground="#E0E0E0" VerticalAlignment="Center" />
+                            <Button Grid.Column="1" Content="更改默认目录..." Classes="PresetBtn" Click="OnChangeDirectoryClick" FontSize="11" />
+                        </Grid>
+                        <TextBlock Name="SaveDirectoryText"
+                                   Text="默认位置: 尚未指定（保存时将自动记录选择的文件夹）"
+                                   FontSize="11"
+                                   Foreground="#9E9E9E"
+                                   TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 5. 附加行为 -->
+                <CheckBox Name="CloseEditorBox"
+                          Content="保存成功后自动关闭截图标注编辑器"
+                          IsChecked="True"
+                          FontSize="12"
+                          Foreground="#CCCCCC" />
+            </StackPanel>
+
+            <!-- 底部操作按钮 -->
+            <Border Grid.Row="2"
+                    Background="#191919"
+                    BorderBrush="#2C2C2C"
+                    BorderThickness="0,1,0,0"
+                    Padding="14,10">
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="8">
+                    <Button Content="取消"
+                            Background="#282828"
+                            Foreground="#CCCCCC"
+                            FontSize="12"
+                            Padding="14,6"
+                            CornerRadius="4"
+                            Click="OnCancelClick" />
+
+                    <Button Name="QuickSaveBtn"
+                            Content="⚡ 自动保存到上次路径"
+                            Background="#00897B"
+                            Foreground="White"
+                            FontWeight="SemiBold"
+                            FontSize="12"
+                            Padding="14,6"
+                            CornerRadius="4"
+                            Click="OnQuickSaveClick"
+                            ToolTip.Tip="直接保存至上次使用的文件夹，无需再次弹出文件选择器" />
+
+                    <Button Name="ConfirmSaveBtn"
+                            Content="💾 另存为 (选择位置)..."
+                            Background="#1E88E5"
+                            Foreground="White"
+                            FontWeight="SemiBold"
+                            FontSize="12"
+                            Padding="16,6"
+                            CornerRadius="4"
+                            Click="OnConfirmSaveClick" />
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Border>
+
+    <Window.Styles>
+        <Style Selector="RadioButton.FormatRadio">
+            <Setter Property="Background" Value="#2A2A2A" />
+            <Setter Property="Foreground" Value="#CCCCCC" />
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="12,5" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="Border"
+                            Background="{TemplateBinding Background}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            BorderThickness="1"
+                            BorderBrush="#383838"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.FormatRadio:checked /template/ Border#Border">
+            <Setter Property="Background" Value="#1E88E5" />
+            <Setter Property="BorderBrush" Value="#42A5F5" />
+        </Style>
+        <Style Selector="RadioButton.FormatRadio:checked">
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="RadioButton.FormatRadio:hover /template/ Border#Border">
+            <Setter Property="Background" Value="#383838" />
+        </Style>
+        <Style Selector="RadioButton.FormatRadio:checked:hover /template/ Border#Border">
+            <Setter Property="Background" Value="#1976D2" />
+        </Style>
+
+        <Style Selector="Button.PresetBtn">
+            <Setter Property="Background" Value="#282828" />
+            <Setter Property="Foreground" Value="#BBBBBB" />
+            <Setter Property="BorderBrush" Value="#383838" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="8,3" />
+            <Setter Property="FontSize" Value="11" />
+        </Style>
+        <Style Selector="Button.PresetBtn:hover">
+            <Setter Property="Background" Value="#3A3A3A" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+    </Window.Styles>
+</Window>

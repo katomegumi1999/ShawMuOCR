@@ -1,0 +1,80 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.ToastNotificationWindow"
+        Title="ToastNotification"
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        WindowStartupLocation="Manual"
+        Topmost="True"
+        ShowInTaskbar="False"
+        ShowActivated="False"
+        Focusable="False"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        Background="Transparent"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        Cursor="Hand">
+
+    <Border x:Name="RootCard"
+            Width="320"
+            Background="#C81E212A"
+            BorderBrush="#40FFFFFF"
+            BorderThickness="1"
+            CornerRadius="10"
+            Padding="12,8"
+            Opacity="0">
+        <Border.Transitions>
+            <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.25" Easing="CubicEaseOut" />
+                <TransformOperationsTransition Property="RenderTransform" Duration="0:0:0.25" Easing="CubicEaseOut" />
+            </Transitions>
+        </Border.Transitions>
+        <Border.RenderTransform>
+            <TranslateTransform Y="20" />
+        </Border.RenderTransform>
+
+        <Grid RowDefinitions="Auto,Auto">
+            <!-- 状态图标、标题与耗时 -->
+            <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,4">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <Border Background="#2638D9A9"
+                            CornerRadius="8"
+                            Width="16" Height="16"
+                            VerticalAlignment="Center">
+                        <TextBlock Text="✓"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   Foreground="#38D9A9"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center" />
+                    </Border>
+                    <TextBlock x:Name="TitleTextBlock"
+                               Text="识别完成 (已复制到剪贴板)"
+                               FontWeight="SemiBold"
+                               FontSize="11"
+                               Foreground="#FFFFFF"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+
+                <TextBlock Grid.Column="2"
+                           x:Name="ElapsedTextBlock"
+                           FontSize="10"
+                           Foreground="#888888"
+                           VerticalAlignment="Center"
+                           Margin="6,0,0,0" />
+            </Grid>
+
+            <!-- 识别文本摘要：单行显示，超出自动省略 -->
+            <TextBlock Grid.Row="1"
+                       x:Name="SnippetTextBlock"
+                       FontSize="11"
+                       Foreground="#D0D0D0"
+                       TextWrapping="NoWrap"
+                       MaxLines="1"
+                       TextTrimming="CharacterEllipsis"
+                       LineHeight="16" />
+        </Grid>
+    </Border>
+</Window>

@@ -1,0 +1,179 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.AboutPageView"
+             x:DataType="vm:AboutViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16">
+            <!-- 头部软件信息 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="20,16">
+                <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
+                    <Image Source="/Assets/logo.png" Width="44" Height="44" VerticalAlignment="Center" />
+                    <StackPanel VerticalAlignment="Center" Spacing="4">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBlock Text="小沐 OCR" FontSize="20" FontWeight="Bold" />
+                            <Border Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                    CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding AppVersion}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                           FontWeight="Medium" />
+                            </Border>
+                        </StackPanel>
+                        <TextBlock Text="轻量、极速的 Windows 本地离线截屏识别工具"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 模型信息卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="OCR 模型状态" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="🟢" FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding ModelStatus}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
+                        <!-- 模型名称 -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="当前模型："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ModelName}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3" />
+
+                        <!-- 模型权重尺寸 -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="模型权重大小："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ModelWeightsDescription}"
+                                   FontSize="13" Margin="0,3" />
+
+                        <!-- 推理运行时 -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="推理引擎："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding EngineDescription}"
+                                   FontSize="13" Margin="0,3" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- 内存实时检测仪表盘 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="14">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Text="内存实时检测仪表盘" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding LastUpdatedText, StringFormat='采样时间: {0}'}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 核心指标网格 -->
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
+                        <!-- 物理工作集 -->
+                        <Border Grid.Row="0" Grid.Column="0"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10" Margin="0,0,6,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="物理内存占用 (Working Set)" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding PhysicalWorkingSetText}" FontSize="18" FontWeight="Bold" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                <TextBlock Text="{Binding PeakWorkingSetText, StringFormat='历史峰值: {0}'}" FontSize="10" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 进程专用内存 -->
+                        <Border Grid.Row="0" Grid.Column="1"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10" Margin="6,0,0,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="专用提交内存 (Private Bytes)" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding PrivateMemoryText}" FontSize="18" FontWeight="Bold" />
+                                <TextBlock Text="软件实际独占物理分配" FontSize="10" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- .NET 托管堆 -->
+                        <Border Grid.Row="1" Grid.Column="0"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10" Margin="0,0,6,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text=".NET 托管堆 (Managed Heap)" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding ManagedMemoryText}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="C# 对象与 UI 状态" FontSize="10" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 模型原生与非托管 -->
+                        <Border Grid.Row="1" Grid.Column="1"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10" Margin="6,0,0,8">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="模型与原生引擎 (Native)" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="{Binding NativeEngineMemoryText}" FontSize="16" FontWeight="SemiBold" />
+                                <TextBlock Text="ONNX 张量池 / 渲染图形缓冲" FontSize="10" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- Win32 GDI 资源 -->
+                        <Border Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="2"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel VerticalAlignment="Center">
+                                    <TextBlock Text="Win32 GDI 资源句柄" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <TextBlock Text="{Binding GdiHandlesText}" FontSize="13" FontWeight="Medium" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="1" Text="已杜绝句柄泄漏"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                           VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!-- 控制按钮 -->
+                    <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,6,0,0">
+                        <TextBlock Grid.Column="0"
+                                   Text="{Binding StatusMessage}"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextTrimming="CharacterEllipsis" />
+
+                        <Button Grid.Column="1"
+                                Content="🔄 刷新数据"
+                                Command="{Binding RefreshMemoryCommand}"
+                                Margin="0,0,8,0"
+                                Padding="12,5"
+                                FontSize="12" />
+
+                        <Button Grid.Column="2"
+                                Content="🧹 深度释放内存"
+                                Command="{Binding TrimMemoryCommand}"
+                                IsEnabled="{Binding !IsTrimming}"
+                                Classes="accent"
+                                Padding="12,5"
+                                FontSize="12" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

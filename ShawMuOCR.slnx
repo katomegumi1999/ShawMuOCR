@@ -1,0 +1,6 @@
+<Solution>
+  <Project Path="src/ShawMuOCR.Core/ShawMuOCR.Core.csproj" />
+  <Project Path="src/ShawMuOCR.Windows/ShawMuOCR.Windows.csproj" />
+  <Project Path="ShawMuOCR.csproj" />
+  <Project Path="tests/ShawMuOCR.Tests/ShawMuOCR.Tests.csproj" />
+</Solution>
