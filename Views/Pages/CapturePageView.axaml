@@ -1,0 +1,222 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.CapturePageView"
+             x:DataType="vm:MainViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16">
+            <!-- 头部说明卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="20,16">
+                <Grid ColumnDefinitions="Auto,*">
+                    <TextBlock Classes="emoji" Text="✂️" FontSize="28" VerticalAlignment="Center" Margin="0,0,16,0" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                        <TextBlock Text="截屏与图像工具箱" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="集成截屏 OCR 识别、快捷截图复制及截图标注贴图功能，配合底层全局低级键盘钩子，秒级框选呼出。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 三大核心功能卡片 -->
+            <Grid ColumnDefinitions="*,*,*" Margin="0,4">
+                <!-- 卡片 1: 截屏识别 -->
+                <Border Grid.Column="0" Margin="0,0,8,0"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <!-- 头部图标与标题 -->
+                        <StackPanel Grid.Row="0" Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="✂" FontSize="20" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Text="截屏识别" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Border Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                    CornerRadius="4" Padding="6,2" HorizontalAlignment="Left"
+                                    IsVisible="{Binding HasHotkey}">
+                                <TextBlock Text="{Binding CurrentHotkey, StringFormat='快捷键: {0}'}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                           FontWeight="Medium" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 说明文字 -->
+                        <TextBlock Grid.Row="1" Margin="0,12,0,16"
+                                   Text="全屏暗化框选任意区域，自动启动本地离线 PaddleOCR 引擎提取图中文本，结果实时呈现并可一键复制。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   LineHeight="18" />
+
+                        <!-- 触发按钮 -->
+                        <Button Grid.Row="2"
+                                Content="立即截屏识别"
+                                Command="{Binding StartCaptureCommand}"
+                                Classes="accent"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Padding="12,8" />
+                    </Grid>
+                </Border>
+
+                <!-- 卡片 2: 截图复制 -->
+                <Border Grid.Column="1" Margin="4,0,4,0"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <!-- 头部图标与标题 -->
+                        <StackPanel Grid.Row="0" Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="📋" FontSize="20" VerticalAlignment="Center" />
+                                <TextBlock Text="截图复制" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="4" Padding="6,2" HorizontalAlignment="Left"
+                                    IsVisible="{Binding HasCaptureImageHotkey}">
+                                <TextBlock Text="{Binding CurrentCaptureImageHotkey, StringFormat='快捷键: {0}'}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           FontWeight="Medium" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 说明文字 -->
+                        <TextBlock Grid.Row="1" Margin="0,12,0,16"
+                                   Text="极速纯净截屏，框选完毕后免去 OCR 运算开销，直接将选区高质量位图写入 Windows 系统剪贴板（DIB），随时粘贴。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   LineHeight="18" />
+
+                        <!-- 触发按钮 -->
+                        <Button Grid.Row="2"
+                                Content="立即截图复制"
+                                Command="{Binding StartCaptureImageCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Padding="12,8" />
+                    </Grid>
+                </Border>
+
+                <!-- 卡片 3: 截图标注 -->
+                <Border Grid.Column="2" Margin="8,0,0,0"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <Grid RowDefinitions="Auto,*,Auto">
+                        <!-- 头部图标与标题 -->
+                        <StackPanel Grid.Row="0" Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <TextBlock Text="🎨" FontSize="20" VerticalAlignment="Center" />
+                                <TextBlock Text="截图标注" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="4" Padding="6,2" HorizontalAlignment="Left"
+                                    IsVisible="{Binding HasAnnotateHotkey}">
+                                <TextBlock Text="{Binding CurrentAnnotateHotkey, StringFormat='快捷键: {0}'}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           FontWeight="Medium" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 说明文字 -->
+                        <TextBlock Grid.Row="1" Margin="0,12,0,16"
+                                   Text="框选后打开画图编辑器，支持矩形、直线、箭头、文字标签与色盘无损标注；支持一键生成 📌 独立置顶贴图窗口（可滚轮缩放拖动）。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap"
+                                   LineHeight="18" />
+
+                        <!-- 触发按钮 -->
+                        <Button Grid.Row="2"
+                                Content="立即截图标注"
+                                Command="{Binding StartAnnotateCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Padding="12,8" />
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 底层技术特性卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="核心系统特性与状态" FontWeight="SemiBold" FontSize="14" />
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto">
+                        <!-- 特性 1 -->
+                        <Border Grid.Row="0" Grid.Column="0" Margin="0,0,6,8"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="🛡️ 无激活全屏遮罩 (WS_EX_NOACTIVATE)" FontWeight="Medium" FontSize="13" />
+                                <TextBlock Text="截屏遮罩在生成和选区期间绝不抢占前台焦点，彻底避免外部应用因失焦导致右键菜单或弹窗意外关闭。"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 特性 2 -->
+                        <Border Grid.Row="0" Grid.Column="1" Margin="6,0,0,8"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="⌨️ 低级键盘钩子 (WH_KEYBOARD_LL)" FontWeight="Medium" FontSize="13" />
+                                <TextBlock Text="在 Windows 底层拦截组合键序列，确保 Alt/Ctrl 等修饰键绝不穿透泄漏给当前活动软件。"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 特性 3 -->
+                        <Border Grid.Row="1" Grid.Column="0" Margin="0,0,6,0"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="🖥️ 高分屏 DPI 缩放与多显示器支持" FontWeight="Medium" FontSize="13" />
+                                <TextBlock Text="采用多屏真实虚拟桌面坐标系，完美适配 125%、150% 等高分屏物理像素定位，跨屏框选无缝自适应。"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 特性 4 -->
+                        <Border Grid.Row="1" Grid.Column="1" Margin="6,0,0,0"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="📌 独立置顶贴图与矢量合成" FontWeight="Medium" FontSize="13" />
+                                <TextBlock Text="基于 SkiaSharp 矢量对象模型，标注图元支持撤销重做，导出的贴图窗口支持 25%~400% 滚轮缩放与鼠标拖拽。"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

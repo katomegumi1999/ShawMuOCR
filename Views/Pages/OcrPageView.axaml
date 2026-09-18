@@ -1,0 +1,194 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.OcrPageView"
+             x:DataType="vm:MainViewModel"
+             DragDrop.AllowDrop="True">
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- 顶部操作与信息条 (划归截屏识别 + 文件上传入口) -->
+        <Border Grid.Row="0" Margin="0,0,0,12" Padding="12,8"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                ClipToBounds="True">
+            <Grid ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                <!-- 左侧指标信息 (通过 Grid 严格划分空间，状态自适应填充 + 省略号截断，杜绝与右侧按钮重叠) -->
+                <Grid Grid.Column="0" ColumnDefinitions="*,Auto,Auto" Margin="0,0,16,0" VerticalAlignment="Center">
+                    <!-- 状态 -->
+                    <DockPanel Grid.Column="0" LastChildFill="True" Margin="0,0,12,0" VerticalAlignment="Center">
+                        <TextBlock DockPanel.Dock="Left" Text="状态: " Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding StatusMessage}" FontWeight="Medium" FontSize="12"
+                                   TextTrimming="CharacterEllipsis"
+                                   ToolTip.Tip="{Binding StatusMessage}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <!-- 耗时 -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="0,0,12,0" VerticalAlignment="Center">
+                        <TextBlock Text="耗时:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ElapsedText}" FontSize="12" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <!-- 字数 -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="字数:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding CharCount}" FontWeight="SemiBold" FontSize="12"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Grid>
+
+                <!-- 右侧快捷与文件操作按钮 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <!-- 核心操作 1: 截屏识别 -->
+                    <Button Command="{Binding StartCaptureCommand}"
+                            Classes="accent"
+                            Padding="12,6"
+                            ToolTip.Tip="框选屏幕任意区域进行文字识别">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="✂" FontSize="14" VerticalAlignment="Center" />
+                            <TextBlock Text="截屏识别" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <Border Background="#25FFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding HasHotkey}">
+                                <TextBlock Text="{Binding CurrentHotkey}" FontSize="10" Opacity="0.95" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 核心操作 2: 打开图片/PDF文件 -->
+                    <Button Command="{Binding OpenFileCommand}"
+                            Padding="12,6"
+                            ToolTip.Tip="打开本地图片或 PDF 文档进行文字识别">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="📁" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="打开图片/PDF" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 辅助操作 -->
+                    <Button Content="清空"
+                            Command="{Binding ClearCommand}"
+                            Padding="10,6"
+                            ToolTip.Tip="清空预览图与识别文本" />
+
+                    <Button Content="📋 复制全文"
+                            Command="{Binding CopyTextCommand}"
+                            Padding="10,6"
+                            ToolTip.Tip="复制识别出的所有文字到剪贴板" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 主工作区：左侧预览，右侧文字 -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,4,1.2*">
+            <!-- 左栏：截图/PDF 预览 -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    ClipToBounds="True"
+                    DragDrop.AllowDrop="True">
+                <Grid RowDefinitions="Auto,*">
+                    <Border Grid.Row="0" Padding="12,6"
+                            Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+                        <DockPanel LastChildFill="True">
+                            <Button DockPanel.Dock="Right"
+                                    Content="💾 保存图片"
+                                    Command="{Binding SavePreviewImageCommand}"
+                                    IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                    FontSize="11"
+                                    Padding="8,3"
+                                    CornerRadius="4"
+                                    VerticalAlignment="Center"
+                                    ToolTip.Tip="将当前识别的截图另存为图片文件 (自动记忆上次保存路径与预估体积)" />
+                            <TextBlock DockPanel.Dock="Left" Text="图像/文档预览 (支持拖拽图片或 PDF 至此)" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+
+                    <!-- 图片展示或空白引导 -->
+                    <Grid Grid.Row="1">
+                        <!-- 占位引导与拖拽投递区 -->
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Margin="16"
+                                    IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNull}}">
+                            <TextBlock Text="📄" FontSize="42" HorizontalAlignment="Center" Opacity="0.35" />
+                            <TextBlock Text="暂无预览内容"
+                                       HorizontalAlignment="Center"
+                                       FontWeight="SemiBold"
+                                       FontSize="15"
+                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                            <TextBlock Text="按快捷键快速截屏，或拖拽文件到此处直接识别"
+                                       HorizontalAlignment="Center"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                            <!-- 快捷提示卡片 -->
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="6" Padding="14,10" Margin="0,4,0,0">
+                                <StackPanel Spacing="6">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                        <TextBlock Text="✂" FontSize="12" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                        <TextBlock Text="{Binding CurrentHotkey, StringFormat='快捷键 {0} 立即截屏识别'}"
+                                                   FontSize="12"
+                                                   FontWeight="Medium"
+                                                   IsVisible="{Binding HasHotkey}" />
+                                    </StackPanel>
+                                    <TextBlock Text="📁 支持 PNG, JPG, BMP, WEBP, TIFF 及多页 PDF"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                               HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 真实图片/PDF 预览 -->
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto"
+                                      IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}">
+                            <Image Source="{Binding PreviewImage}"
+                                   Stretch="Uniform"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality"
+                                   Margin="8" />
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 分割条 -->
+            <GridSplitter Grid.Column="1" Background="Transparent" ResizeDirection="Columns" />
+
+            <!-- 右栏：OCR 识别文本结果 -->
+            <Border Grid.Column="2"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    ClipToBounds="True">
+                <Grid RowDefinitions="Auto,*">
+                    <Border Grid.Row="0" Padding="12,8"
+                            Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock DockPanel.Dock="Left" Text="识别文本 (可直接编辑修改)" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right"
+                                       Text="{Binding CharCount, StringFormat='共 {0} 字符'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+                    </Border>
+
+                    <TextBox Grid.Row="1"
+                             Text="{Binding RecognizedText}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             BorderThickness="0"
+                             Background="Transparent"
+                             FontSize="14"
+                             Padding="12" />
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>

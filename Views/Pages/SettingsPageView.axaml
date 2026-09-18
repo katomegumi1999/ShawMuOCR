@@ -1,0 +1,495 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.SettingsPageView"
+             x:DataType="vm:SettingsViewModel">
+
+    <Grid RowDefinitions="*,Auto">
+        <!-- 内容区域 -->
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="16">
+                <!-- 常规与快捷键设置卡片 -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="常规与快捷键设置" FontWeight="SemiBold" FontSize="15" />
+
+                        <!-- 快捷键录制提示条（录制中高亮显示，全宽包裹防挤压） -->
+                        <Border Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                BorderBrush="{DynamicResource AccentStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="12,10"
+                                IsVisible="{Binding IsRecordingAnyHotkey}">
+                            <Grid ColumnDefinitions="Auto,*,Auto">
+                                <TextBlock Text="⌨" FontSize="16" VerticalAlignment="Center" Margin="0,0,10,0" />
+                                <TextBlock Grid.Column="1"
+                                           Text="{Binding StatusMessage}"
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                           FontWeight="SemiBold"
+                                           FontSize="12"
+                                           TextWrapping="Wrap"
+                                           VerticalAlignment="Center" />
+                                <Button Grid.Column="2"
+                                        Content="取消 (Esc)"
+                                        Command="{Binding CancelRecordingCommand}"
+                                        Padding="8,4"
+                                        FontSize="11"
+                                        Margin="8,0,0,0"
+                                        VerticalAlignment="Center" />
+                            </Grid>
+                        </Border>
+
+                        <!-- 快捷键 1: 截图 OCR -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="截图 OCR 全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="唤起全屏框选截屏并执行文字识别"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding Hotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                         Command="{Binding StartRecordHotkeyCommand}"
+                                         Padding="10,5" />
+                                <Button Content="✕"
+                                         ToolTip.Tip="清空此快捷键(禁用)"
+                                         Command="{Binding ClearHotkeyCommand}"
+                                         Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 快捷键 2: 截图复制 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="截图复制全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="框选后直接将截取的图像写入系统剪贴板"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding CaptureImageHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                         Command="{Binding StartRecordCaptureImageHotkeyCommand}"
+                                         Padding="10,5" />
+                                <Button Content="✕"
+                                         ToolTip.Tip="清空此快捷键(禁用)"
+                                         Command="{Binding ClearCaptureImageHotkeyCommand}"
+                                         Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 快捷键 3: 截图标注 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="截图标注全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="框选后打开画图编辑器（支持画线、箭头、矩形、文字与置顶贴图）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding AnnotateHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                         Command="{Binding StartRecordAnnotateHotkeyCommand}"
+                                         Padding="10,5" />
+                                <Button Content="✕"
+                                         ToolTip.Tip="清空此快捷键(禁用)"
+                                         Command="{Binding ClearAnnotateHotkeyCommand}"
+                                         Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 快捷键 4: 选区翻译 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="选区翻译全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="框选屏幕任意区域后提取文字并在侧边浮窗直接翻译"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding TranslateHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                         Command="{Binding StartRecordTranslateHotkeyCommand}"
+                                         Padding="10,5" />
+                                <Button Content="✕"
+                                         ToolTip.Tip="清空此快捷键(禁用)"
+                                         Command="{Binding ClearTranslateHotkeyCommand}"
+                                         Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                        <!-- 行为开关 -->
+                        <CheckBox Content="OCR 识别完成后自动复制文本到剪贴板"
+                                  IsChecked="{Binding AutoCopy}" />
+
+                        <CheckBox Content="静默模式（识别完成后不弹出主界面）"
+                                  IsChecked="{Binding SilentMode}" />
+
+                        <CheckBox Content="静默启动（启动后直接最小化至系统托盘，不显示主界面）"
+                                  IsChecked="{Binding SilentStartup}" />
+
+                        <CheckBox Content="OCR 识别气泡提醒（在屏幕底部弹出文字摘要与耗时统计）"
+                                  IsChecked="{Binding ShowOcrNotification}" />
+
+                        <CheckBox Content="截图复制气泡提醒（在屏幕底部弹出截图复制成功提示）"
+                                  IsChecked="{Binding ShowCaptureImageNotification}" />
+
+                        <CheckBox Content="开机自启动"
+                                  IsChecked="{Binding StartWithWindows}" />
+                    </StackPanel>
+                </Border>
+
+                <!-- OCR 模型设置 -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="OCR 引擎与模型设置" FontWeight="SemiBold" FontSize="15" />
+
+                        <!-- 开关：识别外部模型 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="识别外部模型" FontWeight="Medium" />
+                                <TextBlock Text="开启后自动扫描 models 目录下的自定义 Paddle 模型（仅需 det 与 rec 文件，字典及方向分类默认复用内置官方资源）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <CheckBox Grid.Column="1"
+                                      Content="开启扫描"
+                                      IsChecked="{Binding ScanExternalModels}"
+                                      VerticalAlignment="Center" />
+                        </Grid>
+
+                        <!-- 模型选择：在原有位置直接切换内置或外部模型 -->
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6"
+                                Padding="12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="OCR 推理模型" FontWeight="Medium" />
+                                    <TextBlock Text="{Binding ModelSelectionHint}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <ComboBox ItemsSource="{Binding AvailableModels}"
+                                              SelectedItem="{Binding SelectedModel}"
+                                              MinWidth="180" />
+                                    <Button Content="🔄"
+                                            ToolTip.Tip="重新扫描 models 目录"
+                                            Command="{Binding RefreshModelsCommand}"
+                                            IsVisible="{Binding ScanExternalModels}"
+                                            Padding="8,5" />
+                                    <Button Content="📂"
+                                            ToolTip.Tip="打开 models 文件夹"
+                                            Command="{Binding OpenModelsFolderCommand}"
+                                            IsVisible="{Binding ScanExternalModels}"
+                                            Padding="8,5" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="推理加速硬件" FontWeight="Medium" />
+                                <TextBlock Text="纯托管 SIMD AVX2 向量硬件指令加速"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <TextBlock Grid.Column="1"
+                                       Text="AVX2 SIMD"
+                                       FontWeight="SemiBold"
+                                       VerticalAlignment="Center"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                        </Grid>
+
+                        <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                        <!-- 最大检测边长 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="文本检测最大长边限制" FontWeight="Medium" />
+                                <TextBlock Text="超限将等比缩放送检，字符识别仍用高清原图（推荐 1280）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableMaxSideLens}"
+                                      SelectedItem="{Binding MaxSideLen}"
+                                      Width="160" />
+                        </Grid>
+
+                        <!-- 文字方向检测开关 -->
+                        <CheckBox Content="开启文字方向角度检测（识别倒立文字；关闭可节省约 150MB 内存）"
+                                  IsChecked="{Binding EnableAngleDetection}" />
+
+                        <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                        <!-- 闲置自动休眠 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="闲置自动休眠释放内存" FontWeight="Medium" />
+                                <TextBlock Text="无截屏操作达到指定时长时，自动深度释放物理内存池"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <CheckBox Content="启用" IsChecked="{Binding EnableIdleSleep}" VerticalAlignment="Center" />
+                                <ComboBox ItemsSource="{Binding AvailableIdleSleepMinutes}"
+                                          SelectedItem="{Binding IdleSleepMinutes}"
+                                          IsEnabled="{Binding EnableIdleSleep}"
+                                          Width="90" />
+                                <TextBlock Text="分钟" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
+                <!-- 翻译服务与接口额度设置 -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="翻译服务与接口额度设置" FontWeight="SemiBold" FontSize="15" />
+
+                        <!-- 默认提供商与语言方向 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="默认翻译提供商与语言方向" FontWeight="Medium" />
+                                <TextBlock Text="配置选区翻译默认生效的翻译接口与语言代码"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <ComboBox ItemsSource="{Binding AvailableTranslateProviders}"
+                                          SelectedItem="{Binding TranslateProvider}"
+                                          Width="100" />
+                                <ComboBox ItemsSource="{Binding TranslateSourceLanguages}"
+                                          SelectedItem="{Binding SelectedTranslateSourceLang}"
+                                          Width="110">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="12" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <TextBlock Text="➔" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding TranslateTargetLanguages}"
+                                          SelectedItem="{Binding SelectedTranslateTargetLang}"
+                                          Width="110">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding DisplayName}" FontSize="12" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                            </StackPanel>
+                        </Grid>
+
+                        <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                        <!-- 1. 百度翻译 API 配置 -->
+                        <Expander Header="百度翻译 API (智能双模：支持大模型 aiTextTranslate 与通用翻译，每月默认 100 万字符)" IsExpanded="True" Padding="8,6">
+                            <StackPanel Spacing="10" Margin="0,4,0,0">
+                                <Grid ColumnDefinitions="140,*,140,*">
+                                    <TextBlock Grid.Column="0" Text="App ID:" VerticalAlignment="Center" FontSize="12" />
+                                    <TextBox Grid.Column="1" Text="{Binding BaiduAppId}" Margin="0,0,12,0" FontSize="12" PlaceholderText="百度开放平台 App ID (17位数字)" />
+                                    <TextBlock Grid.Column="2" Text="密钥 (Secret Key):" VerticalAlignment="Center" FontSize="12" />
+                                    <TextBox Grid.Column="3" Text="{Binding BaiduSecretKey}" PasswordChar="*" FontSize="12" PlaceholderText="开发者信息中的密钥" />
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*">
+                                    <TextBlock Grid.Column="0" Text="API Key (Bearer):" VerticalAlignment="Center" FontSize="12" />
+                                    <TextBox Grid.Column="1" Text="{Binding BaiduApiKey}" PasswordChar="*" FontSize="12" PlaceholderText="【API Key管理】创建的 Key (使用大模型翻译时填写)" />
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*,Auto">
+                                    <TextBlock Grid.Column="0" Text="每月字符上限:" VerticalAlignment="Center" FontSize="12" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding BaiduMonthlyLimit}" Minimum="0" Maximum="10000000" Increment="50000" FormatString="N0" Margin="0,0,12,0" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding BaiduUsedCount, StringFormat='当月已用: {0:N0} 字符'}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                        <Button Content="重置计数" Command="{Binding ResetBaiduUsedCountCommand}" Padding="8,4" FontSize="11" />
+                                    </StackPanel>
+                                </Grid>
+                                <TextBlock Text="* 提示：优先使用大模型翻译；若仅配置了密钥或遇到 52003 未授权，系统会自动无缝回退至通用翻译 (MD5 签名) 确保可用。"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            </StackPanel>
+                        </Expander>
+
+                        <!-- 2. 谷歌翻译 API 配置 -->
+                        <Expander Header="谷歌翻译 API (Cloud Translation API NMT，每月默认 50 万字符)" IsExpanded="False" Padding="8,6">
+                            <StackPanel Spacing="10" Margin="0,4,0,0">
+                                <Grid ColumnDefinitions="140,*">
+                                    <TextBlock Grid.Column="0" Text="Google API Key:" VerticalAlignment="Center" FontSize="12" />
+                                    <TextBox Grid.Column="1" Text="{Binding GoogleApiKey}" PasswordChar="*" FontSize="12" PlaceholderText="Google Cloud API 密钥" />
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*,Auto">
+                                    <TextBlock Grid.Column="0" Text="每月字符上限:" VerticalAlignment="Center" FontSize="12" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding GoogleMonthlyLimit}" Minimum="0" Maximum="10000000" Increment="50000" FormatString="N0" Margin="0,0,12,0" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding GoogleUsedCount, StringFormat='当月已用: {0:N0} 字符'}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                        <Button Content="重置计数" Command="{Binding ResetGoogleUsedCountCommand}" Padding="8,4" FontSize="11" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
+
+                        <!-- 3. OpenAI 兼容接口配置 -->
+                        <Expander Header="OpenAI 兼容接口 (支持 DeepSeek / ChatGPT / Qwen 等)" IsExpanded="False" Padding="8,6">
+                            <StackPanel Spacing="10" Margin="0,4,0,0">
+                                <Grid ColumnDefinitions="140,*,100,*">
+                                    <TextBlock Grid.Column="0" Text="接口地址 URL:" VerticalAlignment="Center" FontSize="12" />
+                                    <TextBox Grid.Column="1" Text="{Binding OpenAiApiEndpoint}" Margin="0,0,12,0" FontSize="12" PlaceholderText="https://api.openai.com/v1/chat/completions" />
+                                    <TextBlock Grid.Column="2" Text="模型 Model:" VerticalAlignment="Center" FontSize="12" />
+                                    <TextBox Grid.Column="3" Text="{Binding OpenAiModel}" FontSize="12" PlaceholderText="gpt-4o-mini" />
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*">
+                                    <TextBlock Grid.Column="0" Text="API Key:" VerticalAlignment="Center" FontSize="12" />
+                                    <TextBox Grid.Column="1" Text="{Binding OpenAiApiKey}" PasswordChar="*" FontSize="12" PlaceholderText="sk-..." />
+                                </Grid>
+                                <Grid ColumnDefinitions="140,*,Auto">
+                                    <TextBlock Grid.Column="0" Text="每月 Token 上限:" VerticalAlignment="Center" FontSize="12" />
+                                    <NumericUpDown Grid.Column="1" Value="{Binding OpenAiMonthlyLimit}" Minimum="0" Maximum="10000000" Increment="10000" FormatString="N0" Margin="0,0,12,0" />
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding OpenAiUsedCount, StringFormat='当月已用: {0:N0} Token'}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                        <Button Content="重置计数" Command="{Binding ResetOpenAiUsedCountCommand}" Padding="8,4" FontSize="11" />
+                                    </StackPanel>
+                                </Grid>
+                            </StackPanel>
+                        </Expander>
+                    </StackPanel>
+                </Border>
+
+                <!-- 配置文件与日志服务 -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <StackPanel Spacing="14">
+                        <TextBlock Text="配置文件与日志服务" FontWeight="SemiBold" FontSize="15" />
+
+                        <!-- 配置文件路径展示 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="配置文件路径 (settings.json)" FontWeight="Medium" />
+                                <TextBox Text="{Binding SettingsFilePath}"
+                                         IsReadOnly="True"
+                                         FontSize="12"
+                                         Margin="0,6,0,0"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                                <Button Content="打开文件"
+                                        Command="{Binding OpenSettingsFileCommand}"
+                                        Padding="10,5" />
+                                <Button Content="打开所在目录"
+                                        Command="{Binding OpenSettingsFolderCommand}"
+                                        Padding="10,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                        <!-- 日志记录服务 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <CheckBox Content="开启本地运行日志记录（遇到异常或错误自动写入日志）"
+                                          IsChecked="{Binding EnableLogging}"
+                                          FontWeight="Medium" />
+                                <TextBox Text="{Binding LogDirectory}"
+                                         IsReadOnly="True"
+                                         FontSize="12"
+                                         Margin="0,6,0,0"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <Button Grid.Column="1"
+                                    Content="打开日志目录"
+                                    Command="{Binding OpenLogFolderCommand}"
+                                    Padding="10,5"
+                                    VerticalAlignment="Bottom" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 底部操作栏 -->
+        <Border Grid.Row="1" Margin="0,12,0,0" Padding="12,10"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBlock Grid.Column="0"
+                           Text="{Binding StatusMessage}"
+                           VerticalAlignment="Center"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Margin="0,0,16,0"
+                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                           IsVisible="{Binding !IsRecordingAnyHotkey}" />
+
+                <Button Grid.Column="1"
+                        Content="保存设置"
+                        Command="{Binding SaveCommand}"
+                        Classes="accent"
+                        Padding="14,6"
+                        Margin="0,0,8,0" />
+
+                <Button Grid.Column="2"
+                        Content="取消"
+                        Command="{Binding CancelCommand}"
+                        Padding="14,6" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

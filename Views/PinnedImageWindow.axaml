@@ -1,0 +1,79 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.PinnedImageWindow"
+        Title="置顶贴图"
+        WindowDecorations="None"
+        ExtendClientAreaToDecorationsHint="True"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        CanResize="False"
+        SizeToContent="Manual"
+        WindowStartupLocation="Manual">
+
+    <Window.ContextMenu>
+        <ContextMenu>
+            <MenuItem Header="📋 复制图片" Click="OnCopyImageClick" />
+            <MenuItem Header="🔍 恢复 100% 原始大小" Click="OnResetZoomClick" />
+            <Separator />
+            <MenuItem Header="✕ 关闭 (Esc)" Click="OnCloseClick" />
+        </ContextMenu>
+    </Window.ContextMenu>
+
+    <Border Name="RootBorder"
+            Background="#1E1E1E"
+            BorderBrush="#444444"
+            BorderThickness="1"
+            CornerRadius="6"
+            BoxShadow="0 8 32 #66000000"
+            ClipToBounds="True">
+        <Panel Name="ImagePanel">
+            <Image Name="PinnedImageControl"
+                   Stretch="Uniform"
+                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+            <!-- 悬浮缩放比例指示卡片 -->
+            <Border Name="ScaleBadge"
+                    HorizontalAlignment="Left"
+                    VerticalAlignment="Bottom"
+                    Margin="8"
+                    Background="#CC000000"
+                    CornerRadius="4"
+                    Padding="6,2"
+                    IsVisible="False">
+                <TextBlock Name="ScaleText"
+                           Foreground="#EEEEEE"
+                           FontSize="11"
+                           Text="100%" />
+            </Border>
+
+            <!-- 右上角悬浮关闭按钮 -->
+            <Button Name="CloseBtn"
+                    Classes="CloseHoverBtn"
+                    HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="6"
+                    Width="24"
+                    Height="24"
+                    CornerRadius="12"
+                    Background="#88000000"
+                    Foreground="White"
+                    Content="✕"
+                    FontSize="11"
+                    Padding="0"
+                    HorizontalContentAlignment="Center"
+                    VerticalContentAlignment="Center"
+                    Click="OnCloseClick"
+                    ToolTip.Tip="关闭贴图 (Esc)" />
+        </Panel>
+    </Border>
+
+    <Window.Styles>
+        <Style Selector="Button.CloseHoverBtn:hover">
+            <Setter Property="Background" Value="#E81123" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+    </Window.Styles>
+</Window>

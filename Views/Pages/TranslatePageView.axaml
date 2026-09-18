@@ -1,0 +1,216 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.TranslatePageView"
+             x:DataType="vm:TranslateViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*">
+        <!-- 顶部操作栏 (引擎选择 + 语言选择 + 选区翻译入口 + 立即翻译) -->
+        <Border Grid.Row="0" Margin="0,0,0,8" Padding="12,8"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <DockPanel LastChildFill="True">
+                <!-- 右侧操作按钮组 -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Button Command="{Binding StartSelectionTranslateCommand}"
+                            Padding="12,6"
+                            ToolTip.Tip="屏幕选区截屏并弹出随动翻译浮窗">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="✂️" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="选区翻译" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <Button Command="{Binding TranslateCommand}"
+                            Classes="accent"
+                            Padding="16,6"
+                            IsEnabled="{Binding !IsTranslating}"
+                            ToolTip.Tip="发送当前文本进行翻译">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="🌐" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="立即翻译" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- 左侧：引擎选择与语言切换 -->
+                <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <!-- 翻译服务商 -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="接口:" Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
+                        <ComboBox ItemsSource="{Binding AvailableProviders}"
+                                  SelectedItem="{Binding SelectedProvider}"
+                                  Width="100"
+                                  VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Separator Width="1" Height="16" VerticalAlignment="Center" Margin="2,0" />
+
+                    <!-- 源语言 -->
+                    <ComboBox ItemsSource="{Binding SourceLanguages}"
+                              SelectedItem="{Binding SelectedSourceLang}"
+                              Width="120"
+                              VerticalAlignment="Center">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" FontSize="12" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+
+                    <!-- 语言互换按钮 -->
+                    <Button Command="{Binding SwapLanguagesCommand}"
+                            Classes="subtle"
+                            Width="30" Height="30"
+                            Padding="0"
+                            ToolTip.Tip="互换源语言与目标语言">
+                        <TextBlock Text="⇄" FontSize="14" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Button>
+
+                    <!-- 目标语言 -->
+                    <ComboBox ItemsSource="{Binding TargetLanguages}"
+                              SelectedItem="{Binding SelectedTargetLang}"
+                              Width="120"
+                              VerticalAlignment="Center">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding DisplayName}" FontSize="12" />
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                </StackPanel>
+            </DockPanel>
+        </Border>
+
+        <!-- 额度状态条 -->
+        <Border Grid.Row="1" Margin="0,0,0,10" Padding="10,6"
+                Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{DynamicResource DividerStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="6">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="📊 额度保护:" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding QuotaSummaryText}" FontSize="11" FontWeight="Medium" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <ProgressBar Grid.Column="1"
+                             Value="{Binding QuotaProgressValue}"
+                             Minimum="0" Maximum="100"
+                             Height="4"
+                             Margin="16,0"
+                             VerticalAlignment="Center" />
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ElapsedText}" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding StatusMessage}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 主内容区：左右分栏编辑器 -->
+        <Grid Grid.Row="2" ColumnDefinitions="*,10,*">
+            <!-- 左侧：原文输入区 -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="10">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <!-- 原文标题与辅助工具 -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="输入原文" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding SourceCharCount, StringFormat='({0} 字符)'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6">
+                            <Button Content="📋 粘贴"
+                                    Command="{Binding PasteSourceCommand}"
+                                    Classes="subtle"
+                                    Padding="6,3"
+                                    FontSize="11" />
+                            <Button Content="清空"
+                                    Command="{Binding ClearSourceCommand}"
+                                    Classes="subtle"
+                                    Padding="6,3"
+                                    FontSize="11" />
+                        </StackPanel>
+                    </DockPanel>
+
+                    <!-- 原文编辑框 -->
+                    <TextBox Grid.Row="1"
+                             Text="{Binding SourceText}"
+                             AcceptsReturn="True"
+                             TextWrapping="Wrap"
+                             PlaceholderText="在此处输入待翻译的文本，或直接在上方点击【选区翻译】/ 按 Alt+T 框选屏幕..."
+                             FontSize="13"
+                             LineHeight="20"
+                             BorderThickness="0"
+                             Background="Transparent" />
+                </Grid>
+            </Border>
+
+            <!-- 分割空隙由 Grid ColumnDefinitions 10 保证 -->
+
+            <!-- 右侧：译文展示区 -->
+            <Border Grid.Column="2"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="10">
+                <Grid RowDefinitions="Auto,*,Auto">
+                    <!-- 译文标题与辅助工具 -->
+                    <DockPanel Grid.Row="0" Margin="0,0,0,8">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="翻译结果" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding ResultCharCount, StringFormat='({0} 字符)'}"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </StackPanel>
+
+                        <Button DockPanel.Dock="Right"
+                                Content="📋 复制译文"
+                                Command="{Binding CopyResultCommand}"
+                                Classes="accent"
+                                Padding="8,4"
+                                FontSize="11"
+                                IsEnabled="{Binding HasTranslatedText}" />
+                    </DockPanel>
+
+                    <!-- 译文内容 -->
+                    <Grid Grid.Row="1">
+                        <TextBox Text="{Binding TranslatedText}"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 PlaceholderText="译文结果将在此处呈现..."
+                                 FontSize="13"
+                                 LineHeight="20"
+                                 BorderThickness="0"
+                                 Background="Transparent" />
+
+                        <!-- 加载中遮罩 -->
+                        <Border Background="{DynamicResource SolidBackgroundFillColorBaseBrush}"
+                                Opacity="0.85"
+                                CornerRadius="6"
+                                IsVisible="{Binding IsTranslating}">
+                            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12">
+                                <ProgressBar IsIndeterminate="True" Width="140" Height="4" />
+                                <TextBlock Text="正在翻译中..." FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+        </Grid>
+    </Grid>
+</UserControl>
