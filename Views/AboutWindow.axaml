@@ -43,8 +43,8 @@
                         Padding="16">
                     <StackPanel Spacing="12">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Text="项目与作者" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
-                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            <TextBlock Grid.Column="0" Text="项目与作者" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                            <Border Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                     CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                 <TextBlock Text="MIT 开源协议" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                             </Border>
