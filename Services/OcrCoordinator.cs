@@ -112,6 +112,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         try
         {
+            // 立即销毁未消失的气泡通知，避免二次截屏时被截入画面或阻挡框选视线
+            ToastNotificationWindow.Dismiss();
+
             // 1. 抓取物理全屏（包括所有显示器）
             var virtualBounds = _captureService.GetVirtualScreenBounds();
             var fullScreenshot = _captureService.CaptureVirtualScreen();
@@ -154,6 +157,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         try
         {
+            // 立即销毁未消失的气泡通知，避免二次截屏时被截入画面或阻挡框选视线
+            ToastNotificationWindow.Dismiss();
+
             // 1. 抓取物理全屏（包括所有显示器）
             var virtualBounds = _captureService.GetVirtualScreenBounds();
             var fullScreenshot = _captureService.CaptureVirtualScreen();
@@ -214,6 +220,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         try
         {
+            // 立即销毁未消失的气泡通知，避免二次截屏时被截入画面或阻挡框选视线
+            ToastNotificationWindow.Dismiss();
+
             // 1. 抓取物理全屏（包括所有显示器）
             var virtualBounds = _captureService.GetVirtualScreenBounds();
             var fullScreenshot = _captureService.CaptureVirtualScreen();
@@ -267,6 +276,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         try
         {
+            // 立即销毁未消失的气泡通知，避免二次截屏时被截入画面或阻挡框选视线
+            ToastNotificationWindow.Dismiss();
+
             // 1. 抓取物理全屏
             var virtualBounds = _captureService.GetVirtualScreenBounds();
             var fullScreenshot = _captureService.CaptureVirtualScreen();

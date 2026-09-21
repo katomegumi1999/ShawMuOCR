@@ -93,6 +93,7 @@ public static class User32
 
     public const int VK_ESCAPE = 0x1B;
     public const int GWLP_USERDATA = -21;
+    public const int SW_HIDE = 0;
     public const int SW_SHOW = 5;
     public const int SW_SHOWNOACTIVATE = 4;
     public const int SW_SHOWNA = 8;
