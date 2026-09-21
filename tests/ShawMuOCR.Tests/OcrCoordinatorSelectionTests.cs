@@ -220,4 +220,11 @@ public class OcrCoordinatorSelectionTests
         Assert.Equal(string.Empty, session!.Result!.Text);
         Assert.Equal(80, session!.Image!.Width);
     }
+
+    [Fact]
+    public void ToastNotificationWindow_Dismiss_ClosesActiveToastImmediately()
+    {
+        ShawMuOCR.Views.ToastNotificationWindow.Dismiss();
+        Assert.False(ShawMuOCR.Views.ToastNotificationWindow.HasActiveToast);
+    }
 }

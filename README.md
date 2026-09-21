@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://dotnet.microsoft.com/download/dotnet/11.0"><img src="https://img.shields.io/badge/.NET-11.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 11" /></a>
   <a href="https://avaloniaui.net/"><img src="https://img.shields.io/badge/UI-Avalonia%2012-7A43B6?logo=avalonia&logoColor=white" alt="Avalonia UI" /></a>
-  <a href="https://github.com/sdcb/SimdPaddleOCR"><img src="https://img.shields.io/badge/Inference-Pure%20C%23%20SIMD-0078D4" alt="Pure C# SIMD" /></a>
+  <a href="https://github.com/sdcb/SimdPaddleOCR"><img src="https://img.shields.io/badge/Inference-Pure%20C%23%20SIMD%20%C2%B7%20Zero%20Copy-0078D4" alt="Pure C# SIMD Zero Copy" /></a>
   <a href="https://learn.microsoft.com/dotnet/core/deploying/native-aot/"><img src="https://img.shields.io/badge/Publish-Native%20AOT%20Ready-success" alt="Native AOT" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-0078D6?logo=windows&logoColor=white" alt="Windows" /></a>
@@ -25,7 +25,7 @@
 
 不同于传统 OCR 软件对 Python 环境、CUDA 显卡驱动、庞大的 C++ 原生动态链接库或笨重外部运行时的依赖，小沐 OCR 基于 **.NET 11 + Avalonia UI + SkiaSharp + Sdcb.SimdPaddleOCR** 构建。它采用**纯 C# 编写的 AVX2/SIMD 内存级神经网络推理引擎**，将高精度 **PP-OCRv6** 模型作为嵌入资源直接编译入程序集内，真正做到**开箱即用、零文件依赖、毫秒级响应、完全离线隐私安全**。
 
-此外，小沐 OCR 还深度整合了**系统级快速截图复制**、**功能完备的截图标注编辑器**、**随动选区即时翻译浮窗**以及**大模型翻译服务**，让截屏、提取、标注与翻译一气呵成。
+此外，小沐 OCR 还深度整合了**系统级快速截图复制**、**功能完备的截图标注编辑器**、**随动选区即时翻译浮窗**以及**多源大模型翻译服务**，并由 **Windows 内核级全局热键**全程驱动，让截屏、提取、标注与翻译一气呵成。
 
 ---
 
@@ -33,7 +33,14 @@
 
 ### 1. ⚡ 纯 C# SIMD 极速推理与本地离线安全
 - **零环境依赖**：无需安装 Python、无需配置 OpenCV 或 ONNX Runtime C++ 原生 DLL，绿色纯净；
-- **指令集加速**：基于 x64 AVX2/SIMD 硬件指令集加速与图级 NHWC 卷积推理，单次识别仅需 **30~80ms**；
+- **全链路零拷贝**：基于 Sdcb.SimdPaddleOCR 1.4+ 原生像素格式通道直通（`Bgra32` / `Rgba32`），SIMD Kernel 在图像 Resize / Warp 时就地完成色彩通道解包并直写 NHWC 神经网络张量，截图像素无需任何中间格式转换与临时缓冲，单次识别中间内存分配归零；
+- **指令集加速**：x64 AVX2 / SIMD 硬件指令集 + 图级 NHWC 卷积推理。仓库内置速度基准单元测试（640×120 中英双语图文，热运行 10 轮均值）：
+
+  | 模型 | 冷启动 | 热运行均值 | 吞吐量 |
+  | :--- | ---: | ---: | ---: |
+  | PP-OCRv6_tiny | ~37 ms | **~25 ms** | 39.6 FPS |
+  | PP-OCRv6_small | ~338 ms | **~94 ms** | 10.7 FPS |
+
 - **100% 离线隐私**：所有图像识别推理均在本地 CPU 与物理内存中完成，文字数据绝不上云；
 - **智能内存整理**：内置闲置自动休眠机制（默认 3 分钟无操作自动释放工作集与非活跃内存），日常常驻内存极低。
 
@@ -43,6 +50,8 @@
 - **高级截图标注编辑器 (`Alt+C`)**：
   - 支持矩形、椭圆、箭头、自由画笔、荧光笔、文本输入、序号徽章（递增气泡）、马赛克与高斯模糊；
   - 支持无损撤销/重做、贴图置顶（钉在屏幕桌面）、一键保存（PNG/JPG/WEBP/BMP，自定义画质与缩放比例）、一键送检翻译；
+- **贴图置顶细节**：去除圆角与描边的 1:1 纯净无缝贴图，精准还原至最初截图的物理位置；贴图瞬间触发霓虹电光蓝呼吸灯定位提示（约 2.3 秒后优雅熄灭），平时零边框、零遮挡、零干扰；
+- **连续截屏零残留**：每次框选启动前 0ms 预清除上一轮气泡提醒，杜绝气泡残影被截入底图或遮挡视线；
 - **跨 DPI 严密对齐**：完整适配 Windows 多显示器、混杂 DPI 缩放环境，彻底杜绝模糊与错位。
 
 ### 3. 🌐 选区随动即时翻译与多源大模型接入
@@ -53,7 +62,7 @@
   - **百度翻译**：全面支持最新百度大模型翻译 (`aiTextTranslate`) 与通用文本翻译；
   - **谷歌翻译**：接入 Google Cloud NMT v2，自动处理 HTML 实体转义编码；
   - **OpenAI 兼容接口**：兼容 GPT-4o-mini、DeepSeek、Qwen、通义千问、Kimi 等各种兼容端点；
-- **月度额度保护硬拦截**：本地精确统计字符与 Token 消耗，超限即时本地拦截，避免产生意外云端账单；支持跨月自动清零；
+- **月度额度保护硬拦截**：默认额度 百度 100 万字符 / 谷歌 50 万字符 / OpenAI 20 万 Token（每月，均可自定义）。本地精确统计消耗，超限即时本地拦截请求，绝不多发一次云端调用；支持跨月自动清零与一键重置计数；
 - **独立【文本翻译】功能页**：提供双栏对照、语言快速互换、字符计数与额度健康度展示。
 
 ### 4. 📑 多页 PDF 与常见图像深度支持
@@ -64,8 +73,14 @@
 ### 5. 🎨 现代设计与极简体验
 - **Fluent 现代磨砂界面**：基于 Avalonia 12 Fluent 主题，支持深色/浅色主题自适应；
 - **全彩 Emoji 字体栈支持**：完美支持彩色 Emoji 徽标与状态展示；
-- **实时自动保存 (Auto-Save)**：修改任何开关、下拉框、API 参数或快捷键，后台即刻静默保存，绝不强制跳转页面；
-- **全局热键冲突查重与录制**：支持在界面中直接按下键盘录制快捷键，防重复、防系统占用。
+- **实时自动保存 (Auto-Save)**：修改任何开关、下拉框、API 参数或快捷键，后台即刻静默保存（API Key 等文本输入采用 400ms 防抖，离开设置页即时落盘），绝不强制跳转页面；
+- **识别完成不抢焦点**：识别结果照常推送剪贴板与气泡提醒，但严格保留用户当前所在页面，绝不打断"正在改设置"这类工作流。
+
+### 6. 🛡 内核级全局热键，永不掉线
+- **RegisterHotKey 内核机制**：热键注册表由 Windows 内核（win32k.sys）统一维护，彻底告别 `WH_KEYBOARD_LL` 低级钩子受 `LowLevelHooksTimeout` 限制、被系统在高负载或休眠唤醒时静默拔除的顽疾——闲置休眠数日、锁屏、睡眠唤醒或全屏游戏中，热键依然精准响应；
+- **vkE8 虚拟按键击发**：Alt 系热键触发后自动注入一次无害虚拟按键，根治前台窗口（Word、资源管理器、VS Code）菜单栏被 Alt 高亮弹出的副作用；
+- **零监听零误报**：不再逐键监听全系统输入，零 CPU 开销，杜绝杀毒软件将程序误报为"键盘记录器"；
+- **冲突精准感知**：热键被其他软件抢占时立即在状态栏呈现友好告警；界面内直接按下键盘录制，防重复、防系统占用。
 
 ---
 
@@ -94,7 +109,7 @@ ShawMuOCR
 │   └── Assets/              # 图标、Logo 与样式资源
 │
 ├── src/ShawMuOCR.Core (核心领域模型与通用服务抽象)
-│   ├── OCR/                 # IOcrEngine 契约、SimdPaddleOcrEngine、模型排版排序算法
+│   ├── OCR/                 # IOcrEngine 契约、PaddleOcrV6Engine 零拷贝推理、模型排版排序算法
 │   ├── Translation/         # ITranslationService、百度/谷歌/OpenAI 翻译 Provider、额度管理
 │   ├── Capture/             # 截屏契约、ScreenRect 物理边界、图片文档模型
 │   ├── Hotkey/              # 跨平台快捷键手势与解析定义
@@ -102,11 +117,11 @@ ShawMuOCR
 │
 ├── src/ShawMuOCR.Windows (Windows 原生底层集成)
 │   ├── ScreenCapture/       # Win32 GDI+ 原生截图、多屏 DPI 自适应捕获
-│   ├── Hotkey/              # Win32 RegisterHotKey 全局钩子与事件总线
+│   ├── Hotkey/              # Win32 RegisterHotKey 内核级全局热键与消息循环线程
 │   └── Clipboard/           # 托管与 Win32 原生剪贴板通信服务
 │
 └── tests/ShawMuOCR.Tests (自动化单元测试套件)
-    └── 涵盖引擎推理、额度拦截、排序拓扑、截图标注图层、自动保存与设置持久化等 91 项全绿测试
+    └── 涵盖引擎推理与速度基准、翻译额度拦截、排序拓扑、截图标注图层、自动保存与热键手势等 97 项全绿测试
 ```
 
 ---
@@ -121,7 +136,7 @@ ShawMuOCR
 ### 2. 获取源码与编译运行
 ```bash
 # 克隆仓库
-git clone https://github.com/your-username/ShawMuOCR.git
+git clone https://github.com/katomegumi1999/ShawMuOCR.git
 cd ShawMuOCR
 
 # 还原依赖并编译
@@ -133,7 +148,7 @@ dotnet run -c Release
 
 ### 3. 执行自动化单元测试
 ```bash
-# 执行全量 91 项单元测试
+# 执行全量 97 项单元测试（含 OCR 推理速度基准）
 dotnet test
 ```
 
@@ -159,6 +174,8 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
    - 在【系统设置】➔【OCR 模型设置】中开启“识别外部模型”，即可在下拉列表中直接选用。
 2. **外部 Web API 接口**：
    - 支持直接对接内网或公网部署的 OCR HTTP 接口（兼容标准 POST 请求与 JSON 返回）。
+
+> 💡 **速度说明**：内置模型与外部模型共用同一套纯 C# SIMD / AVX2 推理底座，运行期耗时 100% 取决于模型网络参数量与图片尺寸。放入相同的官方 PP-OCRv6 ONNX，识别耗时分毫不差；换成 Tiny 更快，换成 Server 级大模型则更准更慢。唯一差别是冷启动读取来源（程序集嵌入流 vs 磁盘文件流），差值仅数毫秒，完全无感。
 
 ---
 

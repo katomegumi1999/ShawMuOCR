@@ -125,6 +125,60 @@ public partial class ToastNotificationWindow : Window
         });
     }
 
+    /// <summary>
+    /// 获取当前是否有悬浮气泡提醒正在显示
+    /// </summary>
+    public static bool HasActiveToast => _activeToast != null;
+
+    /// <summary>
+    /// 立即强制销毁当前正在悬浮显示的气泡提醒（例如发生二次截屏时立即销毁，避免被截入画面或阻挡视线）
+    /// </summary>
+    public static void Dismiss()
+    {
+        if (_activeToast == null) return;
+
+        if (Application.Current == null || Dispatcher.UIThread.CheckAccess())
+        {
+            DismissInternal();
+        }
+        else
+        {
+            try
+            {
+                // 先尝试从当前线程直接向 Win32 隐藏窗口句柄（瞬时生效，0延迟，杜绝被截入底图）
+                var handle = _activeToast?.TryGetPlatformHandle();
+                if (handle != null)
+                {
+                    User32.ShowWindow(handle.Handle, User32.SW_HIDE);
+                }
+            }
+            catch { }
+
+            try
+            {
+                Dispatcher.UIThread.Post(DismissInternal, DispatcherPriority.Send);
+            }
+            catch
+            {
+                DismissInternal();
+            }
+        }
+    }
+
+    private static void DismissInternal()
+    {
+        try
+        {
+            var current = _activeToast;
+            _activeToast = null;
+            current?.CloseToast(instant: true);
+        }
+        catch
+        {
+            // 异常保护
+        }
+    }
+
     private void CloseToast(bool instant = false)
     {
         _closeTimer.Stop();
@@ -132,6 +186,15 @@ public partial class ToastNotificationWindow : Window
         if (instant)
         {
             if (_activeToast == this) _activeToast = null;
+            try
+            {
+                var handle = TryGetPlatformHandle();
+                if (handle != null)
+                {
+                    User32.ShowWindow(handle.Handle, User32.SW_HIDE);
+                }
+            }
+            catch { }
             Close();
             return;
         }
