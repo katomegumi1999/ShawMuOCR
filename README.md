@@ -11,7 +11,7 @@
 <p align="center">
   <a href="https://dotnet.microsoft.com/download/dotnet/11.0"><img src="https://img.shields.io/badge/.NET-11.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 11" /></a>
   <a href="https://avaloniaui.net/"><img src="https://img.shields.io/badge/UI-Avalonia%2012-7A43B6?logo=avalonia&logoColor=white" alt="Avalonia UI" /></a>
-  <a href="https://github.com/sdcb/SimdPaddleOCR"><img src="https://img.shields.io/badge/Inference-Pure%20C%23%20SIMD%20%C2%B7%20Zero%20Copy-0078D4" alt="Pure C# SIMD Zero Copy" /></a>
+  <a href="https://github.com/sdcb/SimdPaddleOCR"><img src="https://img.shields.io/badge/Inference-Pure%20C%23%20SIMD%20%C2%B7%20Zero%20Copy-0078D4" alt="Sdcb.SimdPaddleOCR" /></a>
   <a href="https://learn.microsoft.com/dotnet/core/deploying/native-aot/"><img src="https://img.shields.io/badge/Publish-Native%20AOT%20Ready-success" alt="Native AOT" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-0078D6?logo=windows&logoColor=white" alt="Windows" /></a>
