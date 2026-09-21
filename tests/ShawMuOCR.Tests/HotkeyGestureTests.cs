@@ -52,8 +52,8 @@ public class HotkeyGestureTests
     public void WindowsGlobalHotkeyService_AltZ_And_MultiRegistration_Test()
     {
         using var service = new ShawMuOCR.Windows.Hotkey.WindowsGlobalHotkeyService();
-        Assert.True(HotkeyGesture.TryParse("Alt+Z", out var altZGesture));
-        Assert.True(HotkeyGesture.TryParse("Ctrl+Shift+X", out var copyGesture));
+        Assert.True(HotkeyGesture.TryParse("Ctrl+Alt+F10", out var altZGesture));
+        Assert.True(HotkeyGesture.TryParse("Ctrl+Shift+F11", out var copyGesture));
 
         bool regOcr = service.Register(1, altZGesture, () => { });
         bool regCopy = service.Register(2, copyGesture, () => { });
@@ -71,5 +71,30 @@ public class HotkeyGestureTests
 
         service.Unregister(2);
         Assert.False(service.IsRegisteredId(2));
+    }
+
+    [Fact]
+    public void WindowsGlobalHotkeyService_PauseAndReRegister_Test()
+    {
+        using var service = new ShawMuOCR.Windows.Hotkey.WindowsGlobalHotkeyService();
+        Assert.True(HotkeyGesture.TryParse("Ctrl+Shift+F11", out var g1));
+        Assert.True(HotkeyGesture.TryParse("Ctrl+Shift+F10", out var g2));
+
+        Assert.True(service.Register(1, g1, () => { }));
+        Assert.Equal(g1, service.GetGesture(1));
+
+        // 重新注册同一 ID，应自动注销旧的并成功替换为新的
+        Assert.True(service.Register(1, g2, () => { }));
+        Assert.Equal(g2, service.GetGesture(1));
+
+        // 验证 Pause 状态切换
+        Assert.False(service.IsPaused);
+        service.IsPaused = true;
+        Assert.True(service.IsPaused);
+        service.IsPaused = false;
+        Assert.False(service.IsPaused);
+
+        service.Unregister(1);
+        Assert.False(service.IsRegisteredId(1));
     }
 }

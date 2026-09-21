@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Diagnostics;
 using Sdcb.SimdPaddleOCR;
 using Sdcb.SimdPaddleOCR.Models.ChineseV6Small;
@@ -121,27 +120,46 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
                 return CoreOcrResult.Empty(TimeSpan.Zero);
             }
 
-            int width = bitmap.Width;
-            int height = bitmap.Height;
-            int requiredBytes = checked(width * height * 3);
+            // 1. 确定位图格式：优先直通 Bgra8888 (Windows 原生) 与 Rgba8888 原生物理内存
+            SKBitmap workingBitmap = bitmap;
+            bool disposeWorking = false;
 
-            // 从 ArrayPool 租用紧凑 BGR8 像素缓冲区，彻底消除每次截图识别对 LOH（大对象堆）的反复分配与内存膨胀
-            byte[] rentedBgr = ArrayPool<byte>.Shared.Rent(requiredBytes);
+            if (bitmap.ColorType != SKColorType.Bgra8888 && bitmap.ColorType != SKColorType.Rgba8888)
+            {
+                var info = new SKImageInfo(bitmap.Width, bitmap.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                var converted = new SKBitmap(info);
+                using (var canvas = new SKCanvas(converted))
+                {
+                    canvas.DrawBitmap(bitmap, 0, 0, SKSamplingOptions.Default);
+                }
+                workingBitmap = converted;
+                disposeWorking = true;
+            }
+
+            int width = workingBitmap.Width;
+            int height = workingBitmap.Height;
             PaddleOcrResult rawResult;
             try
             {
-                FillBgr8(bitmap, rentedBgr);
+                var pixelFormat = workingBitmap.ColorType == SKColorType.Rgba8888
+                    ? ImagePixelFormat.Rgba32
+                    : ImagePixelFormat.Bgra32;
 
                 // 在后台线程调度纯 C# SIMD 推理，确保绝对不阻塞 UI 线程
+                // 在工作线程栈上直接获取原生连续像素 Span，零中间内存分配与零拷贝！
                 rawResult = await Task.Run(() =>
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    return _ocr.Run(rentedBgr, width, height, 0);
+                    var pixelSpan = workingBitmap.GetPixelSpan();
+                    return _ocr.Run(pixelSpan, width, height, format: pixelFormat);
                 }, cancellationToken);
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(rentedBgr);
+                if (disposeWorking)
+                {
+                    workingBitmap.Dispose();
+                }
             }
 
             sw.Stop();
@@ -210,83 +228,6 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
         }
     }
 
-    private static void FillBgr8(SKBitmap bitmap, byte[] dstBuffer)
-    {
-        int width = bitmap.Width;
-        int height = bitmap.Height;
-
-        SKBitmap workingBitmap = bitmap;
-        bool disposeWorking = false;
-
-        if (bitmap.ColorType != SKColorType.Bgra8888 && bitmap.ColorType != SKColorType.Rgba8888)
-        {
-            var info = new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul);
-            var converted = new SKBitmap(info);
-            using (var canvas = new SKCanvas(converted))
-            {
-                canvas.DrawBitmap(bitmap, 0, 0, SKSamplingOptions.Default);
-            }
-            workingBitmap = converted;
-            disposeWorking = true;
-        }
-
-        try
-        {
-            IntPtr pixels = workingBitmap.GetPixels();
-            if (pixels == IntPtr.Zero)
-            {
-                return;
-            }
-
-            int rowBytes = workingBitmap.RowBytes;
-            bool isRgba = workingBitmap.ColorType == SKColorType.Rgba8888;
-
-            unsafe
-            {
-                byte* srcBase = (byte*)pixels;
-                fixed (byte* dstBase = dstBuffer)
-                {
-                    for (int y = 0; y < height; y++)
-                    {
-                        byte* s = srcBase + (y * rowBytes);
-                        byte* d = dstBase + (y * width * 3);
-
-                        if (isRgba)
-                        {
-                            // RGBA8888 -> BGR8: d[0]=B(s[2]), d[1]=G(s[1]), d[2]=R(s[0])
-                            for (int x = 0; x < width; x++)
-                            {
-                                d[0] = s[2];
-                                d[1] = s[1];
-                                d[2] = s[0];
-                                s += 4;
-                                d += 3;
-                            }
-                        }
-                        else
-                        {
-                            // BGRA8888 -> BGR8: d[0]=B(s[0]), d[1]=G(s[1]), d[2]=R(s[2])
-                            for (int x = 0; x < width; x++)
-                            {
-                                d[0] = s[0];
-                                d[1] = s[1];
-                                d[2] = s[2];
-                                s += 4;
-                                d += 3;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        finally
-        {
-            if (disposeWorking)
-            {
-                workingBitmap.Dispose();
-            }
-        }
-    }
 
     public void Dispose()
     {

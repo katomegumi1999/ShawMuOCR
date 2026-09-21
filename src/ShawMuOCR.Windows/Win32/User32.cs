@@ -15,6 +15,13 @@ public static class User32
     public const int WM_CLOSE_HOTKEY_WINDOW = WM_USER + 101;
     public const int WM_EXECUTE_ACTION = WM_USER + 102;
 
+    public const uint MOD_ALT = 0x0001;
+    public const uint MOD_CONTROL = 0x0002;
+    public const uint MOD_SHIFT = 0x0004;
+    public const uint MOD_WIN = 0x0008;
+    public const uint MOD_NOREPEAT = 0x4000;
+    public const byte VK_DUMMY_MASK = 0xE8;
+
     public const uint CF_BITMAP = 2;
     public const uint CF_DIB = 8;
     public const uint CF_UNICODETEXT = 13;
