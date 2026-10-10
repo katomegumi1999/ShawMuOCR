@@ -499,23 +499,11 @@ public sealed class MuClipSync : IDisposable
     /// <summary>
     /// 向指定远端节点（如 "192.168.1.5:42424"）发送随机配对 PIN 码 (Legacy)
     /// </summary>
-    public unsafe bool SendPairRequest(string peerAddr, string pin)
+    [Obsolete("请使用安全的单流握手 RequestPair 方法。")]
+    public bool SendPairRequest(string peerAddr, string pin)
     {
-        if (!TryAcquireHandle(out IntPtr handle)) return false;
-        try
-        {
-            byte[] addrBytes = Encoding.UTF8.GetBytes(peerAddr.Trim() + "\0");
-            byte[] pinBytes = Encoding.UTF8.GetBytes(pin.Trim() + "\0");
-            fixed (byte* pAddr = addrBytes)
-            fixed (byte* pPin = pinBytes)
-            {
-                return MuClipNative.SyncSendPairRequest(handle, pAddr, pPin) == 0;
-            }
-        }
-        finally
-        {
-            ReleaseHandle();
-        }
+        var res = RequestPair(peerAddr, pin, 10);
+        return res.Success;
     }
 
     /// <summary>
