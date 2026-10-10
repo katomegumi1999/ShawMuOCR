@@ -159,123 +159,103 @@
                     <StackPanel Spacing="14">
                         <TextBlock Text="OCR 引擎与模型设置" FontWeight="SemiBold" FontSize="15" />
 
-                        <!-- 模式切换：启用外部模型 / 自定义接口 -->
+                        <!-- 模型选择：直接读取同目录下的 models 文件夹 -->
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6"
+                                Padding="12">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="OCR 推理模型" FontWeight="Medium" />
+                                    <TextBlock Text="{Binding ModelSelectionHint}"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <ComboBox ItemsSource="{Binding AvailableModels}"
+                                              SelectedItem="{Binding SelectedModel}"
+                                              MinWidth="180" />
+                                    <Button Content="🔄"
+                                            ToolTip.Tip="重新扫描 models 目录"
+                                            Command="{Binding RefreshModelsCommand}"
+                                            Padding="8,5" />
+                                    <Button Content="📂"
+                                            ToolTip.Tip="打开 models 文件夹"
+                                            Command="{Binding OpenModelsFolderCommand}"
+                                            Padding="8,5" />
+                                </StackPanel>
+                            </Grid>
+                        </Border>
+
+                        <!-- 推理加速后端 (Auto / GPU Vulkan / CPU SIMD) -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="启用外部模型 / 自定义接口" FontWeight="Medium" />
-                                <TextBlock Text="开启后将使用自定义外部模型目录或 Web API 接口；关闭则直接使用内置模型"
+                                <TextBlock Text="推理加速后端 (GPU / CPU)" FontWeight="Medium" />
+                                <TextBlock Text="{Binding OcrBackendHint}"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
 
-                            <CheckBox Grid.Column="1"
-                                      Content="开启外部模式"
-                                      IsChecked="{Binding UseExternalModel}"
-                                      VerticalAlignment="Center" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableOcrBackends}"
+                                      SelectedItem="{Binding SelectedOcrBackendOption}"
+                                      MinWidth="180"
+                                      VerticalAlignment="Center">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                         </Grid>
 
-                        <!-- 内置模型选择（未开启外部时展示） -->
+                        <!-- Auto 模式下实时回报当前自动选中的模式 -->
                         <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="6"
-                                Padding="12"
-                                IsVisible="{Binding IsEmbeddedSelected}">
-                            <StackPanel Spacing="10">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="内置推理模型 (纯 C# SIMD)" FontWeight="Medium" />
-                                        <TextBlock Text="Sdcb.SimdPaddleOCR 内置程序集资源，开箱即用，零文件依赖"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-
-                                    <ComboBox Grid.Column="1"
-                                              ItemsSource="{Binding AvailableEmbeddedModels}"
-                                              SelectedItem="{Binding SelectedEmbeddedModel}"
-                                              Width="160" />
-                                </Grid>
+                                Padding="12,8"
+                                IsVisible="{Binding IsAutoBackendSelected}">
+                            <StackPanel Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="当前自动选择模式："
+                                               FontSize="12"
+                                               FontWeight="Medium"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding AutoResolvedBackendText}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding AutoResolvedReasonText, StringFormat='判定依据：{0}'}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
                             </StackPanel>
                         </Border>
 
-                        <!-- 外部模型配置（开启外部模式时展示） -->
-                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                CornerRadius="6"
-                                Padding="12"
-                                IsVisible="{Binding UseExternalModel}">
-                            <StackPanel Spacing="12">
-                                <!-- 外部类型选择 -->
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="外部模式类型" FontWeight="Medium" />
-                                        <TextBlock Text="选择使用本地 ONNX 模型文件夹或外部 HTTP Web API 服务"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-
-                                    <ComboBox Grid.Column="1"
-                                              ItemsSource="{Binding AvailableExternalModelTypes}"
-                                              SelectedItem="{Binding SelectedExternalModelTypeDisplay}"
-                                              Width="180" />
-                                </Grid>
-
-                                <!-- 外部本地目录模式 -->
-                                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsExternalLocalSelected}">
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="本地模型目录" FontWeight="Medium" />
-                                        <TextBlock Text="需包含 det 检出、rec 识别 ONNX 模型及 dict 字典文件"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBox Text="{Binding ExternalModelPath}"
-                                                 Width="200"
-                                                 VerticalAlignment="Center" />
-                                        <Button Content="浏览..."
-                                                Command="{Binding BrowseExternalModelPathCommand}"
-                                                Padding="10,5" />
-                                    </StackPanel>
-                                </Grid>
-
-                                <!-- 外部 Web API 模式 -->
-                                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding IsExternalWebApiSelected}">
-                                    <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                        <TextBlock Text="Web API 接口地址" FontWeight="Medium" />
-                                        <TextBlock Text="HTTP POST multipart/form-data 或标准 PaddleOCR 规范"
-                                                   FontSize="12"
-                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                                   TextWrapping="Wrap" />
-                                    </StackPanel>
-
-                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBox Text="{Binding ExternalApiUrl}"
-                                                 Width="200"
-                                                 VerticalAlignment="Center" />
-                                        <Button Content="测试连接"
-                                                Command="{Binding TestExternalApiCommand}"
-                                                Padding="10,5" />
-                                    </StackPanel>
-                                </Grid>
-                            </StackPanel>
-                        </Border>
-
-                        <Grid ColumnDefinitions="*,Auto">
+                        <!-- 多显卡环境手动选择显卡 (当显卡数量 >= 2 且未选择纯 CPU 模式时显示) -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowGpuDeviceSelector}">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="推理加速硬件" FontWeight="Medium" />
-                                <TextBlock Text="纯托管 SIMD AVX2 向量硬件指令加速"
+                                <TextBlock Text="选择物理显卡 (GPU 设备)" FontWeight="Medium" />
+                                <TextBlock Text="检测到系统拥有多块 GPU (如独显+核显)，可手动指定 OCR 推理所使用的显卡设备"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
 
-                            <TextBlock Grid.Column="1"
-                                       Text="AVX2 SIMD"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableGpuDevices}"
+                                      SelectedItem="{Binding SelectedGpuDeviceOption}"
+                                      MinWidth="240"
+                                      VerticalAlignment="Center">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                         </Grid>
 
                         <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />

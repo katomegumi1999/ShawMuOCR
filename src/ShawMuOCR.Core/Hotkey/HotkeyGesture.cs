@@ -99,7 +99,7 @@ public readonly record struct HotkeyGesture(HotkeyModifiers Modifiers, int Virtu
             0xDE => "'",
             0xDB => "[",
             0xDD => "]",
-            0xC0 => "`",
+            0xC0 => "~",
             _ => $"0x{vk:X2}"
         };
     }
@@ -113,6 +113,10 @@ public readonly record struct HotkeyGesture(HotkeyModifiers Modifiers, int Virtu
             {
                 return c;
             }
+            if (c is '~' or '`')
+            {
+                return 0xC0;
+            }
         }
         if (keyName.StartsWith("F", StringComparison.OrdinalIgnoreCase) && int.TryParse(keyName[1..], out int fIndex) && fIndex is >= 1 and <= 24)
         {
@@ -121,6 +125,7 @@ public readonly record struct HotkeyGesture(HotkeyModifiers Modifiers, int Virtu
 
         return keyName.ToUpperInvariant() switch
         {
+            "~" or "`" or "TILDE" or "OEM3" or "OEM_3" => 0xC0,
             "SPACE" => 0x20,
             "ENTER" => 0x0D,
             "TAB" => 0x09,

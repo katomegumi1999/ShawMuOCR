@@ -1,6 +1,9 @@
+using System.Collections.Generic;
+using System.IO;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Platform.Storage;
 using ShawMuOCR.Core.Hotkey;
 using ShawMuOCR.ViewModels;
 
@@ -23,6 +26,80 @@ public partial class MainWindow : Window
 
         // 窗口内全局键盘拦截：使用 Tunnel 策略与 handledEventsToo 确保在任何焦点状态下都能第一时间捕获
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
+
+        // 全窗口文件/文件夹拖拽支持：使用 Bubble + handledEventsToo 穿透所有子控件（包括 TextBox、侧边栏、标题栏、状态栏等）
+        AddHandler(DragDrop.DragOverEvent, OnWindowDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
+        AddHandler(DragDrop.DropEvent, OnWindowDrop, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    private void OnWindowDragOver(object? sender, DragEventArgs e)
+    {
+        if (e.DataTransfer.Contains(DataFormat.File))
+        {
+            e.DragEffects = DragDropEffects.Copy;
+            e.Handled = true;
+        }
+    }
+
+    private async void OnWindowDrop(object? sender, DragEventArgs e)
+    {
+        if (DataContext is not MainViewModel vm) return;
+
+        var storageItems = e.DataTransfer.TryGetFiles();
+        if (storageItems == null || storageItems.Length == 0) return;
+
+        e.Handled = true;
+
+        var directories = new List<string>();
+        var files = new List<string>();
+
+        foreach (var item in storageItems)
+        {
+            string path = item.Path.LocalPath;
+            if (string.IsNullOrEmpty(path)) continue;
+
+            if (Directory.Exists(path))
+            {
+                directories.Add(path);
+            }
+            else if (File.Exists(path))
+            {
+                files.Add(path);
+            }
+        }
+
+        if (directories.Count == 0 && files.Count == 0) return;
+
+        // 1. 如果当前在批量转换页，或者拖入了文件夹/多个文件：直接加入批量转换队列（若不在批量页且拖入多个/文件夹则自动切到批量页）
+        if (vm.CurrentPage == AppNavPage.Batch || directories.Count > 0 || files.Count > 1)
+        {
+            if (vm.CurrentPage != AppNavPage.Batch)
+            {
+                vm.NavigateToBatchCommand.Execute(null);
+            }
+
+            foreach (var dir in directories)
+            {
+                vm.BatchVm.AddDirectory(dir);
+            }
+
+            if (files.Count > 0)
+            {
+                vm.BatchVm.AddFiles(files);
+            }
+            return;
+        }
+
+        // 2. 拖入单个文件且当前不在批量转换页：切换到 OCR 识别页并直接识别该文件
+        if (files.Count == 1)
+        {
+            if (vm.CurrentPage != AppNavPage.Ocr)
+            {
+                vm.NavigateToOcrCommand.Execute(null);
+            }
+
+            await vm.RecognizeFileAsync(files[0]);
+        }
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
@@ -112,6 +189,14 @@ public partial class MainWindow : Window
             {
                 settingsVm.ClearTranslateHotkeyCommand.Execute(null);
             }
+            else if (settingsVm.IsRecordingClipboardPanelHotkey)
+            {
+                settingsVm.ClearClipboardPanelHotkeyCommand.Execute(null);
+            }
+            else if (settingsVm.IsRecordingPhrasesPanelHotkey)
+            {
+                settingsVm.ClearPhrasesPanelHotkeyCommand.Execute(null);
+            }
             e.Handled = true;
             return;
         }
@@ -150,6 +235,14 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingTranslateHotkey)
             {
                 settingsVm.OnTranslateHotkeyRecorded(gesture);
+            }
+            else if (settingsVm.IsRecordingClipboardPanelHotkey)
+            {
+                settingsVm.OnClipboardPanelHotkeyRecorded(gesture);
+            }
+            else if (settingsVm.IsRecordingPhrasesPanelHotkey)
+            {
+                settingsVm.OnPhrasesPanelHotkeyRecorded(gesture);
             }
             e.Handled = true;
         }

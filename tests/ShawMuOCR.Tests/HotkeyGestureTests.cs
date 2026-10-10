@@ -18,6 +18,18 @@ public class HotkeyGestureTests
         Assert.Equal(expectedVk, gesture.VirtualKey);
     }
 
+    [Theory]
+    [InlineData("Ctrl+~", HotkeyModifiers.Ctrl, 0xC0)]
+    [InlineData("Ctrl+`", HotkeyModifiers.Ctrl, 0xC0)]
+    [InlineData("Ctrl+Alt+~", HotkeyModifiers.Ctrl | HotkeyModifiers.Alt, 0xC0)]
+    public void TryParse_Tilde_ParsesCorrectly(string text, HotkeyModifiers expectedModifiers, int expectedVk)
+    {
+        bool success = HotkeyGesture.TryParse(text, out var gesture);
+        Assert.True(success);
+        Assert.Equal(expectedModifiers, gesture.Modifiers);
+        Assert.Equal(expectedVk, gesture.VirtualKey);
+    }
+
     [Fact]
     public void ToString_Roundtrip_Works()
     {

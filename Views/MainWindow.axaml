@@ -2,13 +2,15 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:ShawMuOCR.ViewModels"
         xmlns:pages="using:ShawMuOCR.Views.Pages"
+        xmlns:muclip="using:MuClip.Views"
         x:Class="ShawMuOCR.Views.MainWindow"
         x:DataType="vm:MainViewModel"
-        Icon="/Assets/logo.ico"
-        Title="小沐 OCR"
+        Icon="{Binding WindowIcon}"
+        Title="{Binding WindowTitle}"
         Width="980" Height="620"
         MinWidth="780" MinHeight="480"
         Topmost="{Binding IsAlwaysOnTop}"
+        DragDrop.AllowDrop="True"
         WindowStartupLocation="CenterScreen">
 
     <Window.Styles>
@@ -41,7 +43,7 @@
         </Style>
     </Window.Styles>
 
-    <Grid ColumnDefinitions="Auto,*">
+    <Grid ColumnDefinitions="Auto,*" Background="Transparent" DragDrop.AllowDrop="True">
         <!-- 左侧：现代化导航侧边栏 (带平滑抽屉式呼出动效) -->
         <Border Grid.Column="0"
                 Width="{Binding SidebarWidth}"
@@ -71,8 +73,9 @@
                     <!-- 展开时显示的 Logo 与产品名称 -->
                     <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
                                 IsVisible="{Binding IsSidebarExpanded}">
-                        <Image Source="/Assets/logo.png" Width="22" Height="22" VerticalAlignment="Center" />
-                        <TextBlock Text="小沐 OCR" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <Image Source="{Binding AppLogo}" Width="22" Height="22" VerticalAlignment="Center"
+                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                        <TextBlock Text="{Binding AppTitleText}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
                     </StackPanel>
                 </DockPanel>
 
@@ -86,6 +89,30 @@
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
                             <TextBlock Classes="emoji" Text="📄" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
                             <TextBlock Text="OCR 识别" FontSize="13" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsSidebarExpanded}" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 2. 批量转换 -->
+                    <Button Classes="nav"
+                            Classes.active="{Binding IsBatchPage}"
+                            Command="{Binding NavigateToBatchCommand}"
+                            ToolTip.Tip="批量图片/PDF OCR 转换">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="📚" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
+                            <TextBlock Text="批量转换" FontSize="13" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsSidebarExpanded}" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 3. HTTP 调用 -->
+                    <Button Classes="nav"
+                            Classes.active="{Binding IsHttpApiPage}"
+                            Command="{Binding NavigateToHttpApiCommand}"
+                            ToolTip.Tip="开放本地与局域网 HTTP OCR 接口">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="🔌" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
+                            <TextBlock Text="HTTP 调用" FontSize="13" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
@@ -114,7 +141,20 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 4. 系统设置 -->
+                    <!-- 4. 小沐剪贴板 -->
+                    <Button Classes="nav"
+                            Classes.active="{Binding IsClipboardPage}"
+                            Command="{Binding NavigateToClipboardCommand}"
+                            IsVisible="{Binding IsClipboardEnabled}"
+                            ToolTip.Tip="小沐剪贴板与局域网同步">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Image Source="avares://ShawMuOCR/Assets/MuClip.png" Width="18" Height="18" VerticalAlignment="Center" Margin="1,0" />
+                            <TextBlock Text="小沐剪贴板" FontSize="13" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsSidebarExpanded}" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 5. 系统设置 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsSettingsPage}"
                             Command="{Binding NavigateToSettingsCommand}"
@@ -216,16 +256,25 @@
                 </StackPanel>
             </DockPanel>
 
-            <!-- 中间：五个页面切换宿主 -->
+            <!-- 中间：六个页面切换宿主 -->
             <Grid Grid.Row="1">
                 <Panel IsVisible="{Binding IsOcrPage}">
                     <pages:OcrPageView DataContext="{Binding}" />
+                </Panel>
+                <Panel IsVisible="{Binding IsBatchPage}">
+                    <pages:BatchOcrPageView DataContext="{Binding BatchVm}" />
+                </Panel>
+                <Panel IsVisible="{Binding IsHttpApiPage}">
+                    <pages:HttpApiPageView DataContext="{Binding HttpApiVm}" />
                 </Panel>
                 <Panel IsVisible="{Binding IsCapturePage}">
                     <pages:CapturePageView DataContext="{Binding}" />
                 </Panel>
                 <Panel IsVisible="{Binding IsTranslatePage}">
                     <pages:TranslatePageView DataContext="{Binding TranslateVm}" />
+                </Panel>
+                <Panel IsVisible="{Binding IsClipboardPage}">
+                    <muclip:ClipboardView DataContext="{Binding ClipboardVm}" />
                 </Panel>
                 <Panel IsVisible="{Binding IsSettingsPage}">
                     <pages:SettingsPageView DataContext="{Binding SettingsVm}" />

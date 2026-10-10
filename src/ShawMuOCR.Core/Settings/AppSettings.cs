@@ -11,7 +11,7 @@ public sealed class AppSettings
     /// <summary>
     /// 静默模式：开启后识别完成不再自动弹出主窗口
     /// </summary>
-    public bool SilentMode { get; set; } = false;
+    public bool SilentMode { get; set; } = true;
 
     /// <summary>
     /// 静默启动：开启后启动直接最小化到系统托盘，不弹出主界面UI
@@ -46,7 +46,7 @@ public sealed class AppSettings
     public bool StartWithWindows { get; set; } = false;
 
     /// <summary>
-    /// 识别外部模型：开启后自动扫描同目录下 models 文件夹中的外部 Paddle 模型
+    /// 自动扫描同目录下 models 文件夹中的 Paddle 模型
     /// </summary>
     public bool ScanExternalModels { get; set; } = false;
 
@@ -77,26 +77,30 @@ public sealed class AppSettings
     private string _model = "PP-OCRv6_small";
 
     /// <summary>
-    /// 当前生效的模型标识（如 "PP-OCRv6_small", "PP-OCRv6_tiny", "v6 (外部)"）
+    /// 当前生效的模型标识（默认 "PP-OCRv6_small"，如 "PP-OCRv6_tiny", "PP-OCRv6_medium" 等）
     /// </summary>
     public string Model
     {
         get
         {
-            if (ScanExternalModels && string.Equals(ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ExternalApiUrl))
             {
                 return $"External:WebApi ({ExternalApiUrl})";
             }
-            if (ScanExternalModels && string.Equals(ExternalModelType, "LocalDirectory", StringComparison.OrdinalIgnoreCase) &&
+            if (string.Equals(ExternalModelType, "LocalDirectory", StringComparison.OrdinalIgnoreCase) &&
                 _model == "PP-OCRv6_small" && !string.IsNullOrWhiteSpace(ExternalModelPath) && ExternalModelPath != "models/v6")
             {
                 return $"External:Local ({ExternalModelPath})";
             }
-            return _model;
+            return string.IsNullOrWhiteSpace(_model) ? "PP-OCRv6_small" : _model;
         }
         set
         {
-            if (string.IsNullOrWhiteSpace(value)) return;
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                _model = "PP-OCRv6_small";
+                return;
+            }
             if (value.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase))
             {
                 ScanExternalModels = true;
@@ -125,9 +129,19 @@ public sealed class AppSettings
     }
 
     /// <summary>
-    /// 文字方向检测：开启后检测倒立/旋转文字（默认关闭，关闭可节省约 150MB 内存并显著提速）
+    /// OCR 推理硬件后端模式："Auto" (默认，自动选择最优后端), "GPU" (Vulkan GPU 加速), "CPU" (纯 CPU AVX2/SIMD)
     /// </summary>
-    public bool EnableAngleDetection { get; set; } = false;
+    public string OcrBackend { get; set; } = "Auto";
+
+    /// <summary>
+    /// 指定使用的物理 GPU 设备索引（-1 为自动优选，0 为首选 GPU，1 为次选 GPU...）
+    /// </summary>
+    public int SelectedGpuIndex { get; set; } = -1;
+
+    /// <summary>
+    /// 文字方向检测：开启后检测倒立/旋转文字（默认开启）
+    /// </summary>
+    public bool EnableAngleDetection { get; set; } = true;
 
     /// <summary>
     /// 文本检测最大边长限制：等比缩放送检，兼顾显存与清晰度（推荐 1280，识别仍采用原图高清切片）
@@ -179,6 +193,26 @@ public sealed class AppSettings
     public string TranslateHotkey { get; set; } = "Alt+T";
 
     /// <summary>
+    /// 是否启用小沐剪贴板功能（默认关闭）
+    /// </summary>
+    public bool EnableClipboard { get; set; } = false;
+
+    /// <summary>
+    /// 极速剪贴板快捷面板全局快捷键（默认 "Ctrl+~"）
+    /// </summary>
+    public string ClipboardPanelHotkey { get; set; } = "Ctrl+~";
+
+    /// <summary>
+    /// 常用语快捷呼出键（默认 "Ctrl+1"）
+    /// </summary>
+    public string PhrasesPanelHotkey { get; set; } = "Ctrl+1";
+
+    /// <summary>
+    /// 快捷面板背景底色（十六进制颜色，默认 "#F4F4F6" 浅灰）
+    /// </summary>
+    public string ClipboardPanelBackground { get; set; } = "#F4F4F6";
+
+    /// <summary>
     /// 默认生效的翻译提供商 ("Baidu", "Google", "OpenAI")
     /// </summary>
     public string TranslateProvider { get; set; } = "Baidu";
@@ -217,6 +251,29 @@ public sealed class AppSettings
     public int OpenAiMonthlyLimit { get; set; } = 200000; // 默认 20 万 Token
     public int OpenAiUsedCount { get; set; } = 0;
 
+    // ==========================================
+    // 批量 OCR 转换配置
+    // ==========================================
+    public bool BatchExportTxt { get; set; } = true;
+    public bool BatchExportXlsx { get; set; } = true;
+    public bool BatchExportDocx { get; set; } = false;
+    public bool BatchSplitColumnsByBlocks { get; set; } = true;
+    public int BatchImageRotationIndex { get; set; } = 0;
+    public bool BatchIsSuffixEnabled { get; set; } = true;
+    public string BatchSuffixText { get; set; } = "_ocr";
+    public bool BatchUseOriginalFolder { get; set; } = true;
+    public string BatchCustomOutputDir { get; set; } = "";
+    public int BatchMaxCores { get; set; } = Math.Max(1, Environment.ProcessorCount / 2);
+    public int BatchCpuLimitPercent { get; set; } = 50;
+
+    // ==========================================
+    // 内置 HTTP API 服务配置
+    // ==========================================
+    public int HttpApiPort { get; set; } = 8080;
+    public bool HttpApiAllowRemote { get; set; } = false;
+    public int HttpApiMaxCores { get; set; } = Math.Max(1, Environment.ProcessorCount / 2);
+    public int HttpApiCpuLimitPercent { get; set; } = 50;
+
     public AppSettings Clone() => new()
     {
         Hotkey = Hotkey,
@@ -236,6 +293,8 @@ public sealed class AppSettings
         ExternalModelType = ExternalModelType,
         ExternalModelPath = ExternalModelPath,
         ExternalApiUrl = ExternalApiUrl,
+        OcrBackend = OcrBackend,
+        SelectedGpuIndex = SelectedGpuIndex,
         EnableAngleDetection = EnableAngleDetection,
         MaxSideLen = MaxSideLen,
         EnableIdleSleep = EnableIdleSleep,
@@ -247,6 +306,10 @@ public sealed class AppSettings
         LastSaveDirectory = LastSaveDirectory,
 
         TranslateHotkey = TranslateHotkey,
+        EnableClipboard = EnableClipboard,
+        ClipboardPanelHotkey = ClipboardPanelHotkey,
+        PhrasesPanelHotkey = PhrasesPanelHotkey,
+        ClipboardPanelBackground = ClipboardPanelBackground,
         TranslateProvider = TranslateProvider,
         TranslateSourceLang = TranslateSourceLang,
         TranslateTargetLang = TranslateTargetLang,
@@ -266,6 +329,23 @@ public sealed class AppSettings
         OpenAiApiKey = OpenAiApiKey,
         OpenAiModel = OpenAiModel,
         OpenAiMonthlyLimit = OpenAiMonthlyLimit,
-        OpenAiUsedCount = OpenAiUsedCount
+        OpenAiUsedCount = OpenAiUsedCount,
+
+        BatchExportTxt = BatchExportTxt,
+        BatchExportXlsx = BatchExportXlsx,
+        BatchExportDocx = BatchExportDocx,
+        BatchSplitColumnsByBlocks = BatchSplitColumnsByBlocks,
+        BatchImageRotationIndex = BatchImageRotationIndex,
+        BatchIsSuffixEnabled = BatchIsSuffixEnabled,
+        BatchSuffixText = BatchSuffixText,
+        BatchUseOriginalFolder = BatchUseOriginalFolder,
+        BatchCustomOutputDir = BatchCustomOutputDir,
+        BatchMaxCores = BatchMaxCores,
+        BatchCpuLimitPercent = BatchCpuLimitPercent,
+
+        HttpApiPort = HttpApiPort,
+        HttpApiAllowRemote = HttpApiAllowRemote,
+        HttpApiMaxCores = HttpApiMaxCores,
+        HttpApiCpuLimitPercent = HttpApiCpuLimitPercent
     };
 }

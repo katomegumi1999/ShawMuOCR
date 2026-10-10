@@ -7,6 +7,7 @@ using ShawMuOCR.Core.Logging;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation;
+using ShawMuOCR.OCR;
 
 namespace ShawMuOCR.ViewModels;
 
@@ -19,6 +20,7 @@ public partial class SettingsViewModel : ViewModelBase
     private readonly ILoggerService? _loggerService;
     private readonly Func<AboutViewModel>? _aboutVmFactory;
     private bool _isInitializing = true;
+    private bool _isSaving;
     private CancellationTokenSource? _autoSaveCts;
 
     [ObservableProperty]
@@ -49,7 +51,27 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
     private bool _isRecordingTranslateHotkey;
 
-    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingTranslateHotkey;
+    [ObservableProperty]
+    private string _clipboardPanelHotkey;
+
+    [ObservableProperty]
+    private string _phrasesPanelHotkey;
+
+    [ObservableProperty]
+    private string _clipboardPanelBackground;
+
+    [ObservableProperty]
+    private bool _enableClipboard;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
+    private bool _isRecordingClipboardPanelHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
+    private bool _isRecordingPhrasesPanelHotkey;
+
+    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingTranslateHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
 
     // ==========================================
     // 翻译服务配置属性
@@ -170,11 +192,9 @@ public partial class SettingsViewModel : ViewModelBase
         set => ScanExternalModels = value;
     }
 
-    public string ModelSelectionHint => ScanExternalModels
-        ? "已开启外部模型识别，可直接在右侧下拉框选用内置模型或 models/ 下的自定义 Paddle 模型"
-        : "使用内置纯 C# SIMD 高精度推理模型，开箱即用，零文件依赖";
+    public string ModelSelectionHint => "直接使用同目录下 models 文件夹中的 Paddle 模型（默认推荐 PP-OCRv6_small）";
 
-    public bool IsEmbeddedSelected => !ScanExternalModels;
+    public bool IsEmbeddedSelected => true;
     public bool IsExternalLocalSelected => false;
     public bool IsExternalWebApiSelected => false;
 
@@ -199,7 +219,98 @@ public partial class SettingsViewModel : ViewModelBase
     private string _externalApiUrl = "http://127.0.0.1:8080/ocr";
 
     [ObservableProperty]
-    private bool _enableAngleDetection;
+    [NotifyPropertyChangedFor(nameof(SelectedOcrBackendOption))]
+    [NotifyPropertyChangedFor(nameof(OcrBackendHint))]
+    [NotifyPropertyChangedFor(nameof(IsAutoBackendSelected))]
+    [NotifyPropertyChangedFor(nameof(AutoResolvedBackendText))]
+    [NotifyPropertyChangedFor(nameof(AutoResolvedReasonText))]
+    [NotifyPropertyChangedFor(nameof(ShowGpuDeviceSelector))]
+    private string _ocrBackend = "Auto";
+
+    public IReadOnlyList<OcrBackendOption> AvailableOcrBackends { get; } =
+    [
+        new("Auto", "自动选择最优 (Auto - 智能优选 GPU/CPU)"),
+        new("GPU", "GPU 加速 (Vulkan)"),
+        new("CPU", "纯 CPU (AVX2 SIMD)")
+    ];
+
+    public OcrBackendOption SelectedOcrBackendOption
+    {
+        get
+        {
+            string normalized = NormalizeBackendValue(OcrBackend);
+            return AvailableOcrBackends.FirstOrDefault(x => string.Equals(x.Value, normalized, StringComparison.OrdinalIgnoreCase))
+                   ?? AvailableOcrBackends[0];
+        }
+        set
+        {
+            if (value != null && !string.Equals(OcrBackend, value.Value, StringComparison.OrdinalIgnoreCase))
+            {
+                OcrBackend = value.Value;
+            }
+        }
+    }
+
+    public bool IsAutoBackendSelected =>
+        string.Equals(NormalizeBackendValue(OcrBackend), "Auto", StringComparison.OrdinalIgnoreCase);
+
+    public string AutoResolvedBackendText =>
+        IsAutoBackendSelected
+            ? ShawMuOCR.OCR.PaddleOcrV6Engine.ProbeBackendInfo().AutoResolvedDisplayText
+            : string.Empty;
+
+    public string AutoResolvedReasonText =>
+        IsAutoBackendSelected
+            ? ShawMuOCR.OCR.PaddleOcrV6Engine.ProbeBackendInfo().AutoDecisionReason
+            : string.Empty;
+
+    public string OcrBackendHint => NormalizeBackendValue(OcrBackend) switch
+    {
+        "GPU" => "强制使用纯 C# Vulkan GPU 硬件加速推理（DET + CLS + REC）",
+        "Auto" => "自动选择最优后端：支持硬件协作矩阵 (CoopMatrix) 或 AMD Wave64 (SubgroupMin≥64) 时自动启用 Vulkan，否则走 CPU AVX2 SIMD",
+        _ => "默认使用纯托管 CPU SIMD (AVX2 / AVX-512) 向量指令加速，无首次编译开销且完全不占用 GPU"
+    };
+
+    // ==========================================
+    // 多显卡手动选择 (当显卡数量 >= 2 时支持)
+    // ==========================================
+    private IReadOnlyList<DiscoveredGpuDevice> _discoveredGpus = [];
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedGpuDeviceOption))]
+    [NotifyPropertyChangedFor(nameof(AutoResolvedBackendText))]
+    private int _selectedGpuIndex = -1;
+
+    public IReadOnlyList<GpuDeviceOption> AvailableGpuDevices { get; private set; } = [];
+
+    public GpuDeviceOption SelectedGpuDeviceOption
+    {
+        get => AvailableGpuDevices.FirstOrDefault(x => x.Index == SelectedGpuIndex)
+               ?? (AvailableGpuDevices.Count > 0 ? AvailableGpuDevices[0] : new GpuDeviceOption(-1, "自动选择 (推荐 · 优先独立显卡)"));
+        set
+        {
+            if (value != null && SelectedGpuIndex != value.Index)
+            {
+                SelectedGpuIndex = value.Index;
+            }
+        }
+    }
+
+    public bool HasMultipleGpus => _discoveredGpus.Count >= 2;
+
+    public bool ShowGpuDeviceSelector => HasMultipleGpus && !string.Equals(NormalizeBackendValue(OcrBackend), "CPU", StringComparison.OrdinalIgnoreCase);
+
+    private static string NormalizeBackendValue(string? backend)
+    {
+        if (string.IsNullOrWhiteSpace(backend)) return "CPU";
+        if (backend.Equals("Auto", StringComparison.OrdinalIgnoreCase)) return "Auto";
+        if (backend.Equals("GPU", StringComparison.OrdinalIgnoreCase) ||
+            backend.Equals("Vulkan", StringComparison.OrdinalIgnoreCase)) return "GPU";
+        return "CPU";
+    }
+
+    [ObservableProperty]
+    private bool _enableAngleDetection = true;
 
     [ObservableProperty]
     private int _maxSideLen;
@@ -265,6 +376,9 @@ public partial class SettingsViewModel : ViewModelBase
         _externalModelPath = current.ExternalModelPath;
         _externalApiUrl = current.ExternalApiUrl;
         SelectedExternalModelType = current.ExternalModelType;
+        _ocrBackend = NormalizeBackendValue(current.OcrBackend);
+        _selectedGpuIndex = current.SelectedGpuIndex;
+        InitializeGpuDevices();
         _enableAngleDetection = current.EnableAngleDetection;
         _maxSideLen = current.MaxSideLen;
         _enableIdleSleep = current.EnableIdleSleep;
@@ -272,6 +386,10 @@ public partial class SettingsViewModel : ViewModelBase
         _enableLogging = current.EnableLogging;
 
         _translateHotkey = current.TranslateHotkey;
+        _enableClipboard = current.EnableClipboard;
+        _clipboardPanelHotkey = current.ClipboardPanelHotkey;
+        _phrasesPanelHotkey = current.PhrasesPanelHotkey;
+        _clipboardPanelBackground = current.ClipboardPanelBackground;
         _translateProvider = current.TranslateProvider;
         _selectedTranslateSourceLang = TranslateSourceLanguages.FirstOrDefault(x => x.Code == current.TranslateSourceLang) ?? TranslateSourceLanguages[0];
         _selectedTranslateTargetLang = TranslateTargetLanguages.FirstOrDefault(x => x.Code == current.TranslateTargetLang) ?? TranslateTargetLanguages[0];
@@ -299,8 +417,30 @@ public partial class SettingsViewModel : ViewModelBase
         }
         LoadMaxSideLens();
         LoadIdleSleepMinutes();
+        _settingsService.SettingsChanged += OnExternalSettingsChanged;
         StatusMessage = "⚡ 修改设置后将实时自动保存";
         _isInitializing = false;
+    }
+
+    private void OnExternalSettingsChanged(AppSettings settings)
+    {
+        if (_isSaving || _isInitializing || IsRecordingAnyHotkey) return;
+        ReloadSettings();
+    }
+
+    private void InitializeGpuDevices()
+    {
+        _discoveredGpus = ShawMuOCR.OCR.PaddleOcrV6Engine.EnumerateAllGpuDevices();
+        var gpuOptions = new List<GpuDeviceOption>
+        {
+            new(-1, "自动选择 (默认 · 优先独立显卡)")
+        };
+        foreach (var g in _discoveredGpus)
+        {
+            string extra = g.SupportsCoopMatrix ? " · 硬件矩阵" : "";
+            gpuOptions.Add(new(g.Index, $"{g.Name} (设备 #{g.Index}{extra})"));
+        }
+        AvailableGpuDevices = gpuOptions;
     }
 
     private void LoadIdleSleepMinutes()
@@ -336,15 +476,31 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void LoadModels()
     {
-        string previousSelection = SelectedModel;
-        AvailableModels.Clear();
-        AvailableEmbeddedModels.Clear();
+        string previousSelection = string.IsNullOrWhiteSpace(SelectedModel) ? "PP-OCRv6_small" : SelectedModel;
+        var models = _modelProvider.GetAvailableModels();
 
-        var models = _modelProvider.GetAvailableModels(ScanExternalModels);
-        foreach (var m in models)
+        bool listChanged = AvailableModels.Count != models.Count;
+        if (!listChanged)
         {
-            AvailableModels.Add(m);
-            AvailableEmbeddedModels.Add(m);
+            for (int i = 0; i < models.Count; i++)
+            {
+                if (!string.Equals(AvailableModels[i], models[i], StringComparison.OrdinalIgnoreCase))
+                {
+                    listChanged = true;
+                    break;
+                }
+            }
+        }
+
+        if (listChanged)
+        {
+            AvailableModels.Clear();
+            AvailableEmbeddedModels.Clear();
+            foreach (var m in models)
+            {
+                AvailableModels.Add(m);
+                AvailableEmbeddedModels.Add(m);
+            }
         }
 
         if (AvailableModels.Contains(previousSelection))
@@ -353,7 +509,8 @@ public partial class SettingsViewModel : ViewModelBase
         }
         else if (AvailableModels.Count > 0)
         {
-            SelectedModel = AvailableModels[0];
+            var small = AvailableModels.FirstOrDefault(m => m.Contains("small", StringComparison.OrdinalIgnoreCase)) ?? AvailableModels[0];
+            SelectedModel = small;
         }
         else
         {
@@ -365,8 +522,7 @@ public partial class SettingsViewModel : ViewModelBase
     public void RefreshModels()
     {
         LoadModels();
-        int extCount = AvailableModels.Count(m => m.Contains("(外部)"));
-        StatusMessage = $"模型列表已刷新，共加载 {AvailableModels.Count} 个可用模型 (含 {extCount} 个外部扫描模型)";
+        StatusMessage = $"模型列表已刷新，共加载 {AvailableModels.Count} 个可用模型";
     }
 
     [RelayCommand]
@@ -505,6 +661,66 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void StartRecordClipboardPanelHotkey()
+    {
+        _hotkeyService.IsPaused = true;
+        IsRecordingHotkey = false;
+        IsRecordingCaptureImageHotkey = false;
+        IsRecordingAnnotateHotkey = false;
+        IsRecordingTranslateHotkey = false;
+        IsRecordingClipboardPanelHotkey = true;
+        IsRecordingPhrasesPanelHotkey = false;
+        StatusMessage = "请按下【剪贴板快捷面板】快捷键 (默认 Ctrl+~，按 Backspace 清空，按 Esc 取消)...";
+    }
+
+    public void OnClipboardPanelHotkeyRecorded(HotkeyGesture gesture)
+    {
+        IsRecordingClipboardPanelHotkey = false;
+        _hotkeyService.IsPaused = false;
+        ClipboardPanelHotkey = gesture.ToString();
+        StatusMessage = $"✓ 已设置剪贴板快捷键: {ClipboardPanelHotkey}";
+    }
+
+    [RelayCommand]
+    private void ClearClipboardPanelHotkey()
+    {
+        IsRecordingClipboardPanelHotkey = false;
+        _hotkeyService.IsPaused = false;
+        ClipboardPanelHotkey = "无";
+        StatusMessage = "剪贴板快捷键已清空(已禁用)";
+    }
+
+    [RelayCommand]
+    private void StartRecordPhrasesPanelHotkey()
+    {
+        _hotkeyService.IsPaused = true;
+        IsRecordingHotkey = false;
+        IsRecordingCaptureImageHotkey = false;
+        IsRecordingAnnotateHotkey = false;
+        IsRecordingTranslateHotkey = false;
+        IsRecordingClipboardPanelHotkey = false;
+        IsRecordingPhrasesPanelHotkey = true;
+        StatusMessage = "请按下【常用语快捷呼出】快捷键 (默认 Ctrl+1，按 Backspace 清空，按 Esc 取消)...";
+    }
+
+    public void OnPhrasesPanelHotkeyRecorded(HotkeyGesture gesture)
+    {
+        IsRecordingPhrasesPanelHotkey = false;
+        _hotkeyService.IsPaused = false;
+        PhrasesPanelHotkey = gesture.ToString();
+        StatusMessage = $"✓ 已设置常用语快捷键: {PhrasesPanelHotkey}";
+    }
+
+    [RelayCommand]
+    private void ClearPhrasesPanelHotkey()
+    {
+        IsRecordingPhrasesPanelHotkey = false;
+        _hotkeyService.IsPaused = false;
+        PhrasesPanelHotkey = "无";
+        StatusMessage = "常用语快捷键已清空(已禁用)";
+    }
+
+    [RelayCommand]
     public void ResetBaiduUsedCount()
     {
         BaiduUsedCount = 0;
@@ -535,6 +751,8 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingCaptureImageHotkey = false;
         IsRecordingAnnotateHotkey = false;
         IsRecordingTranslateHotkey = false;
+        IsRecordingClipboardPanelHotkey = false;
+        IsRecordingPhrasesPanelHotkey = false;
         _hotkeyService.IsPaused = false;
         StatusMessage = "已取消快捷键录制";
     }
@@ -644,12 +862,13 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(ShowWindowAfterOcr):
             case nameof(StartWithWindows):
             case nameof(ScanExternalModels):
+            case nameof(OcrBackend):
+            case nameof(SelectedGpuIndex):
             case nameof(EnableAngleDetection):
             case nameof(MaxSideLen):
             case nameof(EnableIdleSleep):
             case nameof(IdleSleepMinutes):
             case nameof(EnableLogging):
-            case nameof(SelectedModel):
             case nameof(SelectedExternalModelTypeDisplay):
             case nameof(TranslateProvider):
             case nameof(SelectedTranslateSourceLang):
@@ -658,6 +877,19 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(CaptureImageHotkey):
             case nameof(AnnotateHotkey):
             case nameof(TranslateHotkey):
+            case nameof(EnableClipboard):
+            case nameof(ClipboardPanelHotkey):
+            case nameof(PhrasesPanelHotkey):
+            case nameof(ClipboardPanelBackground):
+                TriggerAutoSave(debounce: false);
+                break;
+
+            case nameof(SelectedModel):
+                if (string.IsNullOrWhiteSpace(SelectedModel))
+                {
+                    SelectedModel = "PP-OCRv6_small";
+                    return;
+                }
                 TriggerAutoSave(debounce: false);
                 break;
 
@@ -691,6 +923,11 @@ public partial class SettingsViewModel : ViewModelBase
         if (!IsDisabledHotkey(CaptureImageHotkey)) activeHotkeys.Add(("截图复制", CaptureImageHotkey));
         if (!IsDisabledHotkey(AnnotateHotkey)) activeHotkeys.Add(("截图标注", AnnotateHotkey));
         if (!IsDisabledHotkey(TranslateHotkey)) activeHotkeys.Add(("选区翻译", TranslateHotkey));
+        if (EnableClipboard)
+        {
+            if (!IsDisabledHotkey(ClipboardPanelHotkey)) activeHotkeys.Add(("剪贴板面板", ClipboardPanelHotkey));
+            if (!IsDisabledHotkey(PhrasesPanelHotkey)) activeHotkeys.Add(("常用语面板", PhrasesPanelHotkey));
+        }
 
         for (int i = 0; i < activeHotkeys.Count; i++)
         {
@@ -725,62 +962,83 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = "⚠️ 选区翻译快捷键格式无效！";
             return false;
         }
+        if (EnableClipboard)
+        {
+            if (!IsDisabledHotkey(ClipboardPanelHotkey) && !HotkeyGesture.TryParse(ClipboardPanelHotkey, out _))
+            {
+                StatusMessage = "⚠️ 剪贴板快捷键格式无效！";
+                return false;
+            }
+            if (!IsDisabledHotkey(PhrasesPanelHotkey) && !HotkeyGesture.TryParse(PhrasesPanelHotkey, out _))
+            {
+                StatusMessage = "⚠️ 常用语快捷键格式无效！";
+                return false;
+            }
+        }
 
         // 3. 更新并持久化设置
         var current = _settingsService.Current;
-        var newSettings = new AppSettings
+        var newSettings = current.Clone();
+        newSettings.Hotkey = Hotkey;
+        newSettings.CaptureImageHotkey = CaptureImageHotkey;
+        newSettings.AnnotateHotkey = AnnotateHotkey;
+        newSettings.TranslateHotkey = TranslateHotkey;
+        newSettings.EnableClipboard = EnableClipboard;
+        newSettings.ClipboardPanelHotkey = ClipboardPanelHotkey;
+        newSettings.PhrasesPanelHotkey = PhrasesPanelHotkey;
+        newSettings.ClipboardPanelBackground = ClipboardPanelBackground;
+        newSettings.TranslateProvider = TranslateProvider;
+        newSettings.TranslateSourceLang = SelectedTranslateSourceLang?.Code ?? "auto";
+        newSettings.TranslateTargetLang = SelectedTranslateTargetLang?.Code ?? "zh";
+        newSettings.TranslationUsageMonth = current.TranslationUsageMonth;
+
+        newSettings.BaiduAppId = BaiduAppId?.Trim() ?? string.Empty;
+        newSettings.BaiduSecretKey = BaiduSecretKey?.Trim() ?? string.Empty;
+        newSettings.BaiduApiKey = BaiduApiKey?.Trim() ?? string.Empty;
+        newSettings.BaiduMonthlyLimit = BaiduMonthlyLimit;
+        newSettings.BaiduUsedCount = BaiduUsedCount;
+
+        newSettings.GoogleApiKey = GoogleApiKey?.Trim() ?? string.Empty;
+        newSettings.GoogleMonthlyLimit = GoogleMonthlyLimit;
+        newSettings.GoogleUsedCount = GoogleUsedCount;
+
+        newSettings.OpenAiApiEndpoint = OpenAiApiEndpoint?.Trim() ?? "https://api.openai.com/v1/chat/completions";
+        newSettings.OpenAiApiKey = OpenAiApiKey?.Trim() ?? string.Empty;
+        newSettings.OpenAiModel = OpenAiModel?.Trim() ?? "gpt-4o-mini";
+        newSettings.OpenAiMonthlyLimit = OpenAiMonthlyLimit;
+        newSettings.OpenAiUsedCount = OpenAiUsedCount;
+
+        newSettings.AutoCopy = AutoCopy;
+        newSettings.SilentMode = SilentMode;
+        newSettings.SilentStartup = SilentStartup;
+        newSettings.ShowOcrNotification = ShowOcrNotification;
+        newSettings.ShowCaptureImageNotification = ShowCaptureImageNotification;
+        newSettings.ShowWindowAfterOcr = ShowWindowAfterOcr;
+        newSettings.StartWithWindows = StartWithWindows;
+        newSettings.Model = string.IsNullOrWhiteSpace(SelectedModel) ? "PP-OCRv6_small" : SelectedModel;
+        newSettings.EmbeddedModel = newSettings.Model;
+        newSettings.ScanExternalModels = true;
+        newSettings.UseExternalModel = true;
+        newSettings.ExternalModelType = SelectedExternalModelType;
+        newSettings.ExternalModelPath = ExternalModelPath;
+        newSettings.ExternalApiUrl = ExternalApiUrl;
+        newSettings.OcrBackend = NormalizeBackendValue(OcrBackend);
+        newSettings.SelectedGpuIndex = SelectedGpuIndex;
+        newSettings.EnableAngleDetection = EnableAngleDetection;
+        newSettings.MaxSideLen = MaxSideLen;
+        newSettings.EnableIdleSleep = EnableIdleSleep;
+        newSettings.IdleSleepMinutes = IdleSleepMinutes;
+        newSettings.EnableLogging = EnableLogging;
+
+        _isSaving = true;
+        try
         {
-            Hotkey = Hotkey,
-            CaptureImageHotkey = CaptureImageHotkey,
-            AnnotateHotkey = AnnotateHotkey,
-            TranslateHotkey = TranslateHotkey,
-            TranslateProvider = TranslateProvider,
-            TranslateSourceLang = SelectedTranslateSourceLang?.Code ?? "auto",
-            TranslateTargetLang = SelectedTranslateTargetLang?.Code ?? "zh",
-            TranslationUsageMonth = current.TranslationUsageMonth,
-
-            BaiduAppId = BaiduAppId?.Trim() ?? string.Empty,
-            BaiduSecretKey = BaiduSecretKey?.Trim() ?? string.Empty,
-            BaiduApiKey = BaiduApiKey?.Trim() ?? string.Empty,
-            BaiduMonthlyLimit = BaiduMonthlyLimit,
-            BaiduUsedCount = BaiduUsedCount,
-
-            GoogleApiKey = GoogleApiKey?.Trim() ?? string.Empty,
-            GoogleMonthlyLimit = GoogleMonthlyLimit,
-            GoogleUsedCount = GoogleUsedCount,
-
-            OpenAiApiEndpoint = OpenAiApiEndpoint?.Trim() ?? "https://api.openai.com/v1/chat/completions",
-            OpenAiApiKey = OpenAiApiKey?.Trim() ?? string.Empty,
-            OpenAiModel = OpenAiModel?.Trim() ?? "gpt-4o-mini",
-            OpenAiMonthlyLimit = OpenAiMonthlyLimit,
-            OpenAiUsedCount = OpenAiUsedCount,
-
-            AutoCopy = AutoCopy,
-            SilentMode = SilentMode,
-            SilentStartup = SilentStartup,
-            ShowOcrNotification = ShowOcrNotification,
-            ShowCaptureImageNotification = ShowCaptureImageNotification,
-            ShowWindowAfterOcr = ShowWindowAfterOcr,
-            StartWithWindows = StartWithWindows,
-            Model = SelectedModel,
-            EmbeddedModel = SelectedModel,
-            ScanExternalModels = ScanExternalModels,
-            UseExternalModel = ScanExternalModels,
-            ExternalModelType = SelectedExternalModelType,
-            ExternalModelPath = ExternalModelPath,
-            ExternalApiUrl = ExternalApiUrl,
-            EnableAngleDetection = EnableAngleDetection,
-            MaxSideLen = MaxSideLen,
-            EnableIdleSleep = EnableIdleSleep,
-            IdleSleepMinutes = IdleSleepMinutes,
-            EnableLogging = EnableLogging,
-            DefaultSaveFormat = current.DefaultSaveFormat,
-            DefaultSaveQuality = current.DefaultSaveQuality,
-            DefaultSaveScale = current.DefaultSaveScale,
-            LastSaveDirectory = current.LastSaveDirectory
-        };
-
-        _settingsService.Save(newSettings);
+            _settingsService.Save(newSettings);
+        }
+        finally
+        {
+            _isSaving = false;
+        }
         _startupService.SetEnabled(StartWithWindows);
 
         StatusMessage = isAutoSave ? "✓ 设置已自动保存" : "✓ 设置已保存";
@@ -818,6 +1076,10 @@ public partial class SettingsViewModel : ViewModelBase
             CaptureImageHotkey = current.CaptureImageHotkey;
             AnnotateHotkey = current.AnnotateHotkey;
             TranslateHotkey = current.TranslateHotkey;
+            EnableClipboard = current.EnableClipboard;
+            ClipboardPanelHotkey = current.ClipboardPanelHotkey;
+            PhrasesPanelHotkey = current.PhrasesPanelHotkey;
+            ClipboardPanelBackground = current.ClipboardPanelBackground;
             AutoCopy = current.AutoCopy;
             SilentMode = current.SilentMode;
             SilentStartup = current.SilentStartup;
@@ -830,6 +1092,8 @@ public partial class SettingsViewModel : ViewModelBase
             ExternalModelPath = current.ExternalModelPath;
             ExternalApiUrl = current.ExternalApiUrl;
             SelectedExternalModelType = current.ExternalModelType;
+            OcrBackend = NormalizeBackendValue(current.OcrBackend);
+            SelectedGpuIndex = current.SelectedGpuIndex;
             EnableAngleDetection = current.EnableAngleDetection;
             MaxSideLen = current.MaxSideLen;
             EnableIdleSleep = current.EnableIdleSleep;
@@ -945,4 +1209,14 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = $"打开日志目录失败: {ex.Message}";
         }
     }
+}
+
+public sealed record OcrBackendOption(string Value, string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
+
+public sealed record GpuDeviceOption(int Index, string DisplayName)
+{
+    public override string ToString() => DisplayName;
 }

@@ -1,0 +1,428 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.BatchOcrPageView"
+             x:DataType="vm:BatchOcrViewModel"
+             DragDrop.AllowDrop="True">
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.status-badge">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Padding" Value="6,2" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="0,0,0,4" Background="Transparent">
+        <!-- 1. 顶部控制栏与统计条 -->
+        <Border Grid.Row="0" Margin="0,0,0,10" Padding="14,10"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid RowDefinitions="Auto,Auto" RowSpacing="8">
+                <!-- 顶部按钮与核心操作 -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                    <!-- 左侧：添加文件/文件夹与清空 -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Command="{Binding OpenFilePickerCommand}"
+                                IsEnabled="{Binding !IsProcessing}"
+                                Padding="10,6"
+                                ToolTip.Tip="选择一个或多个图片/PDF文件">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="📁" FontSize="13" VerticalAlignment="Center" />
+                                <TextBlock Text="添加文件" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding OpenFolderPickerCommand}"
+                                IsEnabled="{Binding !IsProcessing}"
+                                Padding="10,6"
+                                ToolTip.Tip="选择一个文件夹，自动深度递归遍历内部所有支持的图片和PDF文档">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="📂" FontSize="13" VerticalAlignment="Center" />
+                                <TextBlock Text="添加文件夹" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding ToggleSelectAllCommand}"
+                                IsEnabled="{Binding !IsProcessing}"
+                                Padding="8,6"
+                                ToolTip.Tip="全选或取消全选队列中的所有文件">
+                            <TextBlock Text="全选/反选" FontSize="12" />
+                        </Button>
+
+                        <Button Command="{Binding RemoveSelectedCommand}"
+                                IsEnabled="{Binding !IsProcessing}"
+                                Padding="8,6"
+                                ToolTip.Tip="从列表中移除勾选的项目">
+                            <TextBlock Text="移除选中" FontSize="12" />
+                        </Button>
+
+                        <Button Command="{Binding ClearAllCommand}"
+                                IsEnabled="{Binding !IsProcessing}"
+                                Padding="8,6"
+                                ToolTip.Tip="清空当前待转换任务列表">
+                            <TextBlock Text="清空列表" FontSize="12" />
+                        </Button>
+                    </StackPanel>
+
+                    <!-- 中间状态简述 -->
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding StatusMessage}"
+                               Margin="12,0"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center" />
+
+                    <!-- 右侧：开始与取消转换按钮 -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Command="{Binding CancelBatchCommand}"
+                                IsVisible="{Binding IsProcessing}"
+                                Padding="12,6"
+                                ToolTip.Tip="立即终止当前批处理转换">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="⏹" FontSize="12" Foreground="#EF4444" VerticalAlignment="Center" />
+                                <TextBlock Text="停止转换" FontWeight="SemiBold" FontSize="12" Foreground="#EF4444" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding StartBatchCommand}"
+                                IsEnabled="{Binding CanStart}"
+                                IsVisible="{Binding !IsProcessing}"
+                                Classes="accent"
+                                Padding="16,6"
+                                ToolTip.Tip="使用配置的多核 CPU 调度和输出格式开始批量转换">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="▶" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="开始转换" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <!-- 进度指示与指标徽章 -->
+                <Grid Grid.Row="1" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                    <ProgressBar Grid.Column="0"
+                                 Value="{Binding OverallProgress}"
+                                 Minimum="0" Maximum="100"
+                                 Height="5"
+                                 CornerRadius="2"
+                                 Margin="0,0,16,0"
+                                 VerticalAlignment="Center" />
+
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding TotalCount, StringFormat='总数: {0}'}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="{Binding CompletedCount, StringFormat='完成: {0}'}" FontSize="11" Foreground="#10B981" FontWeight="Medium" />
+                        <TextBlock Text="{Binding FailedCount, StringFormat='失败: {0}'}" FontSize="11" Foreground="#EF4444" FontWeight="Medium" IsVisible="{Binding FailedCount}" />
+                        <TextBlock Text="{Binding OverallElapsedText}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="4" Padding="6,2">
+                            <TextBlock Text="{Binding CpuUsageText}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- 2. 左列：导出设置 + CPU 调度 | 右列：实时运行日志区 -->
+        <Border Grid.Row="1" Margin="0,0,0,10" Padding="14,10"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid ColumnDefinitions="1.15*,12,0.85*">
+                <!-- 左列：输出格式、导出目录 + 下方 CPU 调度控制 -->
+                <StackPanel Grid.Column="0" Spacing="6">
+                    <TextBlock Text="📄 导出格式与命名 (自动保存配置)" FontWeight="SemiBold" FontSize="13" />
+
+                    <!-- 输出格式选择 (原生 .NET 生成，零 NuGet) -->
+                    <StackPanel Orientation="Horizontal" Spacing="16">
+                        <CheckBox IsChecked="{Binding ExportTxt}" Content="TXT 纯文本 (.txt)" FontSize="12" />
+                        <CheckBox IsChecked="{Binding ExportXlsx}" Content="Excel 表格 (.xlsx)" FontSize="12"
+                                  ToolTip.Tip="识别文本换行将自动对应写入表格各行，若包含制表符自动拆分各列" />
+                        <CheckBox IsChecked="{Binding ExportDocx}" Content="Word 文档 (.docx)" FontSize="12"
+                                  ToolTip.Tip="标准 OpenXML 文字处理文档，自动按段落排列" />
+                    </StackPanel>
+
+                    <!-- 按检测框分列开关 -->
+                    <CheckBox IsChecked="{Binding SplitColumnsByBlocks}"
+                              Content="按检测框自动分列填入单元格 (适合表格/票据/表单)"
+                              FontSize="12"
+                              Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                              FontWeight="Medium"
+                              ToolTip.Tip="开启后，同行内的各个文字检测框将作为独立列单元格写入 Excel（A1, B1, C1...），避免整行挤入单个单元格" />
+
+                    <!-- 页面旋转与后缀文件名同行排列 -->
+                    <WrapPanel Orientation="Horizontal">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,16,2">
+                            <TextBlock Text="🔄 页面旋转:" FontSize="12" VerticalAlignment="Center" FontWeight="Medium" />
+                            <ComboBox SelectedIndex="{Binding ImageRotationIndex}" Width="155" FontSize="12" Padding="8,3"
+                                      ToolTip.Tip="校正横向 PDF/扫描件以获取正确的垂直表格行列">
+                                <ComboBoxItem Content="自动校正 (推荐)" ToolTip.Tip="根据 PDF /Rotate 属性及照片 EXIF 朝向自适应转正" />
+                                <ComboBoxItem Content="保持原样 (不旋转)" ToolTip.Tip="按源文件原始像素矩阵识别" />
+                                <ComboBoxItem Content="顺时针 90°" ToolTip.Tip="将图像顺时针旋转 90 度后识别" />
+                                <ComboBoxItem Content="顺时针 180°" ToolTip.Tip="将图像颠倒顺时针旋转 180 度后识别" />
+                                <ComboBoxItem Content="顺时针 270°" ToolTip.Tip="将图像顺时针旋转 270 度后识别" />
+                            </ComboBox>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,0,2">
+                            <CheckBox IsChecked="{Binding IsSuffixEnabled}" Content="追加后缀:" FontSize="12" VerticalAlignment="Center" />
+                            <TextBox Text="{Binding SuffixText}"
+                                     IsEnabled="{Binding IsSuffixEnabled}"
+                                     Width="85"
+                                     Padding="6,3"
+                                     FontSize="12"
+                                     VerticalAlignment="Center"
+                                     ToolTip.Tip="例: 原文件名_ocr.xlsx" />
+                        </StackPanel>
+                    </WrapPanel>
+
+                    <!-- 导出路径选择 -->
+                    <Grid ColumnDefinitions="Auto,Auto,*,Auto" VerticalAlignment="Center">
+                        <RadioButton Grid.Column="0"
+                                     GroupName="ExportDirGroup"
+                                     IsChecked="{Binding UseOriginalFolder}"
+                                     Content="跟随原文件目录"
+                                     FontSize="12"
+                                     Margin="0,0,12,0"
+                                     VerticalAlignment="Center" />
+                        <RadioButton Grid.Column="1"
+                                     GroupName="ExportDirGroup"
+                                     IsChecked="{Binding !UseOriginalFolder}"
+                                     Content="自定义目录:"
+                                     FontSize="12"
+                                     Margin="0,0,6,0"
+                                     VerticalAlignment="Center" />
+                        <TextBox Grid.Column="2"
+                                 Text="{Binding CustomOutputDir}"
+                                 IsEnabled="{Binding !UseOriginalFolder}"
+                                 FontSize="11"
+                                 Padding="6,3"
+                                 VerticalAlignment="Center" />
+                        <Button Grid.Column="3"
+                                Command="{Binding BrowseOutputDirCommand}"
+                                IsEnabled="{Binding !UseOriginalFolder}"
+                                Content="浏览..."
+                                FontSize="11"
+                                Padding="8,4"
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 分隔线：下方放置 CPU 调度与性能控制 -->
+                    <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
+
+                    <DockPanel LastChildFill="False">
+                        <TextBlock DockPanel.Dock="Left" Text="⚡ CPU 调度与性能控制" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding MaxProcessorCount, StringFormat='本机共 {0} 逻辑核 (默认半核 / 50%限流)'}"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <Grid ColumnDefinitions="*,16,*">
+                        <!-- 并发核心数量上限 -->
+                        <StackPanel Grid.Column="0" Spacing="1">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Left" Text="多核并行上限:" FontSize="12" />
+                                <TextBlock DockPanel.Dock="Right"
+                                           Text="{Binding MaxCores, StringFormat='{}{0} 核'}"
+                                           FontWeight="SemiBold" FontSize="12"
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            </DockPanel>
+                            <Slider Minimum="1" Maximum="{Binding MaxProcessorCount}"
+                                    Value="{Binding MaxCores}"
+                                    TickFrequency="1" IsSnapToTickEnabled="True"
+                                    Margin="0,-4" />
+                        </StackPanel>
+
+                        <!-- CPU 利用率上限 -->
+                        <StackPanel Grid.Column="2" Spacing="1">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock DockPanel.Dock="Left" Text="CPU 利用率上限:" FontSize="12" />
+                                <TextBlock DockPanel.Dock="Right"
+                                           Text="{Binding CpuLimitPercent, StringFormat='{}{0}%'}"
+                                           FontWeight="SemiBold" FontSize="12"
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            </DockPanel>
+                            <Slider Minimum="10" Maximum="100"
+                                    Value="{Binding CpuLimitPercent}"
+                                    TickFrequency="5" IsSnapToTickEnabled="True"
+                                    Margin="0,-4" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+
+                <!-- 中间分隔线 -->
+                <Separator Grid.Column="1" Width="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
+
+                <!-- 右列：实时运行日志输出区 -->
+                <Grid Grid.Column="2" RowDefinitions="Auto,*" MaxHeight="240">
+                    <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,6">
+                        <TextBlock DockPanel.Dock="Left" Text="📋 实时运行日志" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                        <Button DockPanel.Dock="Right"
+                                Command="{Binding ClearLogsCommand}"
+                                Content="🗑 清空日志"
+                                FontSize="11"
+                                Padding="8,3"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="清空下方转换日志记录" />
+                    </DockPanel>
+
+                    <Border Grid.Row="1"
+                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="8,6"
+                            ClipToBounds="True">
+                        <Grid>
+                            <TextBlock Text="暂无运行日志"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"
+                                       IsVisible="{Binding !HasLogs}" />
+
+                            <ScrollViewer VerticalScrollBarVisibility="Auto"
+                                          HorizontalScrollBarVisibility="Disabled"
+                                          IsVisible="{Binding HasLogs}">
+                                <ItemsControl ItemsSource="{Binding Logs}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="x:String">
+                                            <SelectableTextBlock Text="{Binding}"
+                                                                 FontFamily="Consolas, Cascadia Code, Microsoft YaHei"
+                                                                 FontSize="11"
+                                                                 Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                 TextWrapping="Wrap"
+                                                                 Margin="0,2" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </Grid>
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- 3. 文件任务列表与拖拽投递区域 -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                ClipToBounds="True">
+            <Grid>
+                <!-- 空白占位引导（支持直接拖入文件或文件夹） -->
+                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" Margin="20"
+                            IsVisible="{Binding !HasItems}">
+                    <TextBlock Text="📑" FontSize="44" HorizontalAlignment="Center" Opacity="0.4" />
+                    <TextBlock Text="暂无转换任务"
+                               FontSize="16" FontWeight="SemiBold"
+                               HorizontalAlignment="Center" />
+                    <TextBlock Text="点击上方“添加文件/添加文件夹”按钮，或直接拖拽图片、PDF 文档及整个文件夹至此处"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               HorizontalAlignment="Center" />
+                    <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="6" Padding="12,8" Margin="0,6,0,0">
+                        <TextBlock Text="💡 支持格式: PNG, JPG, JPEG, BMP, WEBP, TIFF, ICO 及多页 PDF"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                    </Border>
+                </StackPanel>
+
+                <!-- 真实任务项列表 -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              IsVisible="{Binding HasItems}">
+                    <ItemsControl ItemsSource="{Binding Items}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:BatchOcrItemViewModel">
+                                <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,0,0,1"
+                                        Padding="12,8"
+                                        Background="Transparent">
+                                    <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
+                                        <!-- 勾选框 -->
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding IsSelected}"
+                                                  Margin="0,0,8,0"
+                                                  VerticalAlignment="Center" />
+
+                                        <!-- 类型图标 -->
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding FileTypeIcon}"
+                                                   FontSize="20"
+                                                   Margin="0,0,10,0"
+                                                   VerticalAlignment="Center" />
+
+                                        <!-- 文件名称与原始路径 -->
+                                        <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0">
+                                            <TextBlock Text="{Binding FileName}"
+                                                       FontWeight="Medium"
+                                                       FontSize="13"
+                                                       TextTrimming="CharacterEllipsis" />
+                                            <TextBlock Text="{Binding FilePath}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding FilePath}" />
+                                        </StackPanel>
+
+                                        <!-- 体积与页数 -->
+                                        <StackPanel Grid.Column="3" VerticalAlignment="Center" Margin="0,0,16,0" Width="80">
+                                            <TextBlock Text="{Binding FileSizeText}" FontSize="12" FontWeight="Normal" />
+                                            <TextBlock Text="{Binding TotalPages, StringFormat='共 {0} 页'}"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       IsVisible="{Binding TotalPages}" />
+                                        </StackPanel>
+
+                                        <!-- 状态徽章与信息 -->
+                                        <StackPanel Grid.Column="4" VerticalAlignment="Center" Margin="0,0,16,0" Width="200">
+                                            <TextBlock Text="{Binding StatusText}"
+                                                       FontSize="12"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       ToolTip.Tip="{Binding StatusText}"
+                                                       FontWeight="{Binding IsProcessing, Converter={x:Static ObjectConverters.IsNotNull}}" />
+                                            <ProgressBar Value="{Binding Progress}"
+                                                         Minimum="0" Maximum="100"
+                                                         Height="3" Margin="0,3,0,0"
+                                                         IsVisible="{Binding IsProcessing}" />
+                                        </StackPanel>
+
+                                        <!-- 操作按钮 -->
+                                        <StackPanel Grid.Column="5" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Button Content="📄 打开原件"
+                                                    Command="{Binding $parent[UserControl].((vm:BatchOcrViewModel)DataContext).OpenFileCommand}"
+                                                    CommandParameter="{Binding FilePath}"
+                                                    Padding="6,3" FontSize="11"
+                                                    ToolTip.Tip="打开原始图片或 PDF 文档" />
+
+                                            <Button Content="📂 打开目录"
+                                                    Command="{Binding $parent[UserControl].((vm:BatchOcrViewModel)DataContext).OpenOutputDirCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Padding="6,3" FontSize="11"
+                                                    ToolTip.Tip="在文件资源管理器中定位导出结果所在目录" />
+
+                                            <Button Content="✕"
+                                                    Command="{Binding $parent[UserControl].((vm:BatchOcrViewModel)DataContext).RemoveItemCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    Padding="6,3" FontSize="11"
+                                                    ToolTip.Tip="从列表中移除此任务" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

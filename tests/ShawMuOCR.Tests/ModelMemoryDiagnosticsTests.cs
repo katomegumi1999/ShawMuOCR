@@ -53,6 +53,12 @@ public class ModelMemoryDiagnosticsTests
         Assert.Contains("15.9 MB", report.ModelWeightsDescription);
         Assert.False(string.IsNullOrWhiteSpace(report.ModelStatus));
         Assert.False(string.IsNullOrWhiteSpace(report.SummaryText));
+        Assert.False(string.IsNullOrWhiteSpace(report.CpuHardwareText));
+        Assert.False(string.IsNullOrWhiteSpace(report.CpuInstructionSetText));
+        Assert.False(string.IsNullOrWhiteSpace(report.GpuArchitectureText));
+        Assert.False(string.IsNullOrWhiteSpace(report.ConfiguredBackendText));
+        Assert.False(string.IsNullOrWhiteSpace(report.EffectiveBackendText));
+        Assert.False(string.IsNullOrWhiteSpace(report.EffectiveBackendBadgeText));
     }
 
     [Fact]
@@ -84,12 +90,35 @@ public class ModelMemoryDiagnosticsTests
         Assert.Contains("沐洵羽", vm.AuthorText);
         Assert.Contains("B站 @沐洵羽", vm.AuthorText);
         Assert.Equal("https://space.bilibili.com/192158726", vm.BilibiliUrl);
+        Assert.False(string.IsNullOrWhiteSpace(vm.CpuHardwareText));
+        Assert.False(string.IsNullOrWhiteSpace(vm.CpuInstructionSetText));
+        Assert.False(string.IsNullOrWhiteSpace(vm.GpuArchitectureText));
+        Assert.False(string.IsNullOrWhiteSpace(vm.ConfiguredBackendText));
+        Assert.False(string.IsNullOrWhiteSpace(vm.EffectiveBackendText));
+        Assert.False(string.IsNullOrWhiteSpace(vm.EffectiveBackendBadgeText));
 
         vm.RefreshMemory();
         Assert.Contains("✓ 已刷新", vm.StatusMessage);
 
         vm.TrimMemory();
         Assert.Contains("✓ 内存整理完成", vm.StatusMessage);
+    }
+
+    [Theory]
+    [InlineData("Auto")]
+    [InlineData("GPU")]
+    [InlineData("CPU")]
+    public void GetReport_ShouldReflectConfiguredAndEffectiveBackend(string backend)
+    {
+        var settingsService = new FakeSettingsService();
+        settingsService.Current.OcrBackend = backend;
+
+        var diag = new ModelMemoryDiagnosticsService(settingsService);
+        var report = diag.GetReport();
+
+        Assert.Contains(backend, report.ConfiguredBackendText, StringComparison.OrdinalIgnoreCase);
+        Assert.False(string.IsNullOrWhiteSpace(report.EffectiveBackendText));
+        Assert.False(string.IsNullOrWhiteSpace(report.EffectiveBackendBadgeText));
     }
 
     [Fact]
@@ -109,14 +138,14 @@ public class ModelMemoryDiagnosticsTests
     public void AppSettings_AngleDetectionAndMaxSideLen_DefaultsAndClone()
     {
         var settings = new AppSettings();
-        Assert.False(settings.EnableAngleDetection);
+        Assert.True(settings.EnableAngleDetection);
         Assert.Equal(1280, settings.MaxSideLen);
 
-        settings.EnableAngleDetection = true;
+        settings.EnableAngleDetection = false;
         settings.MaxSideLen = 1600;
 
         var cloned = settings.Clone();
-        Assert.True(cloned.EnableAngleDetection);
+        Assert.False(cloned.EnableAngleDetection);
         Assert.Equal(1600, cloned.MaxSideLen);
     }
 

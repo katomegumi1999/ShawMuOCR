@@ -14,10 +14,6 @@ public partial class OcrPageView : UserControl
         InitializeComponent();
 
         DataContextChanged += OnDataContextChanged;
-
-        // 注册文件拖拽处理
-        AddHandler(DragDrop.DragOverEvent, OnDragOver);
-        AddHandler(DragDrop.DropEvent, OnDrop);
     }
 
     private void OnDataContextChanged(object? sender, EventArgs e)
@@ -63,34 +59,6 @@ public partial class OcrPageView : UserControl
         {
             var path = files[0].Path.LocalPath;
             await vm.RecognizeFileAsync(path);
-        }
-    }
-
-    private void OnDragOver(object? sender, DragEventArgs e)
-    {
-        if (e.DataTransfer.Contains(DataFormat.File))
-        {
-            e.DragEffects = DragDropEffects.Copy;
-        }
-        else
-        {
-            e.DragEffects = DragDropEffects.None;
-        }
-    }
-
-    private async void OnDrop(object? sender, DragEventArgs e)
-    {
-        if (DataContext is not MainViewModel vm) return;
-
-        var files = e.DataTransfer.TryGetFiles();
-        if (files != null && files.Length > 0)
-        {
-            var firstFile = files[0];
-            var path = firstFile.Path.LocalPath;
-            if (!string.IsNullOrEmpty(path))
-            {
-                await vm.RecognizeFileAsync(path);
-            }
         }
     }
 }

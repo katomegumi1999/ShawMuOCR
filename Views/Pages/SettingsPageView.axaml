@@ -170,6 +170,102 @@
                     </StackPanel>
                 </Border>
 
+                <!-- 小沐剪贴板设置卡片 -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <StackPanel Spacing="14">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Image Source="avares://ShawMuOCR/Assets/MuClip.png" Width="22" Height="22" VerticalAlignment="Center" />
+                                <TextBlock Text="小沐剪贴板" FontWeight="SemiBold" FontSize="15" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="2"
+                                          IsChecked="{Binding EnableClipboard}"
+                                          OnContent="已开启"
+                                          OffContent="已关闭"
+                                          VerticalAlignment="Center" />
+                        </Grid>
+
+                        <TextBlock Text="极速剪贴板历史记录与常用语管理，支持局域网免密/PIN加密互传与键入光标处快捷面板。默认关闭，开启后方在主界面显示入口并加载后台服务。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+
+                        <!-- 快捷键配置（仅在开启后显示） -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding EnableClipboard}">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="小沐剪贴板全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="在当前光标键入位置直接呼出无边框悬浮快捷面板（默认 Ctrl+~）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding ClipboardPanelHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                        Command="{Binding StartRecordClipboardPanelHotkeyCommand}"
+                                        Padding="10,5" />
+                                <Button Content="✕"
+                                        ToolTip.Tip="清空此快捷键(禁用)"
+                                        Command="{Binding ClearClipboardPanelHotkeyCommand}"
+                                        Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 常用语快捷键配置（仅在开启后显示） -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding EnableClipboard}">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="常用语快捷呼出键" FontWeight="Medium" />
+                                <TextBlock Text="直接呼出常用语列面板，快速选用常用语句（默认 Ctrl+1）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding PhrasesPanelHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                        Command="{Binding StartRecordPhrasesPanelHotkeyCommand}"
+                                        Padding="10,5" />
+                                <Button Content="✕"
+                                        ToolTip.Tip="清空此快捷键(禁用)"
+                                        Command="{Binding ClearPhrasesPanelHotkeyCommand}"
+                                        Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 悬浮快捷面板底色配置（仅在开启后显示） -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding EnableClipboard}">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="快捷面板背景底色" FontWeight="Medium" />
+                                <TextBlock Text="设置悬浮快捷面板卡片的背景底色（默认 #F4F4F6 浅灰）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding ClipboardPanelBackground, Mode=TwoWay}"
+                                         Width="100"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+
                 <!-- OCR 模型设置 -->
                 <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
@@ -179,23 +275,7 @@
                     <StackPanel Spacing="14">
                         <TextBlock Text="OCR 引擎与模型设置" FontWeight="SemiBold" FontSize="15" />
 
-                        <!-- 开关：识别外部模型 -->
-                        <Grid ColumnDefinitions="*,Auto">
-                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="识别外部模型" FontWeight="Medium" />
-                                <TextBlock Text="开启后自动扫描 models 目录下的自定义 Paddle 模型（仅需 det 与 rec 文件，字典及方向分类默认复用内置官方资源）"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-
-                            <CheckBox Grid.Column="1"
-                                      Content="开启扫描"
-                                      IsChecked="{Binding ScanExternalModels}"
-                                      VerticalAlignment="Center" />
-                        </Grid>
-
-                        <!-- 模型选择：在原有位置直接切换内置或外部模型 -->
+                        <!-- 模型选择：直接读取同目录下的 models 文件夹 -->
                         <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="6"
                                 Padding="12">
@@ -215,31 +295,83 @@
                                     <Button Content="🔄"
                                             ToolTip.Tip="重新扫描 models 目录"
                                             Command="{Binding RefreshModelsCommand}"
-                                            IsVisible="{Binding ScanExternalModels}"
                                             Padding="8,5" />
                                     <Button Content="📂"
                                             ToolTip.Tip="打开 models 文件夹"
                                             Command="{Binding OpenModelsFolderCommand}"
-                                            IsVisible="{Binding ScanExternalModels}"
                                             Padding="8,5" />
                                 </StackPanel>
                             </Grid>
                         </Border>
 
+                        <!-- 推理加速后端 (Auto / GPU Vulkan / CPU SIMD) -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="推理加速硬件" FontWeight="Medium" />
-                                <TextBlock Text="纯托管 SIMD AVX2 向量硬件指令加速"
+                                <TextBlock Text="推理加速后端 (GPU / CPU)" FontWeight="Medium" />
+                                <TextBlock Text="{Binding OcrBackendHint}"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />
                             </StackPanel>
 
-                            <TextBlock Grid.Column="1"
-                                       Text="AVX2 SIMD"
-                                       FontWeight="SemiBold"
-                                       VerticalAlignment="Center"
-                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableOcrBackends}"
+                                      SelectedItem="{Binding SelectedOcrBackendOption}"
+                                      MinWidth="180"
+                                      VerticalAlignment="Center">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                        </Grid>
+
+                        <!-- Auto 模式下实时回报当前自动选中的模式 -->
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6"
+                                Padding="12,8"
+                                IsVisible="{Binding IsAutoBackendSelected}">
+                            <StackPanel Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="当前自动选择模式："
+                                               FontSize="12"
+                                               FontWeight="Medium"
+                                               VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding AutoResolvedBackendText}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding AutoResolvedReasonText, StringFormat='判定依据：{0}'}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 多显卡环境手动选择显卡 (当显卡数量 >= 2 且未选择纯 CPU 模式时显示) -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ShowGpuDeviceSelector}">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="选择物理显卡 (GPU 设备)" FontWeight="Medium" />
+                                <TextBlock Text="检测到系统拥有多块 GPU (如独显+核显)，可手动指定 OCR 推理所使用的显卡设备"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableGpuDevices}"
+                                      SelectedItem="{Binding SelectedGpuDeviceOption}"
+                                      MinWidth="240"
+                                      VerticalAlignment="Center">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
                         </Grid>
 
                         <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />

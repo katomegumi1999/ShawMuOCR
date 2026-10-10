@@ -89,6 +89,14 @@ public partial class SettingsWindow : Window
             {
                 vm.ClearTranslateHotkeyCommand.Execute(null);
             }
+            else if (vm.IsRecordingClipboardPanelHotkey)
+            {
+                vm.ClearClipboardPanelHotkeyCommand.Execute(null);
+            }
+            else if (vm.IsRecordingPhrasesPanelHotkey)
+            {
+                vm.ClearPhrasesPanelHotkeyCommand.Execute(null);
+            }
             e.Handled = true;
             return;
         }
@@ -127,6 +135,14 @@ public partial class SettingsWindow : Window
             else if (vm.IsRecordingTranslateHotkey)
             {
                 vm.OnTranslateHotkeyRecorded(gesture);
+            }
+            else if (vm.IsRecordingClipboardPanelHotkey)
+            {
+                vm.OnClipboardPanelHotkeyRecorded(gesture);
+            }
+            else if (vm.IsRecordingPhrasesPanelHotkey)
+            {
+                vm.OnPhrasesPanelHotkeyRecorded(gesture);
             }
             e.Handled = true;
         }

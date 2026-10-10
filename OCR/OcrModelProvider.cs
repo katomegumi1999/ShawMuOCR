@@ -20,8 +20,14 @@ public sealed class OcrModelProvider : IOcrModelProvider
                 : Path.Combine(GetExeDirectory(), preferredPath);
         }
 
-        // 严格锁定在当前 EXE 所在目录下的 models 文件夹，禁止向上查找父级目录
-        return Path.Combine(GetExeDirectory(), "models");
+        string exeDir = GetExeDirectory();
+        string lower = Path.Combine(exeDir, "models");
+        if (Directory.Exists(lower)) return lower;
+
+        string upper = Path.Combine(exeDir, "Models");
+        if (Directory.Exists(upper)) return upper;
+
+        return lower;
     }
 
     public static string GetExeDirectory()
@@ -60,26 +66,41 @@ public sealed class OcrModelProvider : IOcrModelProvider
         return Directory.Exists(path) || File.Exists(path);
     }
 
-    public IReadOnlyList<string> GetAvailableModels() => GetAvailableModels(false);
+    public IReadOnlyList<string> GetAvailableModels() => GetAvailableModels(true);
 
-    public IReadOnlyList<string> GetAvailableModels(bool scanExternal = false)
+    public IReadOnlyList<string> GetAvailableModels(bool scanExternal = true)
     {
-        var models = new List<string>
-        {
-            "PP-OCRv6_small",
-            "PP-OCRv6_tiny"
-        };
+        var models = new List<string>();
 
-        if (scanExternal)
+        var externalModels = ScanExternalModels();
+        foreach (var ext in externalModels)
         {
-            var externalModels = ScanExternalModels();
-            foreach (var ext in externalModels)
+            if (!models.Contains(ext.Name, StringComparer.OrdinalIgnoreCase))
             {
-                if (!models.Contains(ext.Name, StringComparer.OrdinalIgnoreCase))
-                {
-                    models.Add(ext.Name);
-                }
+                models.Add(ext.Name);
             }
+        }
+
+        // 保证默认推荐模型 PP-OCRv6_small 存在且置顶
+        if (!models.Contains("PP-OCRv6_small", StringComparer.OrdinalIgnoreCase))
+        {
+            models.Insert(0, "PP-OCRv6_small");
+        }
+        else
+        {
+            int idx = models.FindIndex(m => string.Equals(m, "PP-OCRv6_small", StringComparison.OrdinalIgnoreCase));
+            if (idx > 0)
+            {
+                string small = models[idx];
+                models.RemoveAt(idx);
+                models.Insert(0, small);
+            }
+        }
+
+        // 若 models 目录未放置 tiny，也提供备选
+        if (!models.Contains("PP-OCRv6_tiny", StringComparer.OrdinalIgnoreCase))
+        {
+            models.Add("PP-OCRv6_tiny");
         }
 
         return models;
@@ -148,6 +169,19 @@ public sealed class OcrModelProvider : IOcrModelProvider
             {
                 return info;
             }
+
+            // 兼容别名：v6 映射到 PP-OCRv6_small，tiny 映射到 PP-OCRv6_tiny
+            if ((string.Equals(modelName, "v6", StringComparison.OrdinalIgnoreCase) || string.Equals(modelName, "v6 (外部)", StringComparison.OrdinalIgnoreCase)) &&
+                (folderName.Contains("small", StringComparison.OrdinalIgnoreCase) || folderName.Contains("v6", StringComparison.OrdinalIgnoreCase)))
+            {
+                return info;
+            }
+
+            if ((string.Equals(modelName, "tiny", StringComparison.OrdinalIgnoreCase) || string.Equals(modelName, "tiny (外部)", StringComparison.OrdinalIgnoreCase)) &&
+                folderName.Contains("tiny", StringComparison.OrdinalIgnoreCase))
+            {
+                return info;
+            }
         }
 
         // 2. 若 modelName 本身直接是一个有效路径（如包含路径分隔符或绝对路径）
@@ -194,7 +228,7 @@ public sealed class OcrModelProvider : IOcrModelProvider
             string? clsFile = onnxFiles.FirstOrDefault(f => Path.GetFileName(f).Contains("cls", StringComparison.OrdinalIgnoreCase));
 
             string folderName = Path.GetFileName(dirPath);
-            string name = customName ?? $"{folderName} (外部)";
+            string name = customName ?? folderName;
 
             return new ExternalPaddleModelInfo
             {

@@ -7,4 +7,6 @@ public interface IOcrEngine : IDisposable
     Task<OcrResult> RecognizeAsync(
         OcrImage image,
         CancellationToken cancellationToken = default);
+
+    Task WarmupAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
 }

@@ -1,0 +1,15 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:MuClip.Views"
+        xmlns:vm="using:MuClip.ViewModels"
+        x:Class="MuClip.Views.ClipboardStandaloneWindow"
+        x:DataType="vm:ClipboardViewModel"
+        Title="MuClip 极速剪贴板管理"
+        Width="920" Height="620"
+        MinWidth="720" MinHeight="480"
+        WindowStartupLocation="CenterScreen">
+
+    <Grid Margin="16">
+        <views:ClipboardView DataContext="{Binding}" />
+    </Grid>
+</Window>

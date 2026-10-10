@@ -1,7 +1,9 @@
 using System.IO;
 using System.Text;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Media.Imaging;
+using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -14,6 +16,8 @@ using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.Views;
 using ShawMuOCR.Windows.Win32;
+using MuClip.Services;
+using MuClip.ViewModels;
 using SkiaSharp;
 using UglyToad.PdfPig;
 
@@ -31,14 +35,25 @@ public partial class MainViewModel : ViewModelBase
     public SettingsViewModel SettingsVm { get; }
     public AboutViewModel? AboutVm { get; }
     public TranslateViewModel TranslateVm { get; }
+    public BatchOcrViewModel BatchVm { get; }
+    public HttpApiViewModel HttpApiVm { get; }
+    public ClipboardViewModel? ClipboardVm { get; private set; }
+    private IMuClipService? _muClipService;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOcrPage))]
+    [NotifyPropertyChangedFor(nameof(IsBatchPage))]
+    [NotifyPropertyChangedFor(nameof(IsHttpApiPage))]
     [NotifyPropertyChangedFor(nameof(IsCapturePage))]
     [NotifyPropertyChangedFor(nameof(IsTranslatePage))]
+    [NotifyPropertyChangedFor(nameof(IsClipboardPage))]
     [NotifyPropertyChangedFor(nameof(IsSettingsPage))]
     [NotifyPropertyChangedFor(nameof(IsAboutPage))]
     [NotifyPropertyChangedFor(nameof(CurrentPageTitle))]
+    [NotifyPropertyChangedFor(nameof(AppTitleText))]
+    [NotifyPropertyChangedFor(nameof(WindowTitle))]
+    [NotifyPropertyChangedFor(nameof(AppLogo))]
+    [NotifyPropertyChangedFor(nameof(WindowIcon))]
     private AppNavPage _currentPage = AppNavPage.Ocr;
 
     [ObservableProperty]
@@ -48,20 +63,74 @@ public partial class MainViewModel : ViewModelBase
     public double SidebarWidth => IsSidebarExpanded ? 190 : 56;
 
     public bool IsOcrPage => CurrentPage == AppNavPage.Ocr;
+    public bool IsBatchPage => CurrentPage == AppNavPage.Batch;
+    public bool IsHttpApiPage => CurrentPage == AppNavPage.HttpApi;
     public bool IsCapturePage => CurrentPage == AppNavPage.Capture;
     public bool IsTranslatePage => CurrentPage == AppNavPage.Translate;
+    public bool IsClipboardPage => CurrentPage == AppNavPage.Clipboard;
     public bool IsSettingsPage => CurrentPage == AppNavPage.Settings;
     public bool IsAboutPage => CurrentPage == AppNavPage.About;
+
+    public bool IsClipboardEnabled => _settingsService.Current.EnableClipboard;
 
     public string CurrentPageTitle => CurrentPage switch
     {
         AppNavPage.Ocr => "OCR 识别",
+        AppNavPage.Batch => "批量转换",
+        AppNavPage.HttpApi => "HTTP 调用",
         AppNavPage.Capture => "截屏工具",
         AppNavPage.Translate => "文本翻译",
+        AppNavPage.Clipboard => "小沐剪贴板",
         AppNavPage.Settings => "系统设置",
         AppNavPage.About => "关于软件",
         _ => "小沐 OCR"
     };
+
+    public string AppTitleText => IsClipboardPage ? "小沐剪贴板" : "小沐 OCR";
+    public string WindowTitle => IsClipboardPage ? "小沐剪贴板" : "小沐 OCR";
+
+    private static Bitmap? _ocrLogoBitmap;
+    private static Bitmap? _muclipLogoBitmap;
+    private static WindowIcon? _ocrWindowIcon;
+    private static WindowIcon? _muclipWindowIcon;
+
+    public Bitmap? AppLogo
+    {
+        get
+        {
+            try
+            {
+                if (IsClipboardPage)
+                {
+                    return _muclipLogoBitmap ??= new Bitmap(AssetLoader.Open(new Uri("avares://ShawMuOCR/Assets/MuClip.png")));
+                }
+                return _ocrLogoBitmap ??= new Bitmap(AssetLoader.Open(new Uri("avares://ShawMuOCR/Assets/logo.png")));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
+
+    public WindowIcon? WindowIcon
+    {
+        get
+        {
+            try
+            {
+                if (IsClipboardPage)
+                {
+                    return _muclipWindowIcon ??= new WindowIcon(AssetLoader.Open(new Uri("avares://ShawMuOCR/Assets/MuClip.ico")));
+                }
+                return _ocrWindowIcon ??= new WindowIcon(AssetLoader.Open(new Uri("avares://ShawMuOCR/Assets/logo.ico")));
+            }
+            catch
+            {
+                return null;
+            }
+        }
+    }
 
     [ObservableProperty]
     private Bitmap? _previewImage;
@@ -117,7 +186,11 @@ public partial class MainViewModel : ViewModelBase
         Func<SettingsViewModel> settingsVmFactory,
         Func<AboutViewModel>? aboutVmFactory = null,
         ILoggerService? logger = null,
-        ITranslationService? translationService = null)
+        ITranslationService? translationService = null,
+        IMuClipService? muClipService = null,
+        IOcrEngineFactory? engineFactory = null,
+        BatchOcrViewModel? batchVm = null,
+        HttpApiViewModel? httpApiVm = null)
     {
         _coordinator = coordinator;
         _clipboardService = clipboardService;
@@ -125,12 +198,29 @@ public partial class MainViewModel : ViewModelBase
         _logger = logger;
         _settingsVmFactory = settingsVmFactory;
         _aboutVmFactory = aboutVmFactory;
+        _muClipService = muClipService;
 
         SettingsVm = settingsVmFactory();
         AboutVm = aboutVmFactory?.Invoke();
         if (AboutVm != null)
         {
             SettingsVm.RequestOpenAbout += _ => Navigate(AppNavPage.About);
+        }
+
+        BatchVm = batchVm ?? new BatchOcrViewModel(
+            engineFactory ?? new ShawMuOCR.OCR.OcrEngineFactory(),
+            settingsService,
+            logger);
+
+        HttpApiVm = httpApiVm ?? new HttpApiViewModel(
+            engineFactory ?? new ShawMuOCR.OCR.OcrEngineFactory(),
+            settingsService,
+            clipboardService,
+            logger);
+
+        if (_muClipService != null)
+        {
+            InitClipboardVm(_muClipService);
         }
 
         var transService = translationService ?? (coordinator is ShawMuOCR.Services.OcrCoordinator oc ? oc.TranslationService : new TranslationService(settingsService));
@@ -178,6 +268,7 @@ public partial class MainViewModel : ViewModelBase
             {
                 try
                 {
+                    SetCurrentBitmap(session.Image.Bitmap);
                     UpdatePreviewBitmap(session.Image.Bitmap);
                 }
                 catch (Exception ex)
@@ -186,6 +277,39 @@ public partial class MainViewModel : ViewModelBase
                 }
             }
         });
+    }
+
+    public void AttachMuClipService(IMuClipService service)
+    {
+        _muClipService = service;
+        if (ClipboardVm == null)
+        {
+            InitClipboardVm(_muClipService);
+            OnPropertyChanged(nameof(ClipboardVm));
+        }
+        OnPropertyChanged(nameof(IsClipboardEnabled));
+    }
+
+    public void DetachMuClipService()
+    {
+        ClipboardVm?.SetHostViewActive(false);
+        _muClipService = null;
+        ClipboardVm = null;
+        OnPropertyChanged(nameof(ClipboardVm));
+        OnPropertyChanged(nameof(IsClipboardEnabled));
+    }
+
+    private void InitClipboardVm(IMuClipService service)
+    {
+        ClipboardVm = new ClipboardViewModel(service);
+        ClipboardVm.SetHostViewActive(CurrentPage == AppNavPage.Clipboard);
+        ClipboardVm.PanelBackgroundColor = _settingsService.Current.ClipboardPanelBackground;
+        ClipboardVm.PanelBackgroundChanged += newColor =>
+        {
+            var updated = _settingsService.Current.Clone();
+            updated.ClipboardPanelBackground = newColor;
+            _settingsService.Save(updated);
+        };
     }
 
     private void OnSettingsChanged(AppSettings settings)
@@ -197,6 +321,11 @@ public partial class MainViewModel : ViewModelBase
             CurrentAnnotateHotkey = settings.AnnotateHotkey;
             CurrentTranslateHotkey = settings.TranslateHotkey;
             CurrentModel = settings.Model;
+            OnPropertyChanged(nameof(IsClipboardEnabled));
+            if (!settings.EnableClipboard && CurrentPage == AppNavPage.Clipboard)
+            {
+                Navigate(AppNavPage.Ocr);
+            }
         });
     }
 
@@ -268,12 +397,46 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    private SKBitmap? _currentSkBitmap;
+    private readonly object _bitmapLock = new();
+
+    private void SetCurrentBitmap(SKBitmap? bmp)
+    {
+        lock (_bitmapLock)
+        {
+            _currentSkBitmap?.Dispose();
+            _currentSkBitmap = bmp?.Copy();
+        }
+    }
+
+    [RelayCommand]
+    public async Task RotatePreviewImageAsync()
+    {
+        if (IsRecognizing) return;
+
+        SKBitmap? rotated;
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap == null) return;
+            rotated = ImageOrientationHelper.Rotate(_currentSkBitmap, 90);
+            _currentSkBitmap.Dispose();
+            _currentSkBitmap = rotated.Copy();
+        }
+
+        UpdatePreviewBitmap(rotated);
+        StatusMessage = "已顺时针旋转 90°，正在重新识别...";
+
+        var ocrImage = new OcrImage(rotated);
+        await _coordinator.RunOcrAsync(ocrImage);
+    }
+
     [RelayCommand]
     private void Clear()
     {
         RecognizedText = string.Empty;
         PreviewImage?.Dispose();
         PreviewImage = null;
+        SetCurrentBitmap(null);
         ElapsedText = "耗时: -- ms";
         StatusMessage = "已清空";
     }
@@ -287,6 +450,11 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     public void Navigate(AppNavPage page)
     {
+        if (page == AppNavPage.Clipboard && !IsClipboardEnabled)
+        {
+            return;
+        }
+
         if (CurrentPage == AppNavPage.Settings && page != AppNavPage.Settings)
         {
             SettingsVm.CancelRecording();
@@ -294,10 +462,15 @@ public partial class MainViewModel : ViewModelBase
         }
 
         CurrentPage = page;
+        ClipboardVm?.SetHostViewActive(page == AppNavPage.Clipboard);
 
         if (page == AppNavPage.About)
         {
             AboutVm?.RefreshMemoryCommand.Execute(null);
+        }
+        else if (page == AppNavPage.Clipboard)
+        {
+            ClipboardVm?.LoadItems();
         }
     }
 
@@ -305,10 +478,26 @@ public partial class MainViewModel : ViewModelBase
     private void NavigateToOcr() => Navigate(AppNavPage.Ocr);
 
     [RelayCommand]
+    private void NavigateToBatch() => Navigate(AppNavPage.Batch);
+
+    [RelayCommand]
+    private void NavigateToHttpApi() => Navigate(AppNavPage.HttpApi);
+
+    [RelayCommand]
     private void NavigateToCapture() => Navigate(AppNavPage.Capture);
 
     [RelayCommand]
     private void NavigateToTranslate() => Navigate(AppNavPage.Translate);
+
+    [RelayCommand]
+    private void NavigateToClipboard()
+    {
+        if (!IsClipboardEnabled)
+        {
+            return;
+        }
+        Navigate(AppNavPage.Clipboard);
+    }
 
     [RelayCommand]
     private void NavigateToSettings() => Navigate(AppNavPage.Settings);
@@ -352,32 +541,19 @@ public partial class MainViewModel : ViewModelBase
             IsRecognizing = true;
 
             using var stream = File.OpenRead(filePath);
-            using var rawBitmap = SKBitmap.Decode(stream);
-            if (rawBitmap == null)
+            using var orientedBitmap = ImageOrientationHelper.DecodeAndOrient(stream, ImageRotationMode.Auto);
+            if (orientedBitmap == null)
             {
                 StatusMessage = "图片解码失败，请确认文件格式";
                 IsRecognizing = false;
                 return;
             }
 
-            // 规范化为标准的 Bgra8888 格式，杜绝通道错乱与跨步长错位
-            SKBitmap normalizedBitmap;
-            if (rawBitmap.ColorType == SKColorType.Bgra8888 && rawBitmap.AlphaType == SKAlphaType.Premul)
-            {
-                normalizedBitmap = rawBitmap.Copy();
-            }
-            else
-            {
-                var info = new SKImageInfo(rawBitmap.Width, rawBitmap.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-                normalizedBitmap = new SKBitmap(info);
-                using var canvas = new SKCanvas(normalizedBitmap);
-                canvas.DrawBitmap(rawBitmap, 0, 0, SKSamplingOptions.Default);
-            }
-
-            UpdatePreviewBitmap(normalizedBitmap);
+            SetCurrentBitmap(orientedBitmap);
+            UpdatePreviewBitmap(orientedBitmap);
 
             // 注意：OcrCoordinator 会接管并最终释放 session 中的图片，此处不可 using 释放
-            var ocrImage = new OcrImage(normalizedBitmap);
+            var ocrImage = new OcrImage(orientedBitmap.Copy());
             await _coordinator.RunOcrAsync(ocrImage);
         }
         catch (Exception ex)
@@ -408,6 +584,9 @@ public partial class MainViewModel : ViewModelBase
                 for (int pageNum = 1; pageNum <= totalPages; pageNum++)
                 {
                     var page = document.GetPage(pageNum);
+                    int pageRotation = (int)page.Rotation.Value;
+                    int targetRotation = ImageOrientationHelper.ResolvePdfRotation(pageRotation, ImageRotationMode.Auto);
+
                     var pageText = page.Text?.Trim();
                     var images = page.GetImages().ToList();
 
@@ -436,12 +615,14 @@ public partial class MainViewModel : ViewModelBase
 
                                 if (bytes != null && bytes.Length > 0)
                                 {
-                                    using var skBmp = SKBitmap.Decode(bytes);
-                                    if (skBmp != null)
+                                    using var rawBmp = SKBitmap.Decode(bytes);
+                                    if (rawBmp != null)
                                     {
+                                        using var skBmp = ImageOrientationHelper.Rotate(rawBmp, targetRotation);
                                         if (firstPagePreview == null)
                                         {
                                             firstPagePreview = CreateAvaloniaBitmap(skBmp);
+                                            SetCurrentBitmap(skBmp);
                                         }
 
                                         using var ocrImg = new OcrImage(skBmp.Copy());

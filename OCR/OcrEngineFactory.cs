@@ -22,6 +22,16 @@ public sealed class OcrEngineFactory : IOcrEngineFactory
 
     public IOcrEngine Create(string modelName, bool enableAngle, int maxSideLen)
     {
+        return Create(modelName, enableAngle, maxSideLen, "Auto");
+    }
+
+    public IOcrEngine Create(string modelName, bool enableAngle, int maxSideLen, string ocrBackend)
+    {
+        return Create(modelName, enableAngle, maxSideLen, ocrBackend, -1);
+    }
+
+    public IOcrEngine Create(string modelName, bool enableAngle, int maxSideLen, string ocrBackend, int selectedGpuIndex)
+    {
         var extModel = _modelProvider.ResolveExternalModel(modelName);
         if (extModel != null)
         {
@@ -30,63 +40,72 @@ public sealed class OcrEngineFactory : IOcrEngineFactory
                 sorter: _sorter,
                 enableAngle: enableAngle,
                 maxSideLen: maxSideLen,
-                externalModel: extModel);
+                externalModel: extModel,
+                ocrBackend: ocrBackend,
+                selectedGpuIndex: selectedGpuIndex);
         }
 
-        return new PaddleOcrV6Engine(modelName, _sorter, enableAngle, maxSideLen);
+        return new PaddleOcrV6Engine(
+            modelName: modelName,
+            sorter: _sorter,
+            enableAngle: enableAngle,
+            maxSideLen: maxSideLen,
+            ocrBackend: ocrBackend,
+            selectedGpuIndex: selectedGpuIndex);
     }
 
     public IOcrEngine Create(AppSettings settings)
     {
-        // 1. 若用户当前选中的是内置模型，坚决加载内置嵌入式模型（不受扫描开关或磁盘 models/ 目录影响）
-        if (string.Equals(settings.Model, "PP-OCRv6_small", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(settings.Model, "PP-OCRv6_tiny", StringComparison.OrdinalIgnoreCase))
+        string modelName = string.IsNullOrWhiteSpace(settings?.Model) ? "PP-OCRv6_small" : settings.Model.Trim();
+        string ocrBackend = settings?.OcrBackend ?? "Auto";
+        int selectedGpuIndex = settings?.SelectedGpuIndex ?? -1;
+        bool enableAngle = settings?.EnableAngleDetection ?? true;
+        int maxSideLen = settings?.MaxSideLen ?? 1280;
+
+        // 1. 兼容 Web API (仅在明确指定 WebApi 时使用)
+        if (!string.IsNullOrWhiteSpace(settings?.ExternalApiUrl) &&
+            (string.Equals(settings?.ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) ||
+             modelName.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase)))
         {
-            return new PaddleOcrV6Engine(
-                modelName: settings.Model,
-                sorter: _sorter,
-                enableAngle: settings.EnableAngleDetection,
-                maxSideLen: settings.MaxSideLen,
-                customDirectory: null);
+            return new ExternalApiOcrEngine(settings!.ExternalApiUrl);
         }
 
-        // 2. 兼容 Web API
-        if (settings.ScanExternalModels && (string.Equals(settings.ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) ||
-                                            settings.Model.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase)))
-        {
-            return new ExternalApiOcrEngine(settings.ExternalApiUrl);
-        }
-
-        // 3. 优先尝试解析当前选中的模型是否为外部扫描模型（如 "v6 (外部)"）
-        var extModel = _modelProvider.ResolveExternalModel(settings.Model);
-        if (extModel != null)
-        {
-            return new PaddleOcrV6Engine(
-                modelName: settings.Model,
-                sorter: _sorter,
-                enableAngle: settings.EnableAngleDetection,
-                maxSideLen: settings.MaxSideLen,
-                externalModel: extModel);
-        }
-
-        // 4. 兼容显式指定 ExternalModelPath 的场景（仅在非内置且明确标识 External:Local 时）
-        if (settings.ScanExternalModels && settings.Model.StartsWith("External:Local", StringComparison.OrdinalIgnoreCase) &&
-            !string.IsNullOrWhiteSpace(settings.ExternalModelPath) && Directory.Exists(settings.ExternalModelPath))
+        // 2. 兼容显式指定 ExternalModelPath 的场景 (仅在非空且明确以 External:Local 开头时)
+        if (modelName.StartsWith("External:Local", StringComparison.OrdinalIgnoreCase) &&
+            !string.IsNullOrWhiteSpace(settings?.ExternalModelPath) && Directory.Exists(settings.ExternalModelPath))
         {
             return new PaddleOcrV6Engine(
                 modelName: "External:LocalDirectory",
                 sorter: _sorter,
-                enableAngle: settings.EnableAngleDetection,
-                maxSideLen: settings.MaxSideLen,
-                customDirectory: settings.ExternalModelPath);
+                enableAngle: enableAngle,
+                maxSideLen: maxSideLen,
+                customDirectory: settings.ExternalModelPath,
+                ocrBackend: ocrBackend,
+                selectedGpuIndex: selectedGpuIndex);
         }
 
-        // 5. 兜底内置模型加载（PP-OCRv6_small / PP-OCRv6_tiny）
+        // 3. 优先尝试解析外部自定义模型结构 (例如用户放入 models/ 下的自定义子目录)
+        var extModel = _modelProvider.ResolveExternalModel(modelName);
+        if (extModel != null)
+        {
+            return new PaddleOcrV6Engine(
+                modelName: modelName,
+                sorter: _sorter,
+                enableAngle: enableAngle,
+                maxSideLen: maxSideLen,
+                externalModel: extModel,
+                ocrBackend: ocrBackend,
+                selectedGpuIndex: selectedGpuIndex);
+        }
+
+        // 4. 直接使用同目录下 models 目录作为模型（PP-OCRv6_small, PP-OCRv6_tiny, PP-OCRv6_medium 等，默认是 small）
         return new PaddleOcrV6Engine(
-            modelName: settings.Model,
+            modelName: modelName,
             sorter: _sorter,
-            enableAngle: settings.EnableAngleDetection,
-            maxSideLen: settings.MaxSideLen,
-            customDirectory: null);
+            enableAngle: enableAngle,
+            maxSideLen: maxSideLen,
+            customDirectory: null,
+            ocrBackend: ocrBackend,
+            selectedGpuIndex: selectedGpuIndex);
     }
 }

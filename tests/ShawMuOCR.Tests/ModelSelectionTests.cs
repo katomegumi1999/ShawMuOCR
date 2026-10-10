@@ -125,7 +125,7 @@ public class ModelSelectionTests
     }
 
     [Fact]
-    public void SettingsViewModel_ToggleScanExternalModels_UpdatesAvailableModels()
+    public void SettingsViewModel_AvailableModels_LoadsDirectlyFromModelsFolder()
     {
         var settingsService = new FakeSettingsService();
         var startupService = new FakeStartupService();
@@ -134,20 +134,20 @@ public class ModelSelectionTests
 
         var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
 
-        // 默认未开启扫描：仅有内置模型
-        Assert.False(vm.ScanExternalModels);
+        // 直接读取同目录下 models/ 文件夹中的模型：默认包含 PP-OCRv6_small 与 PP-OCRv6_tiny
         Assert.Contains("PP-OCRv6_small", vm.AvailableModels);
         Assert.Contains("PP-OCRv6_tiny", vm.AvailableModels);
-        Assert.DoesNotContain(vm.AvailableModels, m => m.Contains("(外部)"));
-
-        // 开启扫描：自动列出外部模型 (如 v6)
-        vm.ScanExternalModels = true;
-        Assert.Contains(vm.AvailableModels, m => m.Contains("(外部)"));
-
-        // 选中外部模型并关闭扫描：自动回退至内置模型
-        vm.SelectedModel = vm.AvailableModels.First(m => m.Contains("(外部)"));
-        vm.ScanExternalModels = false;
         Assert.Equal("PP-OCRv6_small", vm.SelectedModel);
+    }
+
+    [Fact]
+    public void OcrEngineFactory_WhenModelIsNullOrEmpty_DefaultsSafelyToSmall()
+    {
+        var factory = new OcrEngineFactory();
+        var settings = new AppSettings { Model = null! };
+        using var engine = factory.Create(settings);
+        Assert.NotNull(engine);
+        Assert.Equal("PP-OCRv6_small", engine.ModelName);
     }
 
     [Fact]
@@ -192,7 +192,6 @@ public class ModelSelectionTests
 
         Assert.Equal("PP-OCRv6_small", report.ModelName);
         Assert.Contains("15.9 MB", report.ModelWeightsDescription);
-        Assert.DoesNotContain("外部", report.ModelName);
     }
 
     [Fact]
@@ -203,15 +202,14 @@ public class ModelSelectionTests
         {
             Current = new AppSettings
             {
-                ScanExternalModels = true,
-                Model = "v6 (外部)"
+                Model = "v6"
             }
         };
 
         var diagnostics = new ShawMuOCR.Services.ModelMemoryDiagnosticsService(settingsService, provider);
         var report = diagnostics.GetReport();
 
-        Assert.Contains("外部自定义模型", report.ModelName);
+        Assert.Contains("自定义模型", report.ModelName);
         Assert.Contains("v6", report.ModelName);
         Assert.Contains("ONNX", report.ModelWeightsDescription);
     }
