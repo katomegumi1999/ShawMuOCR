@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -35,38 +37,133 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
     [ObservableProperty]
     private string _appVersion = GetAppVersion();
 
+    [ObservableProperty]
+    private string _windowsVersionText = DetectWindowsVersion();
+
+    [ObservableProperty]
+    private string _dotNetRuntimeText = DetectDotNetRuntimeVersion();
+
+    [ObservableProperty]
+    private string _avaloniaVersionText = DetectAvaloniaVersion();
+
+    [ObservableProperty]
+    private string _simdPaddleOcrVersionText = DetectSimdPaddleOcrVersion();
+
     private static string GetAppVersion()
     {
         try
         {
-            var infoVer = typeof(AboutViewModel).Assembly
-                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?
-                .InformationalVersion;
-
-            if (!string.IsNullOrWhiteSpace(infoVer))
-            {
-                int plusIdx = infoVer.IndexOf('+');
-                string cleanVer = plusIdx > 0 ? infoVer.Substring(0, plusIdx).Trim() : infoVer.Trim();
-                if (!string.IsNullOrEmpty(cleanVer))
-                {
-                    return cleanVer.StartsWith("v", StringComparison.OrdinalIgnoreCase)
-                        ? $"{cleanVer} (Native AOT)"
-                        : $"v{cleanVer} (Native AOT)";
-                }
-            }
-
-            var ver = typeof(AboutViewModel).Assembly.GetName().Version;
-            if (ver != null)
-            {
-                string vStr = ver.Build >= 0 ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : $"{ver.Major}.{ver.Minor}";
-                return $"v{vStr} (Native AOT)";
-            }
+            string cleanVer = ExtractCleanAssemblyVersion(typeof(AboutViewModel).Assembly);
+            return $"{cleanVer} (Native AOT)";
         }
         catch
         {
+            return "v2.0.0 (Native AOT)";
+        }
+    }
+
+    private static string DetectWindowsVersion()
+    {
+        try
+        {
+            string arch = RuntimeInformation.OSArchitecture.ToString();
+            if (OperatingSystem.IsWindows())
+            {
+                const string regKey = @"HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Windows NT\CurrentVersion";
+                string? productName = Microsoft.Win32.Registry.GetValue(regKey, "ProductName", null) as string;
+                string? displayVersion = Microsoft.Win32.Registry.GetValue(regKey, "DisplayVersion", null) as string;
+                string? currentBuild = Microsoft.Win32.Registry.GetValue(regKey, "CurrentBuildNumber", null) as string;
+                object? ubrObj = Microsoft.Win32.Registry.GetValue(regKey, "UBR", null);
+
+                int buildNumber = Environment.OSVersion.Version.Build;
+                if (!string.IsNullOrWhiteSpace(currentBuild) && int.TryParse(currentBuild, out int parsedBuild))
+                {
+                    buildNumber = parsedBuild;
+                }
+
+                if (!string.IsNullOrWhiteSpace(productName))
+                {
+                    if (buildNumber >= 22000 && productName.Contains("Windows 10", StringComparison.OrdinalIgnoreCase))
+                    {
+                        productName = productName.Replace("Windows 10", "Windows 11", StringComparison.OrdinalIgnoreCase);
+                    }
+
+                    string verTag = !string.IsNullOrWhiteSpace(displayVersion) ? $" {displayVersion.Trim()}" : string.Empty;
+                    string buildStr = ubrObj != null ? $"{buildNumber}.{ubrObj}" : $"{buildNumber}";
+                    return $"{productName.Trim()}{verTag} (Build {buildStr} · {arch})";
+                }
+            }
+
+            return $"{RuntimeInformation.OSDescription} ({arch})";
+        }
+        catch
+        {
+            return RuntimeInformation.OSDescription;
+        }
+    }
+
+    private static string DetectDotNetRuntimeVersion()
+    {
+        try
+        {
+            string framework = RuntimeInformation.FrameworkDescription.Trim();
+            string arch = RuntimeInformation.ProcessArchitecture.ToString().ToLowerInvariant();
+            string mode = RuntimeFeature.IsDynamicCodeSupported ? "CoreCLR JIT" : "Native AOT";
+            return $"{framework} ({arch} · {mode})";
+        }
+        catch
+        {
+            return $".NET {Environment.Version}";
+        }
+    }
+
+    private static string DetectAvaloniaVersion()
+    {
+        try
+        {
+            string ver = ExtractCleanAssemblyVersion(typeof(Avalonia.Application).Assembly);
+            return $"{ver} (Skia / Win32)";
+        }
+        catch
+        {
+            return "v12.0.0 (Skia / Win32)";
+        }
+    }
+
+    private static string DetectSimdPaddleOcrVersion()
+    {
+        try
+        {
+            string ver = ExtractCleanAssemblyVersion(typeof(Sdcb.SimdPaddleOCR.PaddleOcrAll).Assembly);
+            return $"{ver} (纯 C# SIMD / Vulkan)";
+        }
+        catch
+        {
+            return "v2.0.0 (纯 C# SIMD / Vulkan)";
+        }
+    }
+
+    private static string ExtractCleanAssemblyVersion(Assembly asm)
+    {
+        var infoVer = asm.GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+        if (!string.IsNullOrWhiteSpace(infoVer))
+        {
+            int plusIdx = infoVer.IndexOf('+');
+            string cleanVer = plusIdx > 0 ? infoVer.Substring(0, plusIdx).Trim() : infoVer.Trim();
+            if (!string.IsNullOrEmpty(cleanVer))
+            {
+                return cleanVer.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? cleanVer : $"v{cleanVer}";
+            }
         }
 
-        return "v2.0.0 (Native AOT)";
+        var ver = asm.GetName().Version;
+        if (ver != null)
+        {
+            string vStr = ver.Build >= 0 ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : $"{ver.Major}.{ver.Minor}";
+            return $"v{vStr}";
+        }
+
+        return "v2.0.0";
     }
 
     [ObservableProperty]

@@ -84,8 +84,27 @@ public sealed class OcrEngineFactory : IOcrEngineFactory
                 selectedGpuIndex: selectedGpuIndex);
         }
 
-        // 3. 优先尝试解析外部自定义模型结构 (例如用户放入 models/ 下的自定义子目录)
+        // 3. 从 models/ 目录解析所选模型；若配置中的模型不存在但目录中有其他可用模型，则自动回退至实际存在的模型
         var extModel = _modelProvider.ResolveExternalModel(modelName);
+        if (extModel == null)
+        {
+            var availableModels = _modelProvider.GetAvailableModels();
+            if (availableModels.Count == 0)
+            {
+                throw new DirectoryNotFoundException(
+                    $"未在 models 文件夹 ({_modelProvider.BaseModelsDirectory}) 下检测到任何可用 OCR 模型！请将分发的 models 文件夹放置在与主程序同一目录下。");
+            }
+
+            string fallbackModel = availableModels[0];
+            extModel = _modelProvider.ResolveExternalModel(fallbackModel);
+            modelName = fallbackModel;
+            if (settings != null)
+            {
+                settings.Model = fallbackModel;
+                settings.EmbeddedModel = fallbackModel;
+            }
+        }
+
         if (extModel != null)
         {
             return new PaddleOcrV6Engine(
@@ -98,7 +117,7 @@ public sealed class OcrEngineFactory : IOcrEngineFactory
                 selectedGpuIndex: selectedGpuIndex);
         }
 
-        // 4. 直接使用同目录下 models 目录作为模型（PP-OCRv6_small, PP-OCRv6_tiny, PP-OCRv6_medium 等，默认是 small）
+        // 4. 兜底路径解析
         return new PaddleOcrV6Engine(
             modelName: modelName,
             sorter: _sorter,

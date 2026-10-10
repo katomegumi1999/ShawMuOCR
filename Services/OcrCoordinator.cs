@@ -65,7 +65,13 @@ public sealed class OcrCoordinator : IOcrCoordinator
         _cachedSettings = _settingsService.Current.Clone();
         try
         {
+            string originalModel = _cachedSettings.Model;
             _ocrEngine = _engineFactory.Create(_cachedSettings);
+            if (!string.Equals(originalModel, _cachedSettings.Model, StringComparison.OrdinalIgnoreCase))
+            {
+                _settingsService.Save(_cachedSettings);
+            }
+
             if (_ocrEngine is ShawMuOCR.OCR.PaddleOcrV6Engine { ConfiguredBackend: not Sdcb.SimdPaddleOCR.OcrBackend.Cpu })
             {
                 StartBackgroundWarmup(_ocrEngine, "启动初始化", delayMs: 300);
@@ -74,16 +80,53 @@ public sealed class OcrCoordinator : IOcrCoordinator
         catch (Exception ex)
         {
             _logger?.Error("启动初始化 OCR 模型引擎失败", ex);
-            _statusMessage = $"⚠️ OCR 模型加载失败: {ex.Message}";
+            _statusMessage = $"⚠️ OCR 模型未就绪: {ex.Message}";
             _ocrEngine = new FaultedOcrEngine(ex.Message);
         }
 
         _settingsService.SettingsChanged += OnSettingsChanged;
     }
 
+    public bool IsEngineFaulted => _ocrEngine is FaultedOcrEngine;
+
+    private bool TryRecoverFaultedEngine(out string errorMessage)
+    {
+        lock (_stateLock)
+        {
+            if (_ocrEngine is not FaultedOcrEngine)
+            {
+                errorMessage = string.Empty;
+                return true;
+            }
+
+            try
+            {
+                var current = _settingsService.Current.Clone();
+                string originalModel = current.Model;
+                var newEngine = _engineFactory.Create(current);
+                _ocrEngine.Dispose();
+                _ocrEngine = newEngine;
+                _cachedSettings = current;
+                if (!string.Equals(originalModel, current.Model, StringComparison.OrdinalIgnoreCase))
+                {
+                    _settingsService.Save(current);
+                }
+
+                errorMessage = string.Empty;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                errorMessage = ex.Message;
+                _ocrEngine = new FaultedOcrEngine(ex.Message);
+                return false;
+            }
+        }
+    }
+
     private sealed class FaultedOcrEngine(string errorMessage) : IOcrEngine
     {
-        public string ModelName => "Faulted";
+        public string ModelName => "未检测到模型";
 
         public Task<OcrResult> RecognizeAsync(OcrImage image, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException($"OCR 引擎未就绪: {errorMessage}");
@@ -416,6 +459,16 @@ public sealed class OcrCoordinator : IOcrCoordinator
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(image);
 
+        if (!TryRecoverFaultedEngine(out string recoverError))
+        {
+            SetState(OcrState.Failed, $"⚠️ 未检测到 OCR 模型: {recoverError}");
+            ToastNotificationWindow.Show(
+                "未在 models 文件夹下检测到任何 OCR 模型！请将随程序分发的 models 文件夹放置在与主程序同一目录下。",
+                TimeSpan.Zero,
+                "⚠️ 缺少 OCR 模型");
+            return;
+        }
+
         lock (_stateLock)
         {
             SetState(OcrState.Recognizing, "正在识别文字...");
@@ -492,6 +545,11 @@ public sealed class OcrCoordinator : IOcrCoordinator
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(image);
+
+        if (!TryRecoverFaultedEngine(out string recoverError))
+        {
+            return OcrResult.Failed(recoverError, TimeSpan.Zero);
+        }
 
         await AwaitWarmupAsync();
 

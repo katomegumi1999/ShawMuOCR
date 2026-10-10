@@ -51,10 +51,9 @@ public sealed class OcrModelProvider : IOcrModelProvider
 
     public bool HasModel(string modelName)
     {
-        if (string.Equals(modelName, "PP-OCRv6_small", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(modelName, "PP-OCRv6_tiny", StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(modelName))
         {
-            return true;
+            return false;
         }
 
         if (ResolveExternalModel(modelName) != null)
@@ -63,7 +62,7 @@ public sealed class OcrModelProvider : IOcrModelProvider
         }
 
         string path = GetModelPath(modelName);
-        return Directory.Exists(path) || File.Exists(path);
+        return TryParsePaddleModelDirectory(path) != null;
     }
 
     public IReadOnlyList<string> GetAvailableModels() => GetAvailableModels(true);
@@ -81,26 +80,13 @@ public sealed class OcrModelProvider : IOcrModelProvider
             }
         }
 
-        // 保证默认推荐模型 PP-OCRv6_small 存在且置顶
-        if (!models.Contains("PP-OCRv6_small", StringComparer.OrdinalIgnoreCase))
+        // 若实际存在 PP-OCRv6_small，将其排在首位作为优先推荐项；绝不硬编码塞入不存在的模型
+        int smallIdx = models.FindIndex(m => string.Equals(m, "PP-OCRv6_small", StringComparison.OrdinalIgnoreCase));
+        if (smallIdx > 0)
         {
-            models.Insert(0, "PP-OCRv6_small");
-        }
-        else
-        {
-            int idx = models.FindIndex(m => string.Equals(m, "PP-OCRv6_small", StringComparison.OrdinalIgnoreCase));
-            if (idx > 0)
-            {
-                string small = models[idx];
-                models.RemoveAt(idx);
-                models.Insert(0, small);
-            }
-        }
-
-        // 若 models 目录未放置 tiny，也提供备选
-        if (!models.Contains("PP-OCRv6_tiny", StringComparer.OrdinalIgnoreCase))
-        {
-            models.Add("PP-OCRv6_tiny");
+            string small = models[smallIdx];
+            models.RemoveAt(smallIdx);
+            models.Insert(0, small);
         }
 
         return models;
@@ -115,7 +101,7 @@ public sealed class OcrModelProvider : IOcrModelProvider
             return results;
         }
 
-        // 1. 扫描 models 根目录下的每个子文件夹（如 models/v6, models/v4）
+        // 1. 扫描 models 根目录下的每个子文件夹（如 models/PP-OCRv6_small, models/PP-OCRv6_tiny 等）
         try
         {
             string[] subDirs = Directory.GetDirectories(BaseModelsDirectory);
@@ -128,7 +114,7 @@ public sealed class OcrModelProvider : IOcrModelProvider
                 }
             }
 
-            // 2. 如果 models 根目录直接放置了 det 和 rec 模型，也作为一个外部模型加载
+            // 2. 如果 models 根目录直接放置了 det 和 rec 模型，也作为一个模型加载
             var rootInfo = TryParsePaddleModelDirectory(BaseModelsDirectory, "models (根目录)");
             if (rootInfo != null && !results.Any(r => string.Equals(r.DirectoryPath, BaseModelsDirectory, StringComparison.OrdinalIgnoreCase)))
             {
@@ -147,14 +133,7 @@ public sealed class OcrModelProvider : IOcrModelProvider
     {
         if (string.IsNullOrWhiteSpace(modelName)) return null;
 
-        // 内置模型切勿解析为外部模型
-        if (string.Equals(modelName, "PP-OCRv6_small", StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(modelName, "PP-OCRv6_tiny", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        // 1. 从当前 models 目录扫描
+        // 1. 从当前 models 目录扫描实际存在的模型
         var scanned = ScanExternalModels();
         foreach (var info in scanned)
         {

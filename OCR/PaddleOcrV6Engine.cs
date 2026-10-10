@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using Sdcb.SimdPaddleOCR;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Sorting;
@@ -14,7 +15,8 @@ public sealed record OcrBackendProbeInfo(
     bool HasVulkanDevice,
     string? GpuDeviceName,
     bool SupportsCoopMatrix,
-    uint SubgroupMin)
+    uint SubgroupMin,
+    int ManualSelectedGpuIndex = -1)
 {
     public string AutoResolvedMode => AutoSelectsGpu ? "GPU" : "CPU";
 
@@ -24,28 +26,43 @@ public sealed record OcrBackendProbeInfo(
             : "GPU 加速 (Vulkan)")
         : "纯 CPU (AVX2 SIMD)";
 
-    public string AutoDecisionReason => AutoSelectsGpu
-        ? (SupportsCoopMatrix
-            ? "支持硬件协作矩阵 (CoopMatrix)"
-            : $"支持 Wave{SubgroupMin} 子群并行 (SubgroupMin={SubgroupMin}≥64)")
-        : (HasVulkanDevice && !string.IsNullOrWhiteSpace(GpuDeviceName)
-            ? $"核显 {GpuDeviceName} 无协作矩阵且 SubgroupMin={SubgroupMin}<64，已自动优选 CPU"
-            : "未检测到满足条件的 Vulkan GPU，已自动优选 CPU");
+    public string AutoDecisionReason => ManualSelectedGpuIndex >= 0 && AutoSelectsGpu
+        ? $"已手动指定物理显卡 (设备 #{ManualSelectedGpuIndex} · {GpuDeviceName})"
+        : AutoSelectsGpu
+            ? (SupportsCoopMatrix
+                ? "支持硬件协作矩阵 (CoopMatrix)"
+                : $"支持 Wave{SubgroupMin} 子群并行 (SubgroupMin={SubgroupMin}≥64)")
+            : (HasVulkanDevice && !string.IsNullOrWhiteSpace(GpuDeviceName)
+                ? $"核显 {GpuDeviceName} 无协作矩阵且 SubgroupMin={SubgroupMin}<64，已自动优选 CPU（如需强制使用可切换至 GPU 加速或手动指定显卡）"
+                : "未检测到满足条件的 Vulkan GPU，已自动优选 CPU");
 }
 
-public sealed record DiscoveredGpuDevice(int Index, string Name, bool SupportsCoopMatrix, uint SubgroupMin, uint VendorId)
+public sealed record DiscoveredGpuDevice(
+    int Index,
+    string Name,
+    bool SupportsCoopMatrix,
+    uint SubgroupMin,
+    uint VendorId,
+    uint DeviceType = 0)
 {
+    public bool IsDiscrete => DeviceType == 2 || (DeviceType == 0 && (SupportsCoopMatrix || VendorId == 4318));
+    public bool IsIntegrated => DeviceType == 1 || (DeviceType == 0 && !IsDiscrete && (VendorId == 4098 || VendorId == 32902));
+
+    public string TypeTag =>
+        DeviceType == 2 ? "独显" :
+        DeviceType == 1 ? "核显" :
+        SupportsCoopMatrix || VendorId == 4318 ? "独显" :
+        (VendorId == 4098 || VendorId == 32902) ? "核显" : "GPU";
+
     public string DisplayName =>
         Index < 0
-            ? "自动优选 (Auto - 智能选择最优显卡)"
-            : $"[GPU {Index}] {Name}" +
-              (SupportsCoopMatrix ? " (独显 · Tensor Core)" :
-               VendorId == 4098 && SubgroupMin >= 64 ? " (核显 · Wave64)" :
-               VendorId == 4318 ? " (NVIDIA 独显)" :
-               VendorId == 32902 ? " (Intel 显卡)" : string.Empty);
+            ? "自动选择 (默认 · 优先独立显卡)"
+            : $"[{TypeTag}] {Name} (设备 #{Index}" +
+              (SupportsCoopMatrix ? " · 硬件矩阵" :
+               SubgroupMin >= 64 ? $" · Wave{SubgroupMin}" : string.Empty) + ")";
 }
 
-public sealed class PaddleOcrV6Engine : IOcrEngine
+public sealed partial class PaddleOcrV6Engine : IOcrEngine
 {
     private static OcrBackendProbeInfo? s_cachedProbeInfo;
     private static IReadOnlyList<DiscoveredGpuDevice>? s_cachedDiscoveredGpus;
@@ -96,7 +113,12 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
             SetSelectedGpuIndex(selectedGpuIndex);
         }
 
-        var options = CreatePaddleOcrOptions(enableAngle, maxSideLen, backend);
+        // 若用户显式指定了物理显卡索引 (selectedGpuIndex >= 0) 且处于 Auto 模式，则启用 Vulkan 以确保使用所选显卡
+        var effectiveBackend = (backend == OcrBackend.Auto && selectedGpuIndex >= 0)
+            ? OcrBackend.Vulkan
+            : backend;
+
+        var options = CreatePaddleOcrOptions(enableAngle, maxSideLen, effectiveBackend);
 
         string detPath;
         string recPath;
@@ -253,8 +275,9 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
                     var usesGpuMethod = gpuBackendType.GetMethod("UsesGpu", flags);
                     var tryGetDeviceMethod = gpuBackendType.GetMethod("TryGetDevice", flags);
 
-                    bool autoSelectsGpu = usesGpuMethod?.Invoke(null, [OcrBackend.Auto]) is true;
                     object? vkDevice = tryGetDeviceMethod?.Invoke(null, null);
+                    bool autoSelectsGpu = (s_currentSelectedGpuIndex >= 0 && vkDevice != null) ||
+                                          (usesGpuMethod?.Invoke(null, [OcrBackend.Auto]) is true);
 
                     if (vkDevice != null)
                     {
@@ -269,7 +292,8 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
                             HasVulkanDevice: true,
                             GpuDeviceName: deviceName,
                             SupportsCoopMatrix: coopGemm,
-                            SubgroupMin: subgroupMin);
+                            SubgroupMin: subgroupMin,
+                            ManualSelectedGpuIndex: s_currentSelectedGpuIndex);
                         return s_cachedProbeInfo;
                     }
                 }
@@ -284,7 +308,8 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
                 HasVulkanDevice: false,
                 GpuDeviceName: null,
                 SupportsCoopMatrix: false,
-                SubgroupMin: 0);
+                SubgroupMin: 0,
+                ManualSelectedGpuIndex: s_currentSelectedGpuIndex);
             return s_cachedProbeInfo;
         }
     }
@@ -307,60 +332,166 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
                 return s_cachedDiscoveredGpus;
             }
 
-            var list = new List<DiscoveredGpuDevice>();
-            try
+            var list = EnumeratePhysicalDevicesDirect();
+
+            if (list.Count == 0)
             {
-                var asm = typeof(PaddleOcrAll).Assembly;
-                var vkDeviceType = asm.GetType("Sdcb.SimdPaddleOCR.Backends.Vulkan.VkDevice");
-                if (vkDeviceType != null)
+                try
                 {
-                    var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
-                    var createMethod = vkDeviceType.GetMethod("Create", flags, [typeof(uint)]);
-                    var instFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
-
-                    for (uint i = 0; i < 8; i++)
+                    var asm = typeof(PaddleOcrAll).Assembly;
+                    var vkDeviceType = asm.GetType("Sdcb.SimdPaddleOCR.Backends.Vulkan.VkDevice");
+                    if (vkDeviceType != null)
                     {
-                        try
-                        {
-                            object? dev = createMethod?.Invoke(null, [i]);
-                            if (dev == null) break;
+                        var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static;
+                        var createMethod = vkDeviceType.GetMethod("Create", flags, [typeof(uint)]);
+                        var instFlags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
 
+                        for (uint i = 0; i < 8; i++)
+                        {
                             try
                             {
-                                string? name = vkDeviceType.GetField("DeviceName", instFlags)?.GetValue(dev) as string;
-                                bool coop = vkDeviceType.GetProperty("CoopGemm", instFlags)?.GetValue(dev) is true;
-                                uint sg = vkDeviceType.GetField("SubgroupMin", instFlags)?.GetValue(dev) is uint s ? s : 0u;
-                                uint vendor = vkDeviceType.GetField("VendorId", instFlags)?.GetValue(dev) is uint v ? v : 0u;
+                                object? dev = createMethod?.Invoke(null, [i]);
+                                if (dev == null) break;
 
-                                if (!string.IsNullOrWhiteSpace(name))
+                                try
                                 {
-                                    list.Add(new DiscoveredGpuDevice((int)i, name, coop, sg, vendor));
+                                    string? name = vkDeviceType.GetField("DeviceName", instFlags)?.GetValue(dev) as string;
+                                    bool coop = vkDeviceType.GetProperty("CoopGemm", instFlags)?.GetValue(dev) is true;
+                                    uint sg = vkDeviceType.GetField("SubgroupMin", instFlags)?.GetValue(dev) is uint s ? s : 0u;
+                                    uint vendor = vkDeviceType.GetField("VendorId", instFlags)?.GetValue(dev) is uint v ? v : 0u;
+
+                                    if (!string.IsNullOrWhiteSpace(name) && !list.Any(x => string.Equals(x.Name, name, StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        list.Add(new DiscoveredGpuDevice((int)i, name, coop, sg, vendor));
+                                    }
+                                }
+                                finally
+                                {
+                                    if (dev is IDisposable d)
+                                    {
+                                        d.Dispose();
+                                    }
                                 }
                             }
-                            finally
+                            catch
                             {
-                                if (dev is IDisposable d)
-                                {
-                                    d.Dispose();
-                                }
+                                break;
                             }
-                        }
-                        catch
-                        {
-                            // 超出显卡索引上限或无法初始化，终止遍历
-                            break;
                         }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Debug.WriteLine($"[PaddleOcrV6Engine] 枚举物理 GPU 设备异常: {ex.Message}");
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[PaddleOcrV6Engine] 枚举物理 GPU 设备异常: {ex.Message}");
+                }
             }
 
             s_cachedDiscoveredGpus = list;
             return list;
         }
+    }
+
+    private static unsafe List<DiscoveredGpuDevice> EnumeratePhysicalDevicesDirect()
+    {
+        var list = new List<DiscoveredGpuDevice>();
+        try
+        {
+            var appInfo = new VkApplicationInfo
+            {
+                SType = 0,
+                ApiVersion = (1u << 22) | (2u << 12)
+            };
+            var ci = new VkInstanceCreateInfo
+            {
+                SType = 1,
+                PApplicationInfo = &appInfo
+            };
+
+            if (VulkanNative.vkCreateInstance(&ci, null, out IntPtr instance) == 0 && instance != IntPtr.Zero)
+            {
+                try
+                {
+                    uint count = 0;
+                    if (VulkanNative.vkEnumeratePhysicalDevices(instance, &count, null) == 0 && count > 0)
+                    {
+                        if (count > 16) count = 16;
+                        IntPtr* devs = stackalloc IntPtr[(int)count];
+                        if (VulkanNative.vkEnumeratePhysicalDevices(instance, &count, devs) == 0)
+                        {
+                            for (uint i = 0; i < count; i++)
+                            {
+                                IntPtr phys = devs[i];
+                                var sgProps = new VkPhysicalDeviceSubgroupProperties { SType = 1000094000u };
+                                var sgCtrl = new VkPhysicalDeviceSubgroupSizeControlProperties
+                                {
+                                    SType = 1000225000u,
+                                    PNext = &sgProps
+                                };
+                                var props2 = new VkPhysicalDeviceProperties2
+                                {
+                                    SType = 1000059001u,
+                                    PNext = &sgCtrl
+                                };
+                                VulkanNative.vkGetPhysicalDeviceProperties2(phys, &props2);
+
+                                uint deviceType = props2.Properties.DeviceType;
+                                if (deviceType == 4) // 跳过纯软件 CPU 光栅化虚拟设备
+                                {
+                                    continue;
+                                }
+
+                                string? name = Marshal.PtrToStringUTF8((IntPtr)props2.Properties.DeviceName);
+                                if (string.IsNullOrWhiteSpace(name))
+                                {
+                                    continue;
+                                }
+
+                                uint vendorId = props2.Properties.VendorID;
+                                uint sgMin = sgCtrl.MinSubgroupSize > 0 ? sgCtrl.MinSubgroupSize : sgProps.SubgroupSize;
+
+                                bool coop = false;
+                                uint extCount = 0;
+                                if (VulkanNative.vkEnumerateDeviceExtensionProperties(phys, null, &extCount, null) == 0 && extCount > 0)
+                                {
+                                    var exts = new VkExtensionProperties[extCount];
+                                    fixed (VkExtensionProperties* pExts = exts)
+                                    {
+                                        if (VulkanNative.vkEnumerateDeviceExtensionProperties(phys, null, &extCount, pExts) == 0)
+                                        {
+                                            for (uint e = 0; e < extCount; e++)
+                                            {
+                                                string? extName = Marshal.PtrToStringAnsi((IntPtr)pExts[e].ExtensionName);
+                                                if (string.Equals(extName, "VK_KHR_cooperative_matrix", StringComparison.Ordinal))
+                                                {
+                                                    coop = true;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                list.Add(new DiscoveredGpuDevice((int)i, name.Trim(), coop, sgMin, vendorId, deviceType));
+                            }
+                        }
+                    }
+                }
+                finally
+                {
+                    VulkanNative.vkDestroyInstance(instance, null);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"[PaddleOcrV6Engine] 原生枚举 Vulkan 物理显卡异常: {ex.Message}");
+        }
+
+        // 将独显 (DeviceType == 2) 优先排在前面，核显排在后面，保持各自的原始物理 Index 不变
+        return list
+            .OrderByDescending(g => g.IsDiscrete)
+            .ThenBy(g => g.Index)
+            .ToList();
     }
 
     [DynamicDependency(DynamicallyAccessedMemberTypes.PublicMethods | DynamicallyAccessedMemberTypes.NonPublicMethods | DynamicallyAccessedMemberTypes.PublicFields | DynamicallyAccessedMemberTypes.NonPublicFields, "Sdcb.SimdPaddleOCR.Backends.Vulkan.GpuBackend", "Sdcb.SimdPaddleOCR")]
@@ -369,6 +500,8 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
     [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "Preserved via DynamicDependency")]
     public static void SetSelectedGpuIndex(int deviceIndex)
     {
+        var allGpus = EnumerateAllGpuDevices();
+
         lock (s_probeLock)
         {
             if (s_currentSelectedGpuIndex == deviceIndex)
@@ -390,7 +523,82 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
                     if (deviceIndex >= 0)
                     {
                         var createMethod = vkDeviceType.GetMethod("Create", flags, [typeof(uint)]);
-                        object? newDev = createMethod?.Invoke(null, [(uint)deviceIndex]);
+                        var orderedByPhysical = allGpus.OrderBy(g => g.Index).ToList();
+                        var target = orderedByPhysical.FirstOrDefault(g => g.Index == deviceIndex);
+
+                        uint createArg = (uint)deviceIndex;
+                        string? disableDrivers = null;
+
+                        if (target != null)
+                        {
+                            if (target.DeviceType == 2)
+                            {
+                                // 独显：计算其在所有独显中的序号（适配 VkDevice.Create pass 0）
+                                createArg = (uint)orderedByPhysical
+                                    .TakeWhile(g => g.Index != deviceIndex)
+                                    .Count(g => g.DeviceType == 2);
+                            }
+                            else
+                            {
+                                int totalDiscrete = orderedByPhysical.Count(g => g.DeviceType == 2);
+                                int nonCpuOrdinal = orderedByPhysical.TakeWhile(g => g.Index != deviceIndex).Count();
+
+                                if (nonCpuOrdinal < totalDiscrete)
+                                {
+                                    // 当核显排在独显前面（如物理索引 0 为核显、索引 1 为独显）时，
+                                    // 通过 VK_LOADER_DRIVERS_DISABLE 临时屏蔽独显驱动，使 VkDevice.Create 精准命中该核显
+                                    var discreteVendors = orderedByPhysical
+                                        .Where(g => g.DeviceType == 2 && g.VendorId != target.VendorId)
+                                        .Select(g => g.VendorId)
+                                        .Distinct()
+                                        .ToList();
+
+                                    var patterns = new List<string>();
+                                    foreach (uint v in discreteVendors)
+                                    {
+                                        if (v == 4318) patterns.Add("*nv*,*nvidia*");
+                                        else if (v == 4098) patterns.Add("*amd*");
+                                        else if (v == 32902) patterns.Add("*igvk*,*intel*");
+                                    }
+
+                                    if (patterns.Count > 0)
+                                    {
+                                        disableDrivers = string.Join(",", patterns);
+                                        createArg = (uint)orderedByPhysical
+                                            .TakeWhile(g => g.Index != deviceIndex)
+                                            .Count(g => g.DeviceType != 2);
+                                    }
+                                    else
+                                    {
+                                        createArg = (uint)nonCpuOrdinal;
+                                    }
+                                }
+                                else
+                                {
+                                    createArg = (uint)nonCpuOrdinal;
+                                }
+                            }
+                        }
+
+                        string? prevDisable = Environment.GetEnvironmentVariable("VK_LOADER_DRIVERS_DISABLE");
+                        if (!string.IsNullOrEmpty(disableDrivers))
+                        {
+                            Environment.SetEnvironmentVariable("VK_LOADER_DRIVERS_DISABLE", disableDrivers);
+                        }
+
+                        object? newDev;
+                        try
+                        {
+                            newDev = createMethod?.Invoke(null, [createArg]);
+                        }
+                        finally
+                        {
+                            if (!string.IsNullOrEmpty(disableDrivers))
+                            {
+                                Environment.SetEnvironmentVariable("VK_LOADER_DRIVERS_DISABLE", prevDisable);
+                            }
+                        }
+
                         if (newDev != null)
                         {
                             var oldDev = sDeviceField?.GetValue(null) as IDisposable;
@@ -404,7 +612,7 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
                     }
                     else
                     {
-                        // 自动模式：清理旧设备，交由 GpuBackend 重新自动决策
+                        // 自动模式：清理旧设备，交由 GpuBackend 重新自动决策（默认优先独立显卡）
                         var oldDev = sDeviceField?.GetValue(null) as IDisposable;
                         sDeviceField?.SetValue(null, null);
                         sProbedField?.SetValue(null, false);
@@ -724,5 +932,98 @@ public sealed class PaddleOcrV6Engine : IOcrEngine
             _ocr.Dispose();
             _disposed = true;
         }
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct VkApplicationInfo
+    {
+        public uint SType;
+        public IntPtr PNext;
+        public IntPtr PApplicationName;
+        public uint ApplicationVersion;
+        public IntPtr PEngineName;
+        public uint EngineVersion;
+        public uint ApiVersion;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct VkInstanceCreateInfo
+    {
+        public uint SType;
+        public IntPtr PNext;
+        public uint Flags;
+        public VkApplicationInfo* PApplicationInfo;
+        public uint EnabledLayerCount;
+        public IntPtr PpEnabledLayerNames;
+        public uint EnabledExtensionCount;
+        public IntPtr PpEnabledExtensionNames;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct VkPhysicalDeviceProperties
+    {
+        public uint ApiVersion;
+        public uint DriverVersion;
+        public uint VendorID;
+        public uint DeviceID;
+        public uint DeviceType;
+        public fixed byte DeviceName[256];
+        public fixed byte PipelineCacheUUID[16];
+        public fixed byte LimitsAndSparse[1024];
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct VkPhysicalDeviceProperties2
+    {
+        public uint SType;
+        public void* PNext;
+        public VkPhysicalDeviceProperties Properties;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct VkPhysicalDeviceSubgroupSizeControlProperties
+    {
+        public uint SType;
+        public void* PNext;
+        public uint MinSubgroupSize;
+        public uint MaxSubgroupSize;
+        public uint MaxComputeWorkgroupSubgroups;
+        public uint RequiredSubgroupSizeStages;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct VkPhysicalDeviceSubgroupProperties
+    {
+        public uint SType;
+        public void* PNext;
+        public uint SubgroupSize;
+        public uint SupportedStages;
+        public uint SupportedOperations;
+        public uint QuadOperationsInAllStages;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private unsafe struct VkExtensionProperties
+    {
+        public fixed byte ExtensionName[256];
+        public uint SpecVersion;
+    }
+
+    private static partial class VulkanNative
+    {
+        [LibraryImport("vulkan-1", EntryPoint = "vkCreateInstance")]
+        public static unsafe partial int vkCreateInstance(VkInstanceCreateInfo* pCreateInfo, void* pAllocator, out IntPtr pInstance);
+
+        [LibraryImport("vulkan-1", EntryPoint = "vkDestroyInstance")]
+        public static unsafe partial void vkDestroyInstance(IntPtr instance, void* pAllocator);
+
+        [LibraryImport("vulkan-1", EntryPoint = "vkEnumeratePhysicalDevices")]
+        public static unsafe partial int vkEnumeratePhysicalDevices(IntPtr instance, uint* pPhysicalDeviceCount, IntPtr* pPhysicalDevices);
+
+        [LibraryImport("vulkan-1", EntryPoint = "vkGetPhysicalDeviceProperties2")]
+        public static unsafe partial void vkGetPhysicalDeviceProperties2(IntPtr physicalDevice, VkPhysicalDeviceProperties2* pProperties);
+
+        [LibraryImport("vulkan-1", EntryPoint = "vkEnumerateDeviceExtensionProperties")]
+        public static unsafe partial int vkEnumerateDeviceExtensionProperties(IntPtr physicalDevice, byte* pLayerName, uint* pPropertyCount, VkExtensionProperties* pProperties);
     }
 }

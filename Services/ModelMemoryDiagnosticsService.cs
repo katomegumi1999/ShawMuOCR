@@ -173,33 +173,51 @@ public sealed class ModelMemoryDiagnosticsService : IModelMemoryDiagnosticsServi
             _ => "纯C# SIMD / AVX2 加速"
         };
 
-        if (isBuiltIn)
+        string modelStatus = "引擎就绪";
+        var provider = _modelProvider ?? new OcrModelProvider();
+        bool isWebApi = string.Equals(current.ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) ||
+                        activeModel.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase);
+
+        if (isWebApi)
         {
-            modelName = activeModel;
-            modelWeights = modelName.Contains("tiny", StringComparison.OrdinalIgnoreCase)
-                ? "~10.2 MB (本地 Tiny DET+REC+CLS+字典)"
-                : modelName.Contains("medium", StringComparison.OrdinalIgnoreCase)
-                    ? "~140 MB (本地 Medium DET+REC+CLS+字典)"
-                    : "~15.9 MB (本地 Small DET+REC+CLS+字典)";
-            string angleInfo = current.EnableAngleDetection ? "开启" : "关闭(低内存)";
-            engineDesc = $"SimdPaddleOCR ({backendText}, 模型: {modelName}, 长边≤{current.MaxSideLen}, 角度:{angleInfo})";
+            modelName = $"外部接口 ({current.ExternalApiUrl})";
+            modelWeights = "远程 / 自定义 Web 服务 (本地无模型权重占用)";
+            engineDesc = $"External Web API ({current.ExternalApiUrl})";
         }
         else
         {
-            var extModel = _modelProvider?.ResolveExternalModel(activeModel);
-            bool isWebApi = string.Equals(current.ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) ||
-                            activeModel.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase);
-
-            if (isWebApi)
+            var extModel = provider.ResolveExternalModel(activeModel);
+            if (extModel == null)
             {
-                modelName = $"外部接口 ({current.ExternalApiUrl})";
-                modelWeights = "远程 / 自定义 Web 服务 (本地无模型权重占用)";
-                engineDesc = $"External Web API ({current.ExternalApiUrl})";
+                var available = provider.GetAvailableModels();
+                if (available.Count > 0)
+                {
+                    extModel = provider.ResolveExternalModel(available[0]);
+                }
+            }
+
+            if (extModel == null)
+            {
+                modelName = "未检测到模型 (models 目录为空)";
+                modelStatus = "⚠️ 缺少模型文件";
+                modelWeights = "请将分发的 models 文件夹放置在与主程序同一目录下";
+                engineDesc = $"SimdPaddleOCR ({backendText}, 状态: 未检测到可用模型)";
+            }
+            else if (isBuiltIn)
+            {
+                modelName = extModel.Name;
+                modelWeights = modelName.Contains("tiny", StringComparison.OrdinalIgnoreCase)
+                    ? "~10.2 MB (本地 Tiny DET+REC+CLS+字典)"
+                    : modelName.Contains("medium", StringComparison.OrdinalIgnoreCase)
+                        ? "~140 MB (本地 Medium DET+REC+CLS+字典)"
+                        : "~15.9 MB (本地 Small DET+REC+CLS+字典)";
+                string angleInfo = current.EnableAngleDetection ? "开启" : "关闭(低内存)";
+                engineDesc = $"SimdPaddleOCR ({backendText}, 模型: {modelName}, 长边≤{current.MaxSideLen}, 角度:{angleInfo})";
             }
             else
             {
-                string extDisplayName = extModel?.Name ?? activeModel;
-                string targetPath = extModel?.DirectoryPath ?? current.ExternalModelPath;
+                string extDisplayName = extModel.Name;
+                string targetPath = extModel.DirectoryPath;
                 modelName = $"自定义模型 ({extDisplayName})";
                 modelWeights = $"本地 ONNX 模型 ({targetPath})";
                 string angleInfo = current.EnableAngleDetection ? "开启" : "关闭(低内存)";
@@ -216,7 +234,7 @@ public sealed class ModelMemoryDiagnosticsService : IModelMemoryDiagnosticsServi
             GdiHandles: gdiHandles,
             UserHandles: userHandles,
             ModelName: modelName,
-            ModelStatus: "引擎就绪",
+            ModelStatus: modelStatus,
             ModelWeightsDescription: modelWeights,
             EngineDescription: engineDesc,
             Timestamp: DateTime.Now,

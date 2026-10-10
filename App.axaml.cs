@@ -148,6 +148,19 @@ public partial class App : Application
             {
                 _loggerService?.Info("已开启静默启动：程序常驻系统托盘，未显示主界面。");
             }
+
+            // 5. 若启动时未在同级 models 文件夹下检测到任何模型，主动弹出气泡提醒用户
+            if (_modelProvider.GetAvailableModels().Count == 0)
+            {
+                _loggerService?.Warn($"启动检测：未在 models 目录 ({_modelProvider.BaseModelsDirectory}) 下发现任何可用 OCR 模型。");
+                Dispatcher.UIThread.Post(() =>
+                {
+                    ToastNotificationWindow.Show(
+                        "未在同级 models 文件夹下检测到任何 OCR 模型！请将分发的 models 文件夹放入程序目录后在设置中刷新。",
+                        TimeSpan.Zero,
+                        "⚠️ 未检测到 OCR 模型");
+                });
+            }
         }
 
         base.OnFrameworkInitializationCompleted();

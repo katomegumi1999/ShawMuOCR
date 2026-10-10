@@ -99,7 +99,6 @@ public class ModelSelectionTests
         var models = provider.GetAvailableModels(scanExternal: true);
 
         Assert.Contains("PP-OCRv6_small", models);
-        Assert.Contains("PP-OCRv6_tiny", models);
 
         var ext = provider.ResolveExternalModel("v6");
         Assert.NotNull(ext);
@@ -125,19 +124,88 @@ public class ModelSelectionTests
     }
 
     [Fact]
-    public void SettingsViewModel_AvailableModels_LoadsDirectlyFromModelsFolder()
+    public void SettingsViewModel_WhenOnlySmallModelExistsOnDisk_DoesNotInjectTinyAndSyncsConfig()
     {
-        var settingsService = new FakeSettingsService();
-        var startupService = new FakeStartupService();
-        var hotkeyService = new FakeHotkeyService();
-        var modelProvider = new OcrModelProvider();
+        string tempModelsDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ShawMuOCR_OnlySmall_" + Guid.NewGuid().ToString("N"));
+        string smallDir = System.IO.Path.Combine(tempModelsDir, "PP-OCRv6_small");
+        System.IO.Directory.CreateDirectory(smallDir);
+        try
+        {
+            // 仅创建 PP-OCRv6_small，不创建 tiny
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(smallDir, "det.onnx"), [1, 2, 3]);
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(smallDir, "rec.onnx"), [1, 2, 3]);
+            System.IO.File.WriteAllText(System.IO.Path.Combine(smallDir, "ppocrv6_dict.txt"), "a\nb\n");
 
-        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+            var modelProvider = new OcrModelProvider(tempModelsDir);
+            var available = modelProvider.GetAvailableModels();
 
-        // 直接读取同目录下 models/ 文件夹中的模型：默认包含 PP-OCRv6_small 与 PP-OCRv6_tiny
-        Assert.Contains("PP-OCRv6_small", vm.AvailableModels);
-        Assert.Contains("PP-OCRv6_tiny", vm.AvailableModels);
-        Assert.Equal("PP-OCRv6_small", vm.SelectedModel);
+            Assert.Single(available);
+            Assert.Contains("PP-OCRv6_small", available);
+            Assert.DoesNotContain("PP-OCRv6_tiny", available);
+            Assert.True(modelProvider.HasModel("PP-OCRv6_small"));
+            Assert.False(modelProvider.HasModel("PP-OCRv6_tiny"));
+            Assert.Null(modelProvider.ResolveExternalModel("PP-OCRv6_tiny"));
+
+            var settingsService = new FakeSettingsService
+            {
+                Current = new AppSettings { Model = "PP-OCRv6_tiny" } // 原本配置为不存在的 tiny
+            };
+            var startupService = new FakeStartupService();
+            var hotkeyService = new FakeHotkeyService();
+
+            var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+            // 下拉列表仅包含磁盘实际存在的 PP-OCRv6_small，且自动回退并写入配置
+            Assert.Single(vm.AvailableModels);
+            Assert.DoesNotContain("PP-OCRv6_tiny", vm.AvailableModels);
+            Assert.Equal("PP-OCRv6_small", vm.SelectedModel);
+            Assert.Equal("PP-OCRv6_small", settingsService.Current.Model);
+            Assert.False(vm.HasNoModels);
+            Assert.True(vm.HasAvailableModels);
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(tempModelsDir))
+            {
+                System.IO.Directory.Delete(tempModelsDir, true);
+            }
+        }
+    }
+
+    [Fact]
+    public void SettingsViewModel_WhenModelsFolderIsEmpty_WarnsUserAndSetsHasNoModels()
+    {
+        string emptyDir = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "ShawMuOCR_EmptyModels_" + Guid.NewGuid().ToString("N"));
+        System.IO.Directory.CreateDirectory(emptyDir);
+        try
+        {
+            var settingsService = new FakeSettingsService();
+            var startupService = new FakeStartupService();
+            var hotkeyService = new FakeHotkeyService();
+            var emptyProvider = new OcrModelProvider(emptyDir);
+
+            var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, emptyProvider);
+
+            Assert.Empty(vm.AvailableModels);
+            Assert.True(vm.HasNoModels);
+            Assert.False(vm.HasAvailableModels);
+            Assert.Equal(string.Empty, vm.SelectedModel);
+            Assert.Contains("未在", vm.StatusMessage);
+
+            var diagnostics = new ShawMuOCR.Services.ModelMemoryDiagnosticsService(settingsService, emptyProvider);
+            var report = diagnostics.GetReport();
+            Assert.Contains("缺少模型", report.ModelStatus);
+
+            var factory = new OcrEngineFactory(modelProvider: emptyProvider);
+            Assert.Throws<System.IO.DirectoryNotFoundException>(() => factory.Create(new AppSettings()));
+        }
+        finally
+        {
+            if (System.IO.Directory.Exists(emptyDir))
+            {
+                System.IO.Directory.Delete(emptyDir, true);
+            }
+        }
     }
 
     [Fact]
@@ -151,11 +219,13 @@ public class ModelSelectionTests
     }
 
     [Fact]
-    public void OcrModelProvider_ResolveExternalModel_BuiltInModels_AlwaysReturnNull()
+    public void OcrModelProvider_ResolveExternalModel_ChecksActualDiskExistence()
     {
         var provider = new OcrModelProvider();
-        Assert.Null(provider.ResolveExternalModel("PP-OCRv6_small"));
-        Assert.Null(provider.ResolveExternalModel("PP-OCRv6_tiny"));
+        Assert.NotNull(provider.ResolveExternalModel("PP-OCRv6_small"));
+        Assert.Null(provider.ResolveExternalModel("NonExistentModel_XYZ"));
+        Assert.True(provider.HasModel("PP-OCRv6_small"));
+        Assert.False(provider.HasModel("NonExistentModel_XYZ"));
     }
 
     [Fact]
@@ -195,13 +265,17 @@ public class ModelSelectionTests
     }
 
     [Fact]
-    public void AboutViewModel_AppVersion_ReflectsVersion()
+    public void AboutViewModel_AppAndRuntimeVersions_ArePopulatedCorrectly()
     {
         var provider = new OcrModelProvider();
         var settingsService = new FakeSettingsService();
         var diagnostics = new ShawMuOCR.Services.ModelMemoryDiagnosticsService(settingsService, provider);
         var vm = new AboutViewModel(diagnostics, null);
         Assert.Equal("v2.0.0 (Native AOT)", vm.AppVersion);
+        Assert.False(string.IsNullOrWhiteSpace(vm.WindowsVersionText));
+        Assert.Contains(".NET", vm.DotNetRuntimeText);
+        Assert.Contains("v12.", vm.AvaloniaVersionText);
+        Assert.Contains("v2.", vm.SimdPaddleOcrVersionText);
     }
 
     [Fact]

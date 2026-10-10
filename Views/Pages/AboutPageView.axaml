@@ -91,6 +91,50 @@
                 </StackPanel>
             </Border>
 
+            <!-- 运行环境与组件版本卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="运行环境与组件版本" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="运行时环境" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </Border>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="130,*" RowDefinitions="Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+                        <!-- Windows 版本 -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="Windows 版本："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding WindowsVersionText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+
+                        <!-- .NET 运行时版本 -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text=".NET 运行时版本："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DotNetRuntimeText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+
+                        <!-- Avalonia 版本 -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="Avalonia 版本："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding AvaloniaVersionText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+
+                        <!-- SimdPaddleOCR 版本 -->
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="SimdPaddleOCR 版本："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SimdPaddleOcrVersionText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" TextWrapping="Wrap" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- 模型信息卡片 -->
             <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
