@@ -1,0 +1,424 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:views="using:MuClip.Views"
+        xmlns:vm="using:MuClip.ViewModels"
+        xmlns:models="using:MuClip.Models"
+        x:Class="MuClip.Views.ClipboardQuickPanelWindow"
+        x:DataType="vm:ClipboardQuickPanelViewModel"
+        Title="小沐剪贴板"
+        WindowDecorations="None"
+        CanResize="False"
+        ShowInTaskbar="False"
+        Topmost="True"
+        ShowActivated="False"
+        WindowStartupLocation="Manual"
+        Width="368" Height="440"
+        Background="{DynamicResource QuickPanelBackgroundBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.ThemeDictionaries>
+                <ResourceDictionary x:Key="Light">
+                    <SolidColorBrush x:Key="QuickPanelBackgroundBrush" Color="#F4F4F6" />
+                    <SolidColorBrush x:Key="QuickPanelCardBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="QuickPanelBorderBrush" Color="#E5E5E5" />
+                </ResourceDictionary>
+                <ResourceDictionary x:Key="Dark">
+                    <SolidColorBrush x:Key="QuickPanelBackgroundBrush" Color="#1E1E1E" />
+                    <SolidColorBrush x:Key="QuickPanelCardBrush" Color="#282828" />
+                    <SolidColorBrush x:Key="QuickPanelBorderBrush" Color="#383838" />
+                </ResourceDictionary>
+            </ResourceDictionary.ThemeDictionaries>
+        </ResourceDictionary>
+    </Window.Resources>
+
+    <Window.Styles>
+        <Style Selector="ListBoxItem">
+            <Setter Property="Padding" Value="6,4" />
+            <Setter Property="Margin" Value="0,1" />
+            <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
+            <Setter Property="Background" Value="#25007ACC" />
+        </Style>
+        <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#15007ACC" />
+        </Style>
+
+        <Style Selector="Button.tabBtn">
+            <Setter Property="Background" Value="#0D888888" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#20888888" />
+            <Setter Property="CornerRadius" Value="6" />
+            <Setter Property="Padding" Value="8,5" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.tabBtn:pointerover">
+            <Setter Property="Background" Value="#1A007ACC" />
+            <Setter Property="BorderBrush" Value="#40007ACC" />
+        </Style>
+        <Style Selector="Button.tabBtn.active">
+            <Setter Property="Background" Value="#30007ACC" />
+            <Setter Property="BorderBrush" Value="#80007ACC" />
+        </Style>
+
+        <Style Selector="Button.iconActionBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.iconActionBtn:pointerover">
+            <Setter Property="Background" Value="#20888888" />
+        </Style>
+
+        <!-- 搜索框：彻底去除黑色边框线，保持纯净扁平卡片风格 -->
+        <Style Selector="TextBox#SearchBox">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="{DynamicResource QuickPanelCardBrush}" />
+        </Style>
+        <Style Selector="TextBox#SearchBox /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="{DynamicResource QuickPanelCardBrush}" />
+        </Style>
+        <Style Selector="TextBox#SearchBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="{DynamicResource QuickPanelCardBrush}" />
+        </Style>
+        <Style Selector="TextBox#SearchBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="{DynamicResource QuickPanelCardBrush}" />
+        </Style>
+        <Style Selector="TextBox#SearchBox:focus-visible /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="{DynamicResource QuickPanelCardBrush}" />
+        </Style>
+    </Window.Styles>
+
+    <!-- 外层实体卡片：移除透明合成与弥散阴影，采用纯色背景与精细边框，Win11 由系统硬件合成器原生裁切圆角 -->
+    <Border x:Name="RootCardBorder"
+            Background="{DynamicResource QuickPanelBackgroundBrush}"
+            BorderThickness="1"
+            BorderBrush="{DynamicResource QuickPanelBorderBrush}"
+            CornerRadius="8"
+            Padding="10,8,10,8">
+
+        <Panel x:Name="ContentPanel">
+            <!-- 正常列表视图（非编辑状态） -->
+            <Grid IsVisible="{Binding !IsEditing}" RowDefinitions="Auto,Auto,*">
+                <!-- 顶部标题栏：左侧为移动 Title "MuClip"，右侧接搜索框与关闭按钮 -->
+                <Grid Grid.Row="0" Margin="0,0,0,6" ColumnDefinitions="Auto,*,Auto"
+                      Background="Transparent"
+                      PointerPressed="OnTopBarPointerPressed">
+                    <!-- 移动 Title：放置在左侧，保持纯文本 "MuClip" 与微型同步状态指示 -->
+                    <StackPanel Grid.Column="0"
+                                Orientation="Horizontal"
+                                VerticalAlignment="Center"
+                                Margin="2,0,8,0">
+                        <TextBlock Text="MuClip"
+                                   FontSize="13"
+                                   FontWeight="Bold"
+                                   Opacity="0.8"
+                                   VerticalAlignment="Center"
+                                   Cursor="SizeAll"
+                                   ToolTip.Tip="按住拖拽移动面板" />
+                        <Ellipse Width="6" Height="6" Margin="5,0,0,0" VerticalAlignment="Center"
+                                 IsVisible="{Binding HasPairedDevices}"
+                                 Fill="#10B981"
+                                 ToolTip.Tip="{Binding SyncTooltip}" />
+                    </StackPanel>
+
+                    <!-- 搜索框：无黑色边框线，纯净扁平风格 -->
+                    <TextBox x:Name="SearchBox"
+                             Grid.Column="1"
+                             Text="{Binding SearchText, Mode=TwoWay}"
+                             PlaceholderText="🔍 搜索历史或常用语... (Esc 关闭)"
+                             FontSize="12.5"
+                             CornerRadius="6"
+                             BorderThickness="0"
+                             BorderBrush="Transparent"
+                             Padding="8,5"
+                             VerticalAlignment="Center" />
+
+                    <!-- 关闭按钮：普通手型光标，独立点击 -->
+                    <Button Grid.Column="2"
+                            Content="✕"
+                            FontSize="11"
+                            Padding="6,3"
+                            Margin="4,0,0,0"
+                            CornerRadius="4"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Opacity="0.6"
+                            Cursor="Hand"
+                            VerticalAlignment="Center"
+                            Command="{Binding $parent[views:ClipboardQuickPanelWindow].Close}"
+                            ToolTip.Tip="关闭面板 (Esc)" />
+                </Grid>
+
+                <!-- 切换标签 -->
+                <Grid Grid.Row="1" ColumnDefinitions="*,*" Margin="0,0,0,6">
+                    <!-- 剪贴板 Tab -->
+                    <Button Grid.Column="0"
+                            Classes="tabBtn"
+                            Classes.active="{Binding IsHistoryTabSelected}"
+                            Margin="0,0,2,0"
+                            Command="{Binding SelectHistoryTabCommand}">
+                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                            <TextBlock Text="📋 剪贴板" FontWeight="SemiBold" FontSize="12.5" />
+                            <Border Background="#20888888" CornerRadius="8" Padding="5,1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding HistoryCount}" FontSize="10.5" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 常用语 Tab：左键切换，右键新增常用语 -->
+                    <Button Grid.Column="1"
+                            Classes="tabBtn"
+                            Classes.active="{Binding IsPhrasesTabSelected}"
+                            Margin="2,0,0,0"
+                            Command="{Binding SelectPhrasesTabCommand}"
+                            ToolTip.Tip="左键切换常用语，右键新增常用语">
+                        <Button.ContextFlyout>
+                            <MenuFlyout>
+                                <MenuItem Header="➕ 新增常用语"
+                                          Command="{Binding StartAddNewPhraseCommand}" />
+                            </MenuFlyout>
+                        </Button.ContextFlyout>
+                        <StackPanel Orientation="Horizontal" Spacing="4" HorizontalAlignment="Center">
+                            <TextBlock Text="💬 常用语" FontWeight="SemiBold" FontSize="12.5" />
+                            <Border Background="#20888888" CornerRadius="8" Padding="5,1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding PhrasesCount}" FontSize="10.5" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+                </Grid>
+
+                <!-- 主内容区域：剪贴板与常用语完全共用同一套 ListBox UI，支持长按拖拽重排 -->
+                <Grid Grid.Row="2">
+                    <ListBox x:Name="ItemsListBox"
+                             ItemsSource="{Binding DisplayItems}"
+                             SelectedItem="{Binding SelectedItem, Mode=TwoWay}"
+                             ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                             ScrollViewer.VerticalScrollBarVisibility="Auto"
+                             ScrollViewer.IsScrollInertiaEnabled="True"
+                             Background="Transparent"
+                             CornerRadius="6">
+                        <ListBox.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <VirtualizingStackPanel />
+                            </ItemsPanelTemplate>
+                        </ListBox.ItemsPanel>
+                        <ListBox.ItemTemplate>
+                            <DataTemplate x:DataType="models:MuClipItem">
+                                <Panel Background="Transparent"
+                                       PointerPressed="OnItemPointerPressed">
+                                    <!-- 1. 正常状态下的卡片内容：未在拖拽时显示 -->
+                                    <Grid ColumnDefinitions="*,Auto"
+                                          Background="Transparent"
+                                          MinHeight="46"
+                                          IsVisible="{Binding !IsDragging}">
+                                        <!-- 左侧可点击文本区域（长按移动重排，轻击就地粘贴） -->
+                                        <Grid Grid.Column="0"
+                                              Background="Transparent"
+                                              Cursor="Hand">
+                                            <StackPanel VerticalAlignment="Center" Margin="2,0,4,0">
+                                                <TextBlock Text="{Binding Preview}"
+                                                           FontSize="13.5"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           MaxLines="2" />
+                                                <!-- 时间与字符统计小字 -->
+                                                <TextBlock Text="{Binding TimeAndCharCount}"
+                                                           FontSize="10.5"
+                                                           Opacity="0.5"
+                                                           Margin="0,3,0,0" />
+                                            </StackPanel>
+                                        </Grid>
+
+                                        <!-- 右侧操作图标按钮（收藏 + 编辑 + 复制 + 删除） -->
+                                        <StackPanel Grid.Column="1"
+                                                    Orientation="Horizontal"
+                                                    Spacing="1"
+                                                    VerticalAlignment="Center">
+                                            <!-- 收藏/常用语按钮：仅在剪贴板历史 Tab 显示，常用语 Tab 自动隐藏，避免与删除重叠 -->
+                                            <Button Classes="iconActionBtn"
+                                                    IsVisible="{Binding $parent[views:ClipboardQuickPanelWindow].ViewModel.IsHistoryTabSelected}"
+                                                    Command="{Binding $parent[views:ClipboardQuickPanelWindow].ViewModel.ToggleFavoriteCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="加入常用语 / 取消常用语">
+                                                <TextBlock Text="{Binding FavoriteIcon}"
+                                                           Foreground="{Binding FavoriteColor}"
+                                                           Opacity="{Binding FavoriteOpacity}"
+                                                           FontSize="14" />
+                                            </Button>
+
+                                            <!-- 编辑按钮：斜角笔图标 ✎ -->
+                                            <Button Classes="iconActionBtn"
+                                                    Command="{Binding $parent[views:ClipboardQuickPanelWindow].ViewModel.StartEditCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="编辑内容">
+                                                <TextBlock Text="✎"
+                                                           FontSize="13"
+                                                           Opacity="0.75" />
+                                            </Button>
+
+                                            <!-- 仅复制按钮（复制后不关闭面板） -->
+                                            <Button Classes="iconActionBtn"
+                                                    Command="{Binding $parent[views:ClipboardQuickPanelWindow].ViewModel.CopyOnlyCommand}"
+                                                    CommandParameter="{Binding Content}"
+                                                    ToolTip.Tip="复制到剪贴板 (不关闭面板)">
+                                                <TextBlock Text="📋"
+                                                           FontSize="12"
+                                                           Opacity="0.65" />
+                                            </Button>
+
+                                            <!-- 删除按钮 -->
+                                            <Button Classes="iconActionBtn"
+                                                    Command="{Binding $parent[views:ClipboardQuickPanelWindow].ViewModel.DeleteItemCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    ToolTip.Tip="删除记录">
+                                                <TextBlock Text="🗑"
+                                                           FontSize="12"
+                                                           Opacity="0.65" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+
+                                    <!-- 2. 拖拽中的占位边框槽位：仅显示虚线边框与半透明背景，指示队列插槽位置 -->
+                                    <Panel IsVisible="{Binding IsDragging}"
+                                           MinHeight="46"
+                                           Margin="0,1">
+                                        <Rectangle Fill="#0A007ACC"
+                                                   Stroke="#80007ACC"
+                                                   StrokeThickness="1.5"
+                                                   StrokeDashArray="3,3"
+                                                   RadiusX="6"
+                                                   RadiusY="6" />
+                                        <StackPanel Orientation="Horizontal"
+                                                    HorizontalAlignment="Center"
+                                                    VerticalAlignment="Center"
+                                                    Spacing="6"
+                                                    Opacity="0.75">
+                                            <TextBlock Text="⇣"
+                                                       FontSize="13"
+                                                       Foreground="#007ACC"
+                                                       FontWeight="Bold" />
+                                            <TextBlock Text="松开放置在此处"
+                                                       FontSize="11.5"
+                                                       Foreground="#007ACC"
+                                                       FontWeight="SemiBold" />
+                                        </StackPanel>
+                                    </Panel>
+                                </Panel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </Grid>
+            </Grid>
+
+            <!-- 就地编辑视图（处于编辑状态时全卡片覆盖） -->
+            <Grid IsVisible="{Binding IsEditing}" RowDefinitions="Auto,*,Auto">
+                <!-- 编辑标题栏 -->
+                <Grid Grid.Row="0" Margin="0,0,0,6" ColumnDefinitions="*,Auto">
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="✎" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding EditingTitle}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button Grid.Column="1"
+                            Content="✕"
+                            FontSize="11"
+                            Padding="6,2"
+                            CornerRadius="4"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Cursor="Hand"
+                            Command="{Binding CancelEditCommand}"
+                            ToolTip.Tip="取消编辑 (Esc)" />
+                </Grid>
+
+                <!-- 多行文本编辑框 -->
+                <TextBox x:Name="EditingTextBox"
+                         Grid.Row="1"
+                         Text="{Binding EditingContent, Mode=TwoWay}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         FontSize="13.5"
+                         CornerRadius="6"
+                         Padding="8,6"
+                         Margin="0,0,0,8" />
+
+                <!-- 底部保存 / 取消操作栏 -->
+                <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto">
+                    <TextBlock Text="[Ctrl+Enter] 保存  [Esc] 取消" FontSize="10.5" Opacity="0.5" VerticalAlignment="Center" />
+                    <Button Grid.Column="1"
+                            Content="取消"
+                            FontSize="12"
+                            Padding="12,5"
+                            Margin="0,0,6,0"
+                            CornerRadius="6"
+                            Command="{Binding CancelEditCommand}" />
+                    <Button Grid.Column="2"
+                            Content="保存"
+                            Classes="accent"
+                            FontSize="12"
+                            Padding="14,5"
+                            CornerRadius="6"
+                            Background="#007ACC"
+                            Foreground="White"
+                            Command="{Binding SaveEditCommand}" />
+                </Grid>
+            </Grid>
+
+            <!-- 浮动拖拽预览卡片（置顶跟随鼠标光标，IsHitTestVisible="False" 不阻挡事件命中底层列表项） -->
+            <Border x:Name="DragPreviewCard"
+                    IsHitTestVisible="False"
+                    IsVisible="False"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Top"
+                    Width="336"
+                    Background="{DynamicResource QuickPanelCardBrush}"
+                    BorderBrush="#007ACC"
+                    BorderThickness="1.5"
+                    CornerRadius="8"
+                    BoxShadow="0 4 12 0 #30000000"
+                    Padding="10,7">
+                <Border.RenderTransform>
+                    <TranslateTransform X="0" Y="0" />
+                </Border.RenderTransform>
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                        <TextBlock x:Name="DragPreviewText"
+                                   FontSize="13"
+                                   FontWeight="SemiBold"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="2" />
+                        <TextBlock x:Name="DragPreviewSubText"
+                                   FontSize="10.5"
+                                   Opacity="0.5"
+                                   Margin="0,3,0,0" />
+                    </StackPanel>
+                    <Border Grid.Column="1"
+                            Background="#18007ACC"
+                            CornerRadius="4"
+                            Padding="6,3"
+                            VerticalAlignment="Center"
+                            Margin="6,0,0,0">
+                        <TextBlock Text="移动中..."
+                                   FontSize="11"
+                                   Foreground="#007ACC"
+                                   FontWeight="SemiBold" />
+                    </Border>
+                </Grid>
+            </Border>
+        </Panel>
+    </Border>
+</Window>

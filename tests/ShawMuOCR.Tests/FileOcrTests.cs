@@ -212,4 +212,51 @@ public class FileOcrTests
             }
         }
     }
+
+    [Fact]
+    public void MainViewModel_PageNavigation_SwitchesLogoAndTitle()
+    {
+        var coordinator = new FakeCoordinator();
+        var clipboard = new FakeClipboardService();
+        var settings = new FakeSettingsService();
+
+        var vm = new MainViewModel(
+            coordinator,
+            clipboard,
+            settings,
+            () => null!);
+
+        var changedProperties = new System.Collections.Generic.List<string>();
+        vm.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName != null) changedProperties.Add(e.PropertyName);
+        };
+
+        // 默认 OCR 页面
+        Assert.Equal("小沐 OCR", vm.AppTitleText);
+        Assert.Equal("小沐 OCR", vm.WindowTitle);
+
+        // 切换到剪贴板页
+        changedProperties.Clear();
+        vm.CurrentPage = AppNavPage.Clipboard;
+
+        Assert.Equal("小沐剪贴板", vm.AppTitleText);
+        Assert.Equal("小沐剪贴板", vm.WindowTitle);
+        Assert.Contains(nameof(vm.AppTitleText), changedProperties);
+        Assert.Contains(nameof(vm.WindowTitle), changedProperties);
+        Assert.Contains(nameof(vm.AppLogo), changedProperties);
+        Assert.Contains(nameof(vm.WindowIcon), changedProperties);
+
+        // 切换回设置页面，自动恢复为小沐 OCR
+        changedProperties.Clear();
+        vm.CurrentPage = AppNavPage.Settings;
+
+        Assert.Equal("小沐 OCR", vm.AppTitleText);
+        Assert.Equal("小沐 OCR", vm.WindowTitle);
+        Assert.Contains(nameof(vm.AppTitleText), changedProperties);
+        Assert.Contains(nameof(vm.WindowTitle), changedProperties);
+        Assert.Contains(nameof(vm.AppLogo), changedProperties);
+        Assert.Contains(nameof(vm.WindowIcon), changedProperties);
+    }
 }
+

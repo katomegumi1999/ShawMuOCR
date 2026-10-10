@@ -148,4 +148,129 @@ public class SettingsAutoSaveTests
 
         Assert.Equal("new_test_appid_123", settingsService.Current.BaiduAppId);
     }
+
+    [Fact]
+    public void SettingsViewModel_ToggleEnableClipboard_DefaultsToFalseAndAutoSaves()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        Assert.False(vm.EnableClipboard);
+        Assert.False(settingsService.Current.EnableClipboard);
+
+        vm.EnableClipboard = true;
+        Assert.True(settingsService.Current.EnableClipboard);
+
+        vm.EnableClipboard = false;
+        Assert.False(settingsService.Current.EnableClipboard);
+    }
+
+    [Fact]
+    public void SettingsViewModel_SwitchOcrBackend_DefaultsToAutoAndAutoSaves()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        Assert.Equal("Auto", vm.OcrBackend);
+        Assert.Equal("Auto", vm.SelectedOcrBackendOption.Value);
+        Assert.Equal("Auto", settingsService.Current.OcrBackend);
+        Assert.True(vm.IsAutoBackendSelected);
+        Assert.Contains("自动", vm.OcrBackendHint);
+        Assert.False(string.IsNullOrWhiteSpace(vm.AutoResolvedBackendText));
+        Assert.False(string.IsNullOrWhiteSpace(vm.AutoResolvedReasonText));
+
+        // 切换到 GPU (Vulkan)
+        vm.SelectedOcrBackendOption = vm.AvailableOcrBackends[1];
+        Assert.Equal("GPU", vm.OcrBackend);
+        Assert.Equal("GPU", settingsService.Current.OcrBackend);
+        Assert.False(vm.IsAutoBackendSelected);
+        Assert.Contains("Vulkan", vm.OcrBackendHint);
+
+        // 切换到 CPU
+        vm.SelectedOcrBackendOption = vm.AvailableOcrBackends[2];
+        Assert.Equal("CPU", vm.OcrBackend);
+        Assert.Equal("CPU", settingsService.Current.OcrBackend);
+        Assert.False(vm.IsAutoBackendSelected);
+        Assert.Contains("CPU", vm.OcrBackendHint);
+    }
+
+    [Fact]
+    public void PaddleOcrV6Engine_ParseOcrBackend_MapsValuesCorrectly()
+    {
+        Assert.Equal(Sdcb.SimdPaddleOCR.OcrBackend.Auto, ShawMuOCR.OCR.PaddleOcrV6Engine.ParseOcrBackend(null));
+        Assert.Equal(Sdcb.SimdPaddleOCR.OcrBackend.Cpu, ShawMuOCR.OCR.PaddleOcrV6Engine.ParseOcrBackend("CPU"));
+        Assert.Equal(Sdcb.SimdPaddleOCR.OcrBackend.Auto, ShawMuOCR.OCR.PaddleOcrV6Engine.ParseOcrBackend("Auto"));
+        Assert.Equal(Sdcb.SimdPaddleOCR.OcrBackend.Vulkan, ShawMuOCR.OCR.PaddleOcrV6Engine.ParseOcrBackend("GPU"));
+        Assert.Equal(Sdcb.SimdPaddleOCR.OcrBackend.Vulkan, ShawMuOCR.OCR.PaddleOcrV6Engine.ParseOcrBackend("Vulkan"));
+    }
+
+    [Fact]
+    public void PaddleOcrV6Engine_ProbeBackendInfo_ReturnsResolvedModeAndDisplayText()
+    {
+        var probe = ShawMuOCR.OCR.PaddleOcrV6Engine.ProbeBackendInfo();
+        Assert.NotNull(probe);
+        Assert.True(probe.AutoResolvedMode is "GPU" or "CPU");
+        Assert.False(string.IsNullOrWhiteSpace(probe.AutoResolvedDisplayText));
+        Assert.False(string.IsNullOrWhiteSpace(probe.AutoDecisionReason));
+    }
+
+    [Fact]
+    public void PaddleOcrV6Engine_EnumerateAllGpuDevices_ExecutesSafely()
+    {
+        var gpus = ShawMuOCR.OCR.PaddleOcrV6Engine.EnumerateAllGpuDevices();
+        Assert.NotNull(gpus);
+        // 不论测试机是否有 GPU 或有几块 GPU，均不应抛出异常
+        foreach (var g in gpus)
+        {
+            Assert.True(g.Index >= 0);
+            Assert.False(string.IsNullOrWhiteSpace(g.Name));
+        }
+    }
+
+    [Fact]
+    public void SettingsViewModel_SelectedGpuIndex_AutoSavesAndTogglesSelector()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+        Assert.Equal(-1, vm.SelectedGpuIndex);
+        Assert.NotEmpty(vm.AvailableGpuDevices);
+        Assert.Equal(-1, vm.AvailableGpuDevices[0].Index);
+
+        int initialSaveCalls = settingsService.SaveCallCount;
+
+        // 切换 GPU 索引
+        vm.SelectedGpuIndex = 0;
+        Assert.True(settingsService.SaveCallCount > initialSaveCalls);
+        Assert.Equal(0, settingsService.Current.SelectedGpuIndex);
+
+        // 校验 ShowGpuDeviceSelector: 仅在 HasMultipleGpus 且非 CPU 模式时显示
+        if (vm.HasMultipleGpus)
+        {
+            vm.OcrBackend = "GPU";
+            Assert.True(vm.ShowGpuDeviceSelector);
+
+            vm.OcrBackend = "CPU";
+            Assert.False(vm.ShowGpuDeviceSelector);
+        }
+        else
+        {
+            // 单 GPU 或无 GPU 环境下无论选什么均不显示选择器
+            vm.OcrBackend = "GPU";
+            Assert.False(vm.ShowGpuDeviceSelector);
+            vm.OcrBackend = "CPU";
+            Assert.False(vm.ShowGpuDeviceSelector);
+        }
+    }
 }

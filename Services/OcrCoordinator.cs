@@ -23,6 +23,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
     private readonly object _stateLock = new();
     private IOcrEngine _ocrEngine;
+    private IIdleSleepService? _idleSleepService;
+    private Task? _warmupTask;
     private OcrSession? _currentSession;
     private OcrState _currentState = OcrState.Idle;
     private string? _statusMessage = "就绪";
@@ -47,7 +49,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
         ISettingsService settingsService,
         IScreenSelectionService? selectionService = null,
         ILoggerService? logger = null,
-        ITranslationService? translationService = null)
+        ITranslationService? translationService = null,
+        IIdleSleepService? idleSleepService = null)
     {
         _captureService = captureService;
         _selectionService = selectionService ?? new AvaloniaScreenSelectionFallback();
@@ -56,12 +59,99 @@ public sealed class OcrCoordinator : IOcrCoordinator
         _settingsService = settingsService;
         _logger = logger;
         _translationService = translationService ?? new TranslationService(settingsService);
+        _idleSleepService = idleSleepService;
 
-        // 默认初始化当前模型
+        // 默认初始化当前模型（捕获启动异常并写入错误日志，防止因目录权限或模型文件问题导致启动直接闪退）
         _cachedSettings = _settingsService.Current.Clone();
-        _ocrEngine = _engineFactory.Create(_cachedSettings);
+        try
+        {
+            _ocrEngine = _engineFactory.Create(_cachedSettings);
+            if (_ocrEngine is ShawMuOCR.OCR.PaddleOcrV6Engine { ConfiguredBackend: not Sdcb.SimdPaddleOCR.OcrBackend.Cpu })
+            {
+                StartBackgroundWarmup(_ocrEngine, "启动初始化", delayMs: 300);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("启动初始化 OCR 模型引擎失败", ex);
+            _statusMessage = $"⚠️ OCR 模型加载失败: {ex.Message}";
+            _ocrEngine = new FaultedOcrEngine(ex.Message);
+        }
 
         _settingsService.SettingsChanged += OnSettingsChanged;
+    }
+
+    private sealed class FaultedOcrEngine(string errorMessage) : IOcrEngine
+    {
+        public string ModelName => "Faulted";
+
+        public Task<OcrResult> RecognizeAsync(OcrImage image, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException($"OCR 引擎未就绪: {errorMessage}");
+
+        public void Dispose()
+        {
+        }
+    }
+
+    public void AttachIdleSleepService(IIdleSleepService idleSleepService)
+    {
+        _idleSleepService = idleSleepService;
+    }
+
+    private void StartBackgroundWarmup(IOcrEngine engine, string scene, int delayMs = 0)
+    {
+        lock (_stateLock)
+        {
+            _logger?.Info($"[{scene}] 正在后台异步预热 OCR 引擎 (包含 GPU Vulkan 着色器管线 / 内存池)...");
+            _warmupTask = Task.Run(async () =>
+            {
+                try
+                {
+                    if (delayMs > 0)
+                    {
+                        await Task.Delay(delayMs);
+                    }
+                    var sw = Stopwatch.StartNew();
+                    await engine.WarmupAsync();
+                    sw.Stop();
+                    _logger?.Info($"[{scene}] OCR 引擎预热就绪，耗时 {sw.ElapsedMilliseconds} ms");
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn($"[{scene}] OCR 引擎预热异常: {ex.Message}");
+                }
+            });
+        }
+    }
+
+    private void CheckAndTriggerWarmup()
+    {
+        if (_idleSleepService?.TryWakeUp() == true)
+        {
+            StartBackgroundWarmup(_ocrEngine, "休眠唤醒");
+        }
+    }
+
+    private async Task AwaitWarmupAsync()
+    {
+        Task? warmup;
+        lock (_stateLock)
+        {
+            warmup = _warmupTask;
+            _warmupTask = null;
+        }
+
+        if (warmup != null)
+        {
+            try
+            {
+                await warmup;
+            }
+            catch
+            {
+                // 预热异常已在内部消化，不影响正式流程
+            }
+        }
     }
 
     private AppSettings _cachedSettings;
@@ -78,7 +168,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
                 _cachedSettings.ExternalModelPath != settings.ExternalModelPath ||
                 _cachedSettings.ExternalApiUrl != settings.ExternalApiUrl ||
                 _cachedSettings.EnableAngleDetection != settings.EnableAngleDetection ||
-                _cachedSettings.MaxSideLen != settings.MaxSideLen)
+                _cachedSettings.MaxSideLen != settings.MaxSideLen ||
+                !string.Equals(_cachedSettings.OcrBackend, settings.OcrBackend, StringComparison.OrdinalIgnoreCase) ||
+                _cachedSettings.SelectedGpuIndex != settings.SelectedGpuIndex)
             {
                 try
                 {
@@ -86,6 +178,11 @@ public sealed class OcrCoordinator : IOcrCoordinator
                     _ocrEngine.Dispose();
                     _ocrEngine = newEngine;
                     _cachedSettings = settings.Clone();
+
+                    if (_ocrEngine is ShawMuOCR.OCR.PaddleOcrV6Engine { ConfiguredBackend: not Sdcb.SimdPaddleOCR.OcrBackend.Cpu })
+                    {
+                        StartBackgroundWarmup(_ocrEngine, "切换配置");
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -99,6 +196,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
     public async Task StartScreenCaptureAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+
+        CheckAndTriggerWarmup();
 
         lock (_stateLock)
         {
@@ -209,6 +308,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        CheckAndTriggerWarmup();
+
         lock (_stateLock)
         {
             if (_currentState is OcrState.Selecting or OcrState.Recognizing)
@@ -265,6 +366,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        CheckAndTriggerWarmup();
+
         lock (_stateLock)
         {
             if (_currentState is OcrState.Selecting or OcrState.Recognizing)
@@ -320,6 +423,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         try
         {
+            // 如果休眠唤醒时的后台预热尚未完成，平滑等待就绪，避免并发重入冲突
+            await AwaitWarmupAsync();
+
             // 执行后台推理
             var result = await Task.Run(async () =>
             {
@@ -387,6 +493,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(image);
 
+        await AwaitWarmupAsync();
+
         return await Task.Run(async () =>
         {
             return await _ocrEngine.RecognizeAsync(image);
@@ -451,6 +559,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
         var totalSw = Stopwatch.StartNew();
         try
         {
+            // 如果休眠唤醒时的后台预热尚未完成，平滑等待就绪
+            await AwaitWarmupAsync();
+
             // 1. OCR 识别数据提取（提取完成后立刻释放图片，内存 0 泄露）
             OcrResult ocrResult;
             try

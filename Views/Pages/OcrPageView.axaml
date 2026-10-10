@@ -5,7 +5,7 @@
              x:DataType="vm:MainViewModel"
              DragDrop.AllowDrop="True">
 
-    <Grid RowDefinitions="Auto,*">
+    <Grid RowDefinitions="Auto,*" Background="Transparent">
         <!-- 顶部操作与信息条 (划归截屏识别 + 文件上传入口) -->
         <Border Grid.Row="0" Margin="0,0,0,12" Padding="12,8"
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
@@ -95,15 +95,24 @@
                     <Border Grid.Row="0" Padding="12,6"
                             Background="{DynamicResource SubtleFillColorSecondaryBrush}">
                         <DockPanel LastChildFill="True">
-                            <Button DockPanel.Dock="Right"
-                                    Content="💾 保存图片"
-                                    Command="{Binding SavePreviewImageCommand}"
-                                    IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                    FontSize="11"
-                                    Padding="8,3"
-                                    CornerRadius="4"
-                                    VerticalAlignment="Center"
-                                    ToolTip.Tip="将当前识别的截图另存为图片文件 (自动记忆上次保存路径与预估体积)" />
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <Button Content="🔄 旋转 90°"
+                                        Command="{Binding RotatePreviewImageCommand}"
+                                        IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                        FontSize="11"
+                                        Padding="8,3"
+                                        CornerRadius="4"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="将当前图片顺时针旋转 90° 并重新执行 OCR 识别" />
+                                <Button Content="💾 保存图片"
+                                        Command="{Binding SavePreviewImageCommand}"
+                                        IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                        FontSize="11"
+                                        Padding="8,3"
+                                        CornerRadius="4"
+                                        VerticalAlignment="Center"
+                                        ToolTip.Tip="将当前识别的截图另存为图片文件 (自动记忆上次保存路径与预估体积)" />
+                            </StackPanel>
                             <TextBlock DockPanel.Dock="Left" Text="图像/文档预览 (支持拖拽图片或 PDF 至此)" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
                         </DockPanel>
                     </Border>

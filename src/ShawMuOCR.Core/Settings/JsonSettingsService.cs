@@ -88,7 +88,9 @@ public sealed class JsonSettingsService : ISettingsService
         lock (_lock)
         {
             _current = settings.Clone();
+            string json = JsonSerializer.Serialize(_current, AppSettingsJsonContext.Default.AppSettings);
 
+            bool savedPrimary = false;
             try
             {
                 string? dir = Path.GetDirectoryName(_settingsFilePath);
@@ -97,12 +99,26 @@ public sealed class JsonSettingsService : ISettingsService
                     Directory.CreateDirectory(dir);
                 }
 
-                string json = JsonSerializer.Serialize(_current, AppSettingsJsonContext.Default.AppSettings);
                 File.WriteAllText(_settingsFilePath, json);
+                savedPrimary = true;
             }
             catch
             {
-                // 忽略写入失败
+                // 程序目录无写入权限（如 Program Files 非管理员运行）时回退至 AppData
+            }
+
+            if (!savedPrimary)
+            {
+                try
+                {
+                    string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ShawMuOCR");
+                    Directory.CreateDirectory(appDataDir);
+                    File.WriteAllText(Path.Combine(appDataDir, "settings.json"), json);
+                }
+                catch
+                {
+                    // 忽略写入失败
+                }
             }
 
             SettingsChanged?.Invoke(_current);

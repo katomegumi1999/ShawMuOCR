@@ -9,6 +9,7 @@ public interface IIdleSleepService : IDisposable
 {
     bool IsSleeping { get; }
     void ReportActivity();
+    bool TryWakeUp();
 }
 
 public sealed class IdleSleepService : IIdleSleepService
@@ -17,11 +18,21 @@ public sealed class IdleSleepService : IIdleSleepService
     private readonly IModelMemoryDiagnosticsService _diagnosticsService;
     private readonly IOcrCoordinator? _coordinator;
     private readonly System.Threading.Timer _checkTimer;
+    private readonly object _lock = new();
     private DateTime _lastActivityTime = DateTime.UtcNow;
     private bool _isSleeping;
     private bool _disposed;
 
-    public bool IsSleeping => _isSleeping;
+    public bool IsSleeping
+    {
+        get
+        {
+            lock (_lock)
+            {
+                return _isSleeping;
+            }
+        }
+    }
 
     public IdleSleepService(
         ISettingsService settingsService,
@@ -43,8 +54,25 @@ public sealed class IdleSleepService : IIdleSleepService
 
     public void ReportActivity()
     {
-        _lastActivityTime = DateTime.UtcNow;
-        _isSleeping = false;
+        lock (_lock)
+        {
+            _lastActivityTime = DateTime.UtcNow;
+            _isSleeping = false;
+        }
+    }
+
+    public bool TryWakeUp()
+    {
+        lock (_lock)
+        {
+            _lastActivityTime = DateTime.UtcNow;
+            if (_isSleeping)
+            {
+                _isSleeping = false;
+                return true;
+            }
+            return false;
+        }
     }
 
     private void OnCoordinatorStateChanged(OcrState state, string? message)
@@ -62,17 +90,26 @@ public sealed class IdleSleepService : IIdleSleepService
             return;
         }
 
-        // 如果正在进行选区或识别中，不进入休眠
-        if (_coordinator?.CurrentState is OcrState.Selecting or OcrState.Recognizing)
+        bool shouldSleep = false;
+        lock (_lock)
         {
-            _lastActivityTime = DateTime.UtcNow;
-            return;
+            // 如果正在进行选区或识别中，不进入休眠
+            if (_coordinator?.CurrentState is OcrState.Selecting or OcrState.Recognizing)
+            {
+                _lastActivityTime = DateTime.UtcNow;
+                return;
+            }
+
+            var idleThreshold = TimeSpan.FromMinutes(currentSettings.IdleSleepMinutes);
+            if (!_isSleeping && (DateTime.UtcNow - _lastActivityTime) >= idleThreshold)
+            {
+                _isSleeping = true;
+                shouldSleep = true;
+            }
         }
 
-        var idleThreshold = TimeSpan.FromMinutes(currentSettings.IdleSleepMinutes);
-        if (!_isSleeping && (DateTime.UtcNow - _lastActivityTime) >= idleThreshold)
+        if (shouldSleep)
         {
-            _isSleeping = true;
             try
             {
                 _diagnosticsService.TrimMemory();

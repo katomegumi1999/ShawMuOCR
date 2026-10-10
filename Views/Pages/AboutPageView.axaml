@@ -128,6 +128,57 @@
                 </StackPanel>
             </Border>
 
+            <!-- 硬件与推理架构卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="12">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="硬件与推理加速" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding EffectiveBackendBadgeText}" FontSize="11" FontWeight="Medium"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                        </Border>
+                    </Grid>
+
+                    <Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto" Margin="0,4,0,0">
+                        <!-- CPU 处理器 -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU 处理器："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CpuHardwareText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+
+                        <!-- CPU 指令集 -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="CPU 指令集："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CpuInstructionSetText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+
+                        <!-- GPU 推理架构 -->
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="GPU 推理架构："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GpuArchitectureText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+
+                        <!-- 用户配置加速模式 -->
+                        <TextBlock Grid.Row="3" Grid.Column="0" Text="配置加速模式："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding ConfiguredBackendText}"
+                                   FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+
+                        <!-- 当前生效后端 -->
+                        <TextBlock Grid.Row="4" Grid.Column="0" Text="当前生效后端："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
+                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding EffectiveBackendText}"
+                                   FontWeight="Medium" FontSize="13" Margin="0,3"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" TextWrapping="Wrap" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
             <!-- 内存实时检测仪表盘 -->
             <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"

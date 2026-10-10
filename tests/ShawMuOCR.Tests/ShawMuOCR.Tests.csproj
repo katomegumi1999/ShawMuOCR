@@ -12,17 +12,25 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
-    <PackageReference Include="SkiaSharp" Version="4.154.0-preview.1.26454.9" />
+    <PackageReference Include="SkiaSharp" Version="4.155.0-preview.2.26479.13" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\ShawMuOCR.Core\ShawMuOCR.Core.csproj" />
     <ProjectReference Include="..\..\src\ShawMuOCR.Windows\ShawMuOCR.Windows.csproj" />
+    <ProjectReference Include="..\..\src\MuClip\MuClip.csproj" />
     <ProjectReference Include="..\..\ShawMuOCR.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="..\..\models\**">
+    <None Include="..\..\Libs\x64\muclip_core.dll">
+      <Link>muclip_core.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="..\..\Models\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Link>models\%(RecursiveDir)%(Filename)%(Extension)</Link>
     </None>

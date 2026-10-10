@@ -10,6 +10,7 @@ public static class User32
     public const int SM_CYVIRTUALSCREEN = 79;
 
     public const int WM_HOTKEY = 0x0312;
+    public const uint WM_CLIPBOARDUPDATE = 0x031D;
     public const int WM_DESTROY = 0x0002;
     public const int WM_USER = 0x0400;
     public const int WM_CLOSE_HOTKEY_WINDOW = WM_USER + 101;
@@ -195,6 +196,17 @@ public static class User32
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool IsClipboardFormatAvailable(uint format);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool AddClipboardFormatListener(IntPtr hwnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool RemoveClipboardFormatListener(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
 
     public const uint GR_GDIOBJECTS = 0;
     public const uint GR_USEROBJECTS = 1;

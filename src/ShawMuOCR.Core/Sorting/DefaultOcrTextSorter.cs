@@ -5,7 +5,9 @@ namespace ShawMuOCR.Core.Sorting;
 
 public sealed class DefaultOcrTextSorter : IOcrTextSorter
 {
-    public string SortAndFormat(IReadOnlyList<OcrTextBlock> blocks)
+    public string SortAndFormat(IReadOnlyList<OcrTextBlock> blocks) => SortAndFormat(blocks, false);
+
+    public string SortAndFormat(IReadOnlyList<OcrTextBlock> blocks, bool separateColumns)
     {
         if (blocks == null || blocks.Count == 0)
         {
@@ -78,17 +80,25 @@ public sealed class DefaultOcrTextSorter : IOcrTextSorter
 
                 if (lineSb.Length > 0)
                 {
-                    char lastChar = lineSb[^1];
-                    char firstChar = text[0];
-
-                    // 如果两端都是中日韩字符，不加空格；若是西文字符，则增加空格分隔
-                    if (IsCjk(lastChar) && IsCjk(firstChar))
+                    if (separateColumns)
                     {
-                        // 直接连接
+                        // 开启按检测框分列：同一行内不同的文字框以制表符 '\t' 分隔，写入 Excel 时自动拆入相邻单元格（A1, B1, C1...）
+                        lineSb.Append('\t');
                     }
                     else
                     {
-                        lineSb.Append(' ');
+                        char lastChar = lineSb[^1];
+                        char firstChar = text[0];
+
+                        // 如果两端都是中日韩字符，不加空格；若是西文字符，则增加空格分隔
+                        if (IsCjk(lastChar) && IsCjk(firstChar))
+                        {
+                            // 直接连接
+                        }
+                        else
+                        {
+                            lineSb.Append(' ');
+                        }
                     }
                 }
 

@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
+using System.IO;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.Hotkey;
@@ -20,6 +21,8 @@ using ShawMuOCR.Windows.Clipboard;
 using ShawMuOCR.Windows.Hotkey;
 using ShawMuOCR.Windows.ScreenCapture;
 using ShawMuOCR.Windows.Startup;
+using MuClip.Services;
+using MuClip.Views;
 
 namespace ShawMuOCR;
 
@@ -39,6 +42,8 @@ public partial class App : Application
     private const int HOTKEY_ID_CAPTURE = 2;
     private const int HOTKEY_ID_ANNOTATE = 3;
     private const int HOTKEY_ID_TRANSLATE = 4;
+    private const int HOTKEY_ID_CLIPBOARD = 5;
+    private const int HOTKEY_ID_PHRASES = 6;
 
     private ISettingsService? _settingsService;
     private IStartupService? _startupService;
@@ -51,6 +56,7 @@ public partial class App : Application
     private IModelMemoryDiagnosticsService? _memoryDiagnosticsService;
     private IIdleSleepService? _idleSleepService;
     private ILoggerService? _loggerService;
+    private IMuClipService? _muClipService;
 
     private MainWindow? _mainWindow;
     private MainViewModel? _mainViewModel;
@@ -92,7 +98,7 @@ public partial class App : Application
             };
 
             _startupService = new WindowsStartupService();
-            _clipboardService = new WindowsClipboardService();
+            _clipboardService = WindowsClipboardService.Shared;
             _modelProvider = new OcrModelProvider();
             _textSorter = new DefaultOcrTextSorter();
             _engineFactory = new OcrEngineFactory(_textSorter, _modelProvider);
@@ -103,8 +109,16 @@ public partial class App : Application
             _coordinator = new OcrCoordinator(captureService, _engineFactory, _clipboardService, _settingsService, selectionService, _loggerService);
             _hotkeyService = new WindowsGlobalHotkeyService();
             _idleSleepService = new IdleSleepService(_settingsService, _memoryDiagnosticsService, _coordinator);
+            _coordinator.AttachIdleSleepService(_idleSleepService);
 
-            // 2. 注册全局快捷键（截图 OCR 与 截图复制）
+            // 2. 初始化小沐剪贴板服务（仅在用户开启小沐剪贴板设置时初始化）
+            if (_settingsService.Current.EnableClipboard)
+            {
+                EnsureMuClipServiceInitialized();
+            }
+            UpdateTrayClipboardMenuVisibility(_settingsService.Current.EnableClipboard);
+
+            // 2.5 注册全局快捷键（截图 OCR、截图复制、截图标注、选区翻译、小沐剪贴板快捷面板）
             RegisterHotkeys(_settingsService.Current);
             _settingsService.SettingsChanged += OnSettingsChanged;
 
@@ -115,7 +129,10 @@ public partial class App : Application
                 _settingsService,
                 CreateSettingsViewModel,
                 CreateAboutViewModel,
-                _loggerService);
+                _loggerService,
+                null,
+                _muClipService,
+                _engineFactory);
 
             _mainWindow = new MainWindow(_mainViewModel);
             _coordinator.RequestShowMainWindow += ShowMainWindow;
@@ -138,7 +155,80 @@ public partial class App : Application
 
     private void OnSettingsChanged(AppSettings settings)
     {
+        if (settings.EnableClipboard)
+        {
+            EnsureMuClipServiceInitialized();
+        }
+        else
+        {
+            ClipboardQuickPanelWindow.CloseInstance();
+            if (_muClipService != null)
+            {
+                try
+                {
+                    _muClipService.Dispose();
+                }
+                catch { }
+                _muClipService = null;
+                _loggerService?.Info("小沐剪贴板已关闭，后台网络同步与热键监听服务已释放");
+            }
+            _mainViewModel?.DetachMuClipService();
+        }
+
+        UpdateTrayClipboardMenuVisibility(settings.EnableClipboard);
         RegisterHotkeys(settings);
+    }
+
+    private void UpdateTrayClipboardMenuVisibility(bool enabled)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            try
+            {
+                var icons = TrayIcon.GetIcons(this);
+                if (icons == null) return;
+                foreach (var icon in icons)
+                {
+                    if (icon.Menu?.Items == null) continue;
+                    foreach (var item in icon.Menu.Items)
+                    {
+                        if (item is NativeMenuItem menuItem &&
+                            (menuItem.Header == "小沐剪贴板" || menuItem.Header == "极速剪贴板"))
+                        {
+                            menuItem.IsVisible = enabled;
+                        }
+                    }
+                }
+            }
+            catch { }
+        });
+    }
+
+    private void EnsureMuClipServiceInitialized()
+    {
+        if (_muClipService != null) return;
+        try
+        {
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            string clipDbPath = Path.Combine(appData, "ShawMuOCR", "muclip.db");
+            _muClipService = new MuClipService(_clipboardService);
+            _muClipService.Initialize(clipDbPath, startSync: true, syncPort: 42424);
+            _loggerService?.Info($"小沐剪贴板服务已就绪，当前配对信任凭证已加载 (PIN: {_muClipService.PairingPin})");
+
+            _muClipService.IncomingPairRequested += (reqId, devId, devName, ip) =>
+            {
+                Dispatcher.UIThread.Post(() =>
+                {
+                    PairRequestDialog.ShowRequest(_mainWindow, _muClipService, reqId, devId, devName, ip);
+                });
+            };
+
+            _mainViewModel?.AttachMuClipService(_muClipService);
+        }
+        catch (Exception ex)
+        {
+            _loggerService?.Error("初始化小沐剪贴板服务失败", ex);
+        }
     }
 
     private static bool IsDisabledHotkey(string? hk) =>
@@ -228,9 +318,51 @@ public partial class App : Application
             _hotkeyService.Unregister(HOTKEY_ID_TRANSLATE);
         }
 
+        bool clipboardSuccess = true;
+        if (settings.EnableClipboard && !IsDisabledHotkey(settings.ClipboardPanelHotkey))
+        {
+            EnsureMuClipServiceInitialized();
+            if (_muClipService != null && HotkeyGesture.TryParse(settings.ClipboardPanelHotkey, out var clipGesture))
+            {
+                clipboardSuccess = _hotkeyService.Register(HOTKEY_ID_CLIPBOARD, clipGesture, () =>
+                {
+                    ClipboardQuickPanelWindow.ShowInstance(_muClipService, _settingsService?.Current.ClipboardPanelBackground ?? settings.ClipboardPanelBackground, initialTabIndex: 0);
+                });
+            }
+            else
+            {
+                clipboardSuccess = false;
+            }
+        }
+        else
+        {
+            _hotkeyService.Unregister(HOTKEY_ID_CLIPBOARD);
+        }
+
+        bool phrasesSuccess = true;
+        if (settings.EnableClipboard && !IsDisabledHotkey(settings.PhrasesPanelHotkey))
+        {
+            EnsureMuClipServiceInitialized();
+            if (_muClipService != null && HotkeyGesture.TryParse(settings.PhrasesPanelHotkey, out var phrasesGesture))
+            {
+                phrasesSuccess = _hotkeyService.Register(HOTKEY_ID_PHRASES, phrasesGesture, () =>
+                {
+                    ClipboardQuickPanelWindow.ShowInstance(_muClipService, _settingsService?.Current.ClipboardPanelBackground ?? settings.ClipboardPanelBackground, initialTabIndex: 1);
+                });
+            }
+            else
+            {
+                phrasesSuccess = false;
+            }
+        }
+        else
+        {
+            _hotkeyService.Unregister(HOTKEY_ID_PHRASES);
+        }
+
         if (_mainViewModel != null)
         {
-            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !translateSuccess)
+            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !translateSuccess && !clipboardSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 快捷键注册失败，请检查冲突并重新设置";
             }
@@ -250,7 +382,11 @@ public partial class App : Application
             {
                 _mainViewModel.StatusMessage = $"⚠️ 选区翻译快捷键 {settings.TranslateHotkey} 注册失败(可能被占用)";
             }
-            else if (_mainViewModel.StatusMessage.StartsWith("⚠️ 快捷键") || _mainViewModel.StatusMessage.StartsWith("⚠️ 截图") || _mainViewModel.StatusMessage.StartsWith("⚠️ 选区"))
+            else if (!clipboardSuccess)
+            {
+                _mainViewModel.StatusMessage = $"⚠️ 剪贴板快捷键 {settings.ClipboardPanelHotkey} 注册失败(可能被占用)";
+            }
+            else if (_mainViewModel.StatusMessage.StartsWith("⚠️ 快捷键") || _mainViewModel.StatusMessage.StartsWith("⚠️ 截图") || _mainViewModel.StatusMessage.StartsWith("⚠️ 选区") || _mainViewModel.StatusMessage.StartsWith("⚠️ 剪贴板"))
             {
                 _mainViewModel.StatusMessage = "就绪";
             }
@@ -315,6 +451,13 @@ public partial class App : Application
         ShowMainWindow();
     }
 
+    private void OnTrayClipboardClick(object? sender, EventArgs e)
+    {
+        if (_settingsService?.Current.EnableClipboard != true) return;
+        _mainViewModel?.Navigate(AppNavPage.Clipboard);
+        ShowMainWindow();
+    }
+
     private void OnTraySettingsClick(object? sender, EventArgs e)
     {
         _mainViewModel?.Navigate(AppNavPage.Settings);
@@ -338,6 +481,8 @@ public partial class App : Application
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        _mainViewModel?.HttpApiVm.Dispose();
+        _muClipService?.Dispose();
         _idleSleepService?.Dispose();
         _hotkeyService?.Dispose();
         _coordinator?.Dispose();

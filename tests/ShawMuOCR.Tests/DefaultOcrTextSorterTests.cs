@@ -67,4 +67,19 @@ public class DefaultOcrTextSorterTests
         var result = _sorter.SortAndFormat(blocks);
         Assert.Equal("小沐工具", result);
     }
+
+    [Fact]
+    public void SortAndFormat_SeparateColumns_InsertsTabsBetweenSameLineBlocks()
+    {
+        var blocks = new[]
+        {
+            new OcrTextBlock { Text = "姓名", BoundingBox = new SKRectI(10, 10, 40, 30) },
+            new OcrTextBlock { Text = "张三", BoundingBox = new SKRectI(60, 10, 95, 30) },
+            new OcrTextBlock { Text = "年龄", BoundingBox = new SKRectI(120, 10, 150, 30) },
+            new OcrTextBlock { Text = "25", BoundingBox = new SKRectI(170, 10, 190, 30) }
+        };
+
+        var result = _sorter.SortAndFormat(blocks, separateColumns: true);
+        Assert.Equal("姓名\t张三\t年龄\t25", result);
+    }
 }

@@ -1,0 +1,355 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+              xmlns:vm="using:ShawMuOCR.ViewModels"
+              xmlns:http="using:ShawMuOCR.Services.Http"
+              x:Class="ShawMuOCR.Views.Pages.HttpApiPageView"
+              x:DataType="vm:HttpApiViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*" Margin="0,0,0,4">
+
+        <!-- 1. 顶部服务状态与控制栏 -->
+        <Border Grid.Row="0" Margin="0,0,0,10" Padding="16,12"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <!-- 左侧：状态徽章与接口地址 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                    <!-- 状态指示胶囊 -->
+                    <Border Background="{Binding StatusBadgeColor}"
+                            CornerRadius="12"
+                            Padding="10,4"
+                            VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="●" FontSize="10" Foreground="White" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding StatusBadgeText}" FontWeight="SemiBold" FontSize="12" Foreground="White" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 接口地址与复制按钮 -->
+                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="接口地址:" FontSize="13" FontWeight="Medium" VerticalAlignment="Center" />
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                Padding="8,4"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="{Binding EndpointUrl}"
+                                       FontFamily="Consolas, Cascadia Code, Courier New"
+                                       FontSize="12"
+                                       FontWeight="SemiBold"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </Border>
+                        <Button Command="{Binding CopyEndpointCommand}"
+                                Padding="8,5"
+                                ToolTip.Tip="复制 OCR HTTP 接口地址">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="📋" FontSize="11" />
+                                <TextBlock Text="复制" FontSize="11" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- 中间：状态反馈信息 -->
+                <TextBlock Grid.Column="1"
+                           Text="{Binding StatusMessage}"
+                           Margin="16,0"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           TextTrimming="CharacterEllipsis"
+                           VerticalAlignment="Center" />
+
+                <!-- 右侧：启动/停止切换按钮 -->
+                <Button Grid.Column="2"
+                        Command="{Binding ToggleServerCommand}"
+                        Classes.accent="{Binding !IsRunning}"
+                        Padding="18,8"
+                        ToolTip.Tip="启动或停止本地嵌入式 HTTP OCR 服务">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="{Binding IsRunning, Converter={x:Null}}"
+                                   FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ToggleServerButtonText}"
+                                   FontWeight="SemiBold"
+                                   FontSize="13"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+
+        <!-- 2. 中间卡片：服务网络配置与 CPU 核心调度控制 -->
+        <Grid Grid.Row="1" ColumnDefinitions="*,12,*" Margin="0,0,0,10">
+            <!-- 左卡片：网络与端口配置 -->
+            <Border Grid.Column="0" Padding="16,12"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="🌐 网络与端口配置" FontWeight="SemiBold" FontSize="13" />
+
+                    <!-- 端口配置 -->
+                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" Text="服务端口 (Port):" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <NumericUpDown Grid.Column="1"
+                                       Value="{Binding Port}"
+                                       Minimum="1024"
+                                       Maximum="65535"
+                                       Increment="1"
+                                       FormatString="F0"
+                                       IsEnabled="{Binding IsSettingsEnabled}"
+                                       VerticalAlignment="Center" />
+                        <TextBlock Grid.Column="2" Text="默认: 8080" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 局域网访问开关 -->
+                    <CheckBox IsChecked="{Binding AllowRemote}"
+                              IsEnabled="{Binding IsSettingsEnabled}"
+                              Content="允许局域网外部设备访问 (绑定 0.0.0.0)"
+                              FontSize="12"
+                              ToolTip.Tip="开启后允许同局域网内其他设备发起调用；若权限不足会自动回退至本地 127.0.0.1 模式" />
+
+                    <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
+
+                    <!-- 接口规格说明 -->
+                    <StackPanel Spacing="3">
+                        <TextBlock Text="📌 支持接口路由与输入协议:" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="• POST /ocr : 接收 multipart/form-data、JSON Base64 或纯图片二进制" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Text="• GET /health : 服务健康检查与状态探针" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Text="• 支持 query 参数 ?splitColumns=true (分列) 与 ?format=text (纯文本)" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 右卡片：CPU 核心并发与占空比限流调度 (公共调度器) -->
+            <Border Grid.Column="2" Padding="16,12"
+                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8">
+                <StackPanel Spacing="10">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <TextBlock Grid.Column="0" Text="⚡ CPU 多核调度与限流 (实时生效)" FontWeight="SemiBold" FontSize="13" />
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                            <TextBlock Text="{Binding ActiveTasks, StringFormat='执行中: {0}'}" FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                            <TextBlock Text="{Binding QueuedTasks, StringFormat='排队中: {0}'}" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- 并发核心上限 Slider -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="最大并发核心数上限:" FontSize="12" />
+                            <TextBlock Grid.Column="1" Text="{Binding MaxCores, StringFormat='{}{0} 核'}" FontWeight="SemiBold" FontSize="12" />
+                        </Grid>
+                        <Slider Minimum="1"
+                                Maximum="{Binding MaxAvailableCores}"
+                                Value="{Binding MaxCores}"
+                                TickFrequency="1"
+                                IsSnapToTickEnabled="True" />
+                    </StackPanel>
+
+                    <!-- CPU 占用率上限 Slider -->
+                    <StackPanel Spacing="4">
+                        <Grid ColumnDefinitions="*,Auto">
+                            <TextBlock Grid.Column="0" Text="CPU 利用率上限 (占空比限流):" FontSize="12" />
+                            <TextBlock Grid.Column="1" Text="{Binding CpuLimitPercent, StringFormat='{}{0}%'}" FontWeight="SemiBold" FontSize="12" />
+                        </Grid>
+                        <Slider Minimum="10"
+                                Maximum="100"
+                                Value="{Binding CpuLimitPercent}"
+                                TickFrequency="5"
+                                IsSnapToTickEnabled="True" />
+                    </StackPanel>
+
+                    <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
+
+                    <!-- 调用统计指标 -->
+                    <Grid ColumnDefinitions="*,*,*,*">
+                        <StackPanel Grid.Column="0">
+                            <TextBlock Text="总请求" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="{Binding TotalRequests}" FontSize="14" FontWeight="SemiBold" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="成功" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="{Binding SuccessRequests}" FontSize="14" FontWeight="SemiBold" Foreground="#107C41" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="2">
+                            <TextBlock Text="失败" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="{Binding FailedRequests}" FontSize="14" FontWeight="SemiBold" Foreground="#D83B01" />
+                        </StackPanel>
+                        <StackPanel Grid.Column="3">
+                            <TextBlock Text="平均耗时" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="{Binding AvgElapsedMs, StringFormat='{}{0} ms'}" FontSize="14" FontWeight="SemiBold" />
+                        </StackPanel>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- 3. 下部区域：调用示例与实时请求审计日志 -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                ClipToBounds="True">
+            <TabControl Margin="4">
+                <!-- Tab 1: 代码调用示例 -->
+                <TabItem Header="💻 快速调用示例 (cURL / Python / C#)">
+                    <Grid RowDefinitions="Auto,*" Margin="8,4">
+                        <TextBlock Grid.Row="0"
+                                   Text="支持客户端以表单文件、Base64 或原生二进制方式发起 HTTP POST 请求，以下为随动生成的测试调用代码："
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Margin="0,0,0,8" />
+
+                        <TabControl Grid.Row="1">
+                            <!-- cURL -->
+                            <TabItem Header="cURL (命令行)">
+                                <Grid RowDefinitions="*,Auto" Margin="0,6,0,0">
+                                    <TextBox Grid.Row="0"
+                                             Text="{Binding CurlExample}"
+                                             IsReadOnly="True"
+                                             FontFamily="Consolas, Cascadia Code, Courier New"
+                                             FontSize="12"
+                                             TextWrapping="NoWrap"
+                                             AcceptsReturn="True" />
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                        <Button Command="{Binding CopyCurlCommandCommand}" Padding="12,6">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="📋" FontSize="12" />
+                                                <TextBlock Text="复制 cURL 命令" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- Python -->
+                            <TabItem Header="Python (requests)">
+                                <Grid RowDefinitions="*,Auto" Margin="0,6,0,0">
+                                    <TextBox Grid.Row="0"
+                                             Text="{Binding PythonExample}"
+                                             IsReadOnly="True"
+                                             FontFamily="Consolas, Cascadia Code, Courier New"
+                                             FontSize="12"
+                                             TextWrapping="NoWrap"
+                                             AcceptsReturn="True" />
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                        <Button Command="{Binding CopyPythonCommandCommand}" Padding="12,6">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="📋" FontSize="12" />
+                                                <TextBlock Text="复制 Python 代码" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </TabItem>
+
+                            <!-- C# -->
+                            <TabItem Header="C# (.NET HttpClient)">
+                                <Grid RowDefinitions="*,Auto" Margin="0,6,0,0">
+                                    <TextBox Grid.Row="0"
+                                             Text="{Binding CsharpExample}"
+                                             IsReadOnly="True"
+                                             FontFamily="Consolas, Cascadia Code, Courier New"
+                                             FontSize="12"
+                                             TextWrapping="NoWrap"
+                                             AcceptsReturn="True" />
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
+                                        <Button Command="{Binding CopyCsharpCommandCommand}" Padding="12,6">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="📋" FontSize="12" />
+                                                <TextBlock Text="复制 C# 代码" FontSize="12" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </TabItem>
+                        </TabControl>
+                    </Grid>
+                </TabItem>
+
+                <!-- Tab 2: 实时请求审计日志 -->
+                <TabItem Header="📋 实时调用审计日志">
+                    <Grid RowDefinitions="Auto,*" Margin="8,4">
+                        <!-- 顶部操作条 -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,6">
+                            <TextBlock Grid.Column="0"
+                                       Text="显示服务端最近接收到的 HTTP 请求明细与识别状态："
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       VerticalAlignment="Center" />
+                            <Button Grid.Column="1"
+                                    Command="{Binding ClearLogsCommand}"
+                                    Padding="10,4"
+                                    ToolTip.Tip="清空所有历史调用记录与统计指标">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="🗑" FontSize="11" />
+                                    <TextBlock Text="清空日志" FontSize="11" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+
+                        <!-- 日志列表 -->
+                        <Border Grid.Row="1"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4"
+                                ClipToBounds="True">
+                            <Grid RowDefinitions="Auto,*">
+                                <!-- 表头 -->
+                                <Border Grid.Row="0"
+                                        Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                        Padding="12,6"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="0,0,0,1">
+                                    <Grid ColumnDefinitions="70,60,90,110,60,80,*">
+                                        <TextBlock Grid.Column="0" Text="时间" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Grid.Column="1" Text="方法" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Grid.Column="2" Text="路径" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Grid.Column="3" Text="客户端 IP" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Grid.Column="4" Text="状态" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Grid.Column="5" Text="耗时" FontWeight="SemiBold" FontSize="11" />
+                                        <TextBlock Grid.Column="6" Text="识别结果与详情" FontWeight="SemiBold" FontSize="11" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- 数据滚动区 -->
+                                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                                    <ItemsControl ItemsSource="{Binding Logs}">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="http:HttpApiLogItem">
+                                                <Border BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                        BorderThickness="0,0,0,1"
+                                                        Padding="12,6"
+                                                        Background="Transparent">
+                                                    <Grid ColumnDefinitions="70,60,90,110,60,80,*">
+                                                        <TextBlock Grid.Column="0" Text="{Binding TimeText}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding Method}" FontWeight="Medium" FontSize="11" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding Path}" FontFamily="Consolas, Cascadia Code, Courier New" FontSize="11" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="3" Text="{Binding RemoteEndPoint}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                                        <Border Grid.Column="4" Background="{Binding StatusBadgeColor}" CornerRadius="3" Padding="4,1" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding StatusCode}" FontSize="10" Foreground="White" FontWeight="Bold" />
+                                                        </Border>
+                                                        <TextBlock Grid.Column="5" Text="{Binding ElapsedMs, StringFormat='{}{0} ms'}" FontSize="11" VerticalAlignment="Center" />
+                                                        <TextBlock Grid.Column="6" Text="{Binding Message}" FontSize="11" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+                            </Grid>
+                        </Border>
+                    </Grid>
+                </TabItem>
+            </TabControl>
+        </Border>
+    </Grid>
+</UserControl>

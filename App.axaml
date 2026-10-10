@@ -30,6 +30,7 @@
                         <NativeMenuItem Header="选区翻译" Click="OnTrayTranslateClick" />
                         <NativeMenuItemSeparator />
                         <NativeMenuItem Header="打开主界面" Click="OnTrayOpenMainClick" />
+                        <NativeMenuItem Header="小沐剪贴板" Click="OnTrayClipboardClick" />
                         <NativeMenuItem Header="设置" Click="OnTraySettingsClick" />
                         <NativeMenuItem Header="关于与内存检测" Click="OnTrayAboutClick" />
                         <NativeMenuItemSeparator />

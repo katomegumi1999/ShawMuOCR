@@ -47,6 +47,24 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
     private string _engineDescription = "SimdPaddleOCR (纯C# SIMD / AVX2 NHWC加速)";
 
     [ObservableProperty]
+    private string _cpuHardwareText = "--";
+
+    [ObservableProperty]
+    private string _cpuInstructionSetText = "--";
+
+    [ObservableProperty]
+    private string _gpuArchitectureText = "--";
+
+    [ObservableProperty]
+    private string _configuredBackendText = "--";
+
+    [ObservableProperty]
+    private string _effectiveBackendText = "--";
+
+    [ObservableProperty]
+    private string _effectiveBackendBadgeText = "--";
+
+    [ObservableProperty]
     private string _physicalWorkingSetText = "-- MB";
 
     [ObservableProperty]
@@ -148,6 +166,13 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
         ModelStatus = report.ModelStatus;
         ModelWeightsDescription = report.ModelWeightsDescription;
         EngineDescription = report.EngineDescription;
+
+        CpuHardwareText = report.CpuHardwareText;
+        CpuInstructionSetText = report.CpuInstructionSetText;
+        GpuArchitectureText = report.GpuArchitectureText;
+        ConfiguredBackendText = report.ConfiguredBackendText;
+        EffectiveBackendText = report.EffectiveBackendText;
+        EffectiveBackendBadgeText = report.EffectiveBackendBadgeText;
 
         PhysicalWorkingSetText = $"{report.PhysicalWorkingSetMb:F1} MB";
         PeakWorkingSetText = $"{report.PeakWorkingSetMb:F1} MB";

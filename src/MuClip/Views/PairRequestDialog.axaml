@@ -1,0 +1,77 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="MuClip.Views.PairRequestDialog"
+        Title="局域网设备配对请求"
+        Width="380"
+        CanResize="False"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterScreen"
+        Topmost="True"
+        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+        FontFamily="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif">
+
+    <Border Padding="20">
+        <StackPanel Spacing="14">
+            <!-- 头部：图标与标题 -->
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <Border Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                        CornerRadius="8" Width="38" Height="38"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="🔗" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Border>
+                <StackPanel VerticalAlignment="Center" Spacing="2">
+                    <TextBlock Text="局域网设备配对请求" FontWeight="SemiBold" FontSize="15"
+                               Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
+                    <TextBlock x:Name="DeviceInfoTextBlock" Text="设备: 正在获取..." FontSize="11.5"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                </StackPanel>
+            </StackPanel>
+
+            <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,-2,0,-2" />
+
+            <!-- 提示信息 -->
+            <StackPanel Spacing="8">
+                <TextBlock Text="发起方已生成 6 位配对码，请输入对方屏幕上显示的配对码以建立加密连接："
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                <!-- PIN 码输入框 -->
+                <TextBox x:Name="PinTextBox"
+                         MaxLength="6"
+                         FontSize="22"
+                         FontWeight="Bold"
+                         LetterSpacing="6"
+                         TextAlignment="Center"
+                         PlaceholderText="6位数字"
+                         HorizontalAlignment="Stretch"
+                         Height="44" />
+
+                <!-- 错误提示 -->
+                <TextBlock x:Name="ErrorTextBlock"
+                           FontSize="11.5"
+                           Foreground="#EF4444"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+
+                <!-- 成功提示 -->
+                <TextBlock x:Name="SuccessTextBlock"
+                           FontSize="11.5"
+                           Foreground="#10B981"
+                           FontWeight="SemiBold"
+                           TextWrapping="Wrap"
+                           IsVisible="False" />
+            </StackPanel>
+
+            <!-- 操作按钮 -->
+            <Grid ColumnDefinitions="*,*" Margin="0,4,0,0">
+                <Button x:Name="RejectButton" Grid.Column="0" Content="拒绝"
+                        Margin="0,0,6,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Padding="0,8" FontSize="12.5" />
+                <Button x:Name="ConfirmButton" Grid.Column="1" Classes="accent" Content="确认配对"
+                        Margin="6,0,0,0" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Padding="0,8" FontSize="12.5" FontWeight="SemiBold" />
+            </Grid>
+        </StackPanel>
+    </Border>
+</Window>
