@@ -250,20 +250,37 @@ public class SettingsAutoSaveTests
 
         int initialSaveCalls = settingsService.SaveCallCount;
 
-        // 切换 GPU 索引
+        // 切换 GPU 索引自动保存
         vm.SelectedGpuIndex = 0;
         Assert.True(settingsService.SaveCallCount > initialSaveCalls);
         Assert.Equal(0, settingsService.Current.SelectedGpuIndex);
 
-        // 只要检测到至少 1 块物理 GPU，均显示物理显卡选择器，方便用户随时查看与切换独显/核显
         bool hasAnyGpu = vm.AvailableGpuDevices.Count > 1;
+
+        // 1. CPU 模式：物理显卡选择器始终隐藏
+        vm.OcrBackend = "CPU";
+        Assert.False(vm.ShowGpuDeviceSelector);
+
+        // 2. GPU 模式：检测到物理 GPU 时显示物理显卡选择器
+        vm.OcrBackend = "GPU";
         Assert.Equal(hasAnyGpu, vm.ShowGpuDeviceSelector);
 
-        // 在纯 CPU 模式下，若用户主动手动指定某块物理显卡 (Index >= 0)，自动切换后端为 GPU
+        // 3. Auto 模式：仅当 Auto 决策启用 GPU (ProbeBackendInfo().AutoSelectsGpu == true) 时显示
+        vm.OcrBackend = "Auto";
+        bool autoSelectsGpu = ShawMuOCR.OCR.PaddleOcrV6Engine.ProbeBackendInfo().AutoSelectsGpu;
+        Assert.Equal(hasAnyGpu && autoSelectsGpu, vm.ShowGpuDeviceSelector);
+
+        // 恢复默认
         vm.SelectedGpuIndex = -1;
-        vm.OcrBackend = "CPU";
-        Assert.Equal("CPU", vm.OcrBackend);
-        vm.SelectedGpuIndex = 0;
-        Assert.Equal("GPU", vm.OcrBackend);
+    }
+
+    [Fact]
+    public void PaddleOcrV6Engine_SetSelectedGpuIndex_InvalidOrOutOfRange_DoesNotThrow()
+    {
+        var ex1 = Record.Exception(() => ShawMuOCR.OCR.PaddleOcrV6Engine.SetSelectedGpuIndex(9999));
+        Assert.Null(ex1);
+
+        var ex2 = Record.Exception(() => ShawMuOCR.OCR.PaddleOcrV6Engine.SetSelectedGpuIndex(-1));
+        Assert.Null(ex2);
     }
 }

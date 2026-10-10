@@ -67,6 +67,7 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
     private static OcrBackendProbeInfo? s_cachedProbeInfo;
     private static IReadOnlyList<DiscoveredGpuDevice>? s_cachedDiscoveredGpus;
     private static int s_currentSelectedGpuIndex = -1;
+    private static readonly Dictionary<int, object> s_deviceCache = new();
     private static readonly object s_probeLock = new();
     private readonly PaddleOcrAll _ocr;
     private readonly IOcrTextSorter _sorter;
@@ -110,11 +111,18 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
 
         if (backend != OcrBackend.Cpu)
         {
-            SetSelectedGpuIndex(selectedGpuIndex);
+            try
+            {
+                SetSelectedGpuIndex(selectedGpuIndex);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[PaddleOcrV6Engine] 构造时应用 GPU 索引 ({selectedGpuIndex}) 异常，已安全降级: {ex.Message}");
+            }
         }
 
         // 若用户显式指定了物理显卡索引 (selectedGpuIndex >= 0) 且处于 Auto 模式，则启用 Vulkan 以确保使用所选显卡
-        var effectiveBackend = (backend == OcrBackend.Auto && selectedGpuIndex >= 0)
+        var effectiveBackend = (backend == OcrBackend.Auto && selectedGpuIndex >= 0 && s_currentSelectedGpuIndex >= 0)
             ? OcrBackend.Vulkan
             : backend;
 
@@ -502,6 +510,13 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
     {
         var allGpus = EnumerateAllGpuDevices();
 
+        // 提前校验物理显卡索引合法性：若無可用 GPU 或索引超出实际物理显卡范围，直接安全返回
+        if (deviceIndex >= 0 && (deviceIndex >= allGpus.Count || !allGpus.Any(g => g.Index == deviceIndex)))
+        {
+            Debug.WriteLine($"[PaddleOcrV6Engine] 忽略越界或不存在的 GPU 索引: {deviceIndex} (当前物理 GPU 数量: {allGpus.Count})");
+            return;
+        }
+
         lock (s_probeLock)
         {
             if (s_currentSelectedGpuIndex == deviceIndex)
@@ -520,63 +535,81 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
                     var sDeviceField = gpuBackendType.GetField("s_device", flags);
                     var sProbedField = gpuBackendType.GetField("s_probed", flags);
 
+                    // 保留当前已激活的 VkDevice 至缓存字典，绝不在运行期调用 oldDev.Dispose() 销毁底层 VkDevice，
+                    // 防止旧 PaddleOcrAll 实例释放张量缓冲或后台线程访问时触发 Vulkan 驱动层 0xC0000005 SEGV 闪退
+                    var existingDev = sDeviceField?.GetValue(null);
+                    if (existingDev != null && !s_deviceCache.ContainsKey(s_currentSelectedGpuIndex))
+                    {
+                        s_deviceCache[s_currentSelectedGpuIndex] = existingDev;
+                    }
+
+                    if (s_deviceCache.TryGetValue(deviceIndex, out object? cachedDev) && cachedDev != null)
+                    {
+                        sDeviceField?.SetValue(null, cachedDev);
+                        sProbedField?.SetValue(null, true);
+                        s_currentSelectedGpuIndex = deviceIndex;
+                        s_cachedProbeInfo = null;
+                        return;
+                    }
+
                     if (deviceIndex >= 0)
                     {
                         var createMethod = vkDeviceType.GetMethod("Create", flags, [typeof(uint)]);
                         var orderedByPhysical = allGpus.OrderBy(g => g.Index).ToList();
                         var target = orderedByPhysical.FirstOrDefault(g => g.Index == deviceIndex);
+                        if (target == null)
+                        {
+                            return;
+                        }
 
                         uint createArg = (uint)deviceIndex;
                         string? disableDrivers = null;
 
-                        if (target != null)
+                        if (target.DeviceType == 2)
                         {
-                            if (target.DeviceType == 2)
-                            {
-                                // 独显：计算其在所有独显中的序号（适配 VkDevice.Create pass 0）
-                                createArg = (uint)orderedByPhysical
-                                    .TakeWhile(g => g.Index != deviceIndex)
-                                    .Count(g => g.DeviceType == 2);
-                            }
-                            else
-                            {
-                                int totalDiscrete = orderedByPhysical.Count(g => g.DeviceType == 2);
-                                int nonCpuOrdinal = orderedByPhysical.TakeWhile(g => g.Index != deviceIndex).Count();
+                            // 独显：计算其在所有独显中的序号（适配 VkDevice.Create pass 0）
+                            createArg = (uint)orderedByPhysical
+                                .TakeWhile(g => g.Index != deviceIndex)
+                                .Count(g => g.DeviceType == 2);
+                        }
+                        else
+                        {
+                            int totalDiscrete = orderedByPhysical.Count(g => g.DeviceType == 2);
+                            int nonCpuOrdinal = orderedByPhysical.TakeWhile(g => g.Index != deviceIndex).Count();
 
-                                if (nonCpuOrdinal < totalDiscrete)
+                            if (nonCpuOrdinal < totalDiscrete)
+                            {
+                                // 当核显排在独显前面（如物理索引 0 为核显、索引 1 为独显）时，
+                                // 通过 VK_LOADER_DRIVERS_DISABLE 临时屏蔽独显驱动，使 VkDevice.Create 精准命中该核显
+                                var discreteVendors = orderedByPhysical
+                                    .Where(g => g.DeviceType == 2 && g.VendorId != target.VendorId)
+                                    .Select(g => g.VendorId)
+                                    .Distinct()
+                                    .ToList();
+
+                                var patterns = new List<string>();
+                                foreach (uint v in discreteVendors)
                                 {
-                                    // 当核显排在独显前面（如物理索引 0 为核显、索引 1 为独显）时，
-                                    // 通过 VK_LOADER_DRIVERS_DISABLE 临时屏蔽独显驱动，使 VkDevice.Create 精准命中该核显
-                                    var discreteVendors = orderedByPhysical
-                                        .Where(g => g.DeviceType == 2 && g.VendorId != target.VendorId)
-                                        .Select(g => g.VendorId)
-                                        .Distinct()
-                                        .ToList();
+                                    if (v == 4318) patterns.Add("*nv*,*nvidia*");
+                                    else if (v == 4098) patterns.Add("*amd*");
+                                    else if (v == 32902) patterns.Add("*igvk*,*intel*");
+                                }
 
-                                    var patterns = new List<string>();
-                                    foreach (uint v in discreteVendors)
-                                    {
-                                        if (v == 4318) patterns.Add("*nv*,*nvidia*");
-                                        else if (v == 4098) patterns.Add("*amd*");
-                                        else if (v == 32902) patterns.Add("*igvk*,*intel*");
-                                    }
-
-                                    if (patterns.Count > 0)
-                                    {
-                                        disableDrivers = string.Join(",", patterns);
-                                        createArg = (uint)orderedByPhysical
-                                            .TakeWhile(g => g.Index != deviceIndex)
-                                            .Count(g => g.DeviceType != 2);
-                                    }
-                                    else
-                                    {
-                                        createArg = (uint)nonCpuOrdinal;
-                                    }
+                                if (patterns.Count > 0)
+                                {
+                                    disableDrivers = string.Join(",", patterns);
+                                    createArg = (uint)orderedByPhysical
+                                        .TakeWhile(g => g.Index != deviceIndex)
+                                        .Count(g => g.DeviceType != 2);
                                 }
                                 else
                                 {
                                     createArg = (uint)nonCpuOrdinal;
                                 }
+                            }
+                            else
+                            {
+                                createArg = (uint)nonCpuOrdinal;
                             }
                         }
 
@@ -586,10 +619,14 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
                             Environment.SetEnvironmentVariable("VK_LOADER_DRIVERS_DISABLE", disableDrivers);
                         }
 
-                        object? newDev;
+                        object? newDev = null;
                         try
                         {
                             newDev = createMethod?.Invoke(null, [createArg]);
+                        }
+                        catch (Exception invokeEx)
+                        {
+                            Debug.WriteLine($"[PaddleOcrV6Engine] VkDevice.Create({createArg}) 反射调用异常: {invokeEx.Message}");
                         }
                         finally
                         {
@@ -601,10 +638,9 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
 
                         if (newDev != null)
                         {
-                            var oldDev = sDeviceField?.GetValue(null) as IDisposable;
+                            s_deviceCache[deviceIndex] = newDev;
                             sDeviceField?.SetValue(null, newDev);
                             sProbedField?.SetValue(null, true);
-                            oldDev?.Dispose();
                             s_currentSelectedGpuIndex = deviceIndex;
                             s_cachedProbeInfo = null;
                             return;
@@ -612,11 +648,9 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
                     }
                     else
                     {
-                        // 自动模式：清理旧设备，交由 GpuBackend 重新自动决策（默认优先独立显卡）
-                        var oldDev = sDeviceField?.GetValue(null) as IDisposable;
+                        // 自动模式 (-1)：交由 GpuBackend 重新自动决策（默认优先独立显卡），不销毁旧设备句柄
                         sDeviceField?.SetValue(null, null);
                         sProbedField?.SetValue(null, false);
-                        oldDev?.Dispose();
                         s_currentSelectedGpuIndex = -1;
                         s_cachedProbeInfo = null;
                         return;
