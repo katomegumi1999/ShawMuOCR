@@ -7,7 +7,6 @@
 [Ll]ogs/
 publish/
 dist/
-Models/
 
 ## ==========================================
 ## User and Sensitive Configuration Files
@@ -50,6 +49,8 @@ settings.user.json
 *.zip
 *.rar
 *.tar.gz
+*.onnx
+*.txt
 
 ## ==========================================
 ## AI Tools and Local Scratch Folders

@@ -192,7 +192,13 @@ public partial class SettingsViewModel : ViewModelBase
         set => ScanExternalModels = value;
     }
 
-    public string ModelSelectionHint => "直接使用同目录下 models 文件夹中的 Paddle 模型（默认推荐 PP-OCRv6_small）";
+    public bool HasNoModels => AvailableModels.Count == 0;
+
+    public bool HasAvailableModels => AvailableModels.Count > 0;
+
+    public string ModelSelectionHint => HasNoModels
+        ? "⚠️ 未在同级 models 文件夹下检测到任何可用模型！请放入模型后点击右侧 🔄 重新扫描"
+        : $"已从同级 models 文件夹加载 {AvailableModels.Count} 个实际可用模型（选择后自动记录至 settings.json）";
 
     public bool IsEmbeddedSelected => true;
     public bool IsExternalLocalSelected => false;
@@ -272,21 +278,36 @@ public partial class SettingsViewModel : ViewModelBase
     };
 
     // ==========================================
-    // 多显卡手动选择 (当显卡数量 >= 2 时支持)
+    // 物理显卡选择 (独显 / 核显)
     // ==========================================
     private IReadOnlyList<DiscoveredGpuDevice> _discoveredGpus = [];
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedGpuDeviceOption))]
     [NotifyPropertyChangedFor(nameof(AutoResolvedBackendText))]
+    [NotifyPropertyChangedFor(nameof(AutoResolvedReasonText))]
     private int _selectedGpuIndex = -1;
+
+    partial void OnSelectedGpuIndexChanged(int value)
+    {
+        if (!_isInitializing)
+        {
+            ShawMuOCR.OCR.PaddleOcrV6Engine.SetSelectedGpuIndex(value);
+            if (value >= 0 && string.Equals(NormalizeBackendValue(OcrBackend), "CPU", StringComparison.OrdinalIgnoreCase))
+            {
+                OcrBackend = "GPU";
+            }
+            OnPropertyChanged(nameof(AutoResolvedBackendText));
+            OnPropertyChanged(nameof(AutoResolvedReasonText));
+        }
+    }
 
     public IReadOnlyList<GpuDeviceOption> AvailableGpuDevices { get; private set; } = [];
 
     public GpuDeviceOption SelectedGpuDeviceOption
     {
         get => AvailableGpuDevices.FirstOrDefault(x => x.Index == SelectedGpuIndex)
-               ?? (AvailableGpuDevices.Count > 0 ? AvailableGpuDevices[0] : new GpuDeviceOption(-1, "自动选择 (推荐 · 优先独立显卡)"));
+               ?? (AvailableGpuDevices.Count > 0 ? AvailableGpuDevices[0] : new GpuDeviceOption(-1, "自动选择 (默认 · 优先独立显卡)"));
         set
         {
             if (value != null && SelectedGpuIndex != value.Index)
@@ -298,11 +319,11 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool HasMultipleGpus => _discoveredGpus.Count >= 2;
 
-    public bool ShowGpuDeviceSelector => HasMultipleGpus && !string.Equals(NormalizeBackendValue(OcrBackend), "CPU", StringComparison.OrdinalIgnoreCase);
+    public bool ShowGpuDeviceSelector => _discoveredGpus.Count >= 1;
 
     private static string NormalizeBackendValue(string? backend)
     {
-        if (string.IsNullOrWhiteSpace(backend)) return "CPU";
+        if (string.IsNullOrWhiteSpace(backend)) return "Auto";
         if (backend.Equals("Auto", StringComparison.OrdinalIgnoreCase)) return "Auto";
         if (backend.Equals("GPU", StringComparison.OrdinalIgnoreCase) ||
             backend.Equals("Vulkan", StringComparison.OrdinalIgnoreCase)) return "GPU";
@@ -411,14 +432,12 @@ public partial class SettingsViewModel : ViewModelBase
         _openAiUsedCount = current.OpenAiUsedCount;
 
         LoadModels();
-        if (AvailableModels.Contains(current.Model))
-        {
-            SelectedModel = current.Model;
-        }
         LoadMaxSideLens();
         LoadIdleSleepMinutes();
         _settingsService.SettingsChanged += OnExternalSettingsChanged;
-        StatusMessage = "⚡ 修改设置后将实时自动保存";
+        StatusMessage = HasNoModels
+            ? "⚠️ 未在 models 目录下检测到任何 OCR 模型，请将 models 文件夹放入程序目录后点击刷新"
+            : "⚡ 修改设置后将实时自动保存";
         _isInitializing = false;
     }
 
@@ -437,8 +456,7 @@ public partial class SettingsViewModel : ViewModelBase
         };
         foreach (var g in _discoveredGpus)
         {
-            string extra = g.SupportsCoopMatrix ? " · 硬件矩阵" : "";
-            gpuOptions.Add(new(g.Index, $"{g.Name} (设备 #{g.Index}{extra})"));
+            gpuOptions.Add(new(g.Index, g.DisplayName));
         }
         AvailableGpuDevices = gpuOptions;
     }
@@ -476,7 +494,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     private void LoadModels()
     {
-        string previousSelection = string.IsNullOrWhiteSpace(SelectedModel) ? "PP-OCRv6_small" : SelectedModel;
+        string previousSelection = SelectedModel;
         var models = _modelProvider.GetAvailableModels();
 
         bool listChanged = AvailableModels.Count != models.Count;
@@ -492,37 +510,73 @@ public partial class SettingsViewModel : ViewModelBase
             }
         }
 
-        if (listChanged)
+        bool wasInitializing = _isInitializing;
+        _isInitializing = true;
+        try
         {
-            AvailableModels.Clear();
-            AvailableEmbeddedModels.Clear();
-            foreach (var m in models)
+            if (listChanged)
             {
-                AvailableModels.Add(m);
-                AvailableEmbeddedModels.Add(m);
+                AvailableModels.Clear();
+                AvailableEmbeddedModels.Clear();
+                foreach (var m in models)
+                {
+                    AvailableModels.Add(m);
+                    AvailableEmbeddedModels.Add(m);
+                }
+            }
+
+            if (AvailableModels.Count > 0)
+            {
+                var matched = AvailableModels.FirstOrDefault(m => string.Equals(m, previousSelection, StringComparison.OrdinalIgnoreCase));
+                if (matched != null)
+                {
+                    SelectedModel = matched;
+                }
+                else
+                {
+                    var fallback = AvailableModels.FirstOrDefault(m => m.Contains("small", StringComparison.OrdinalIgnoreCase))
+                                   ?? AvailableModels[0];
+                    SelectedModel = fallback;
+                    // 若当前配置中的模型在磁盘上不存在，自动将实际选中的模型写入 settings.json
+                    if (!string.Equals(_settingsService.Current.Model, fallback, StringComparison.OrdinalIgnoreCase))
+                    {
+                        var updated = _settingsService.Current.Clone();
+                        updated.Model = fallback;
+                        updated.EmbeddedModel = fallback;
+                        _isSaving = true;
+                        try
+                        {
+                            _settingsService.Save(updated);
+                        }
+                        finally
+                        {
+                            _isSaving = false;
+                        }
+                    }
+                }
+            }
+            else
+            {
+                SelectedModel = string.Empty;
             }
         }
+        finally
+        {
+            _isInitializing = wasInitializing;
+        }
 
-        if (AvailableModels.Contains(previousSelection))
-        {
-            SelectedModel = previousSelection;
-        }
-        else if (AvailableModels.Count > 0)
-        {
-            var small = AvailableModels.FirstOrDefault(m => m.Contains("small", StringComparison.OrdinalIgnoreCase)) ?? AvailableModels[0];
-            SelectedModel = small;
-        }
-        else
-        {
-            SelectedModel = "PP-OCRv6_small";
-        }
+        OnPropertyChanged(nameof(HasNoModels));
+        OnPropertyChanged(nameof(HasAvailableModels));
+        OnPropertyChanged(nameof(ModelSelectionHint));
     }
 
     [RelayCommand]
     public void RefreshModels()
     {
         LoadModels();
-        StatusMessage = $"模型列表已刷新，共加载 {AvailableModels.Count} 个可用模型";
+        StatusMessage = HasNoModels
+            ? "⚠️ 未在 models 文件夹下检测到任何可用模型，请确认模型已放入同级 models 目录"
+            : $"✓ 模型列表已刷新，共加载 {AvailableModels.Count} 个可用模型 (当前生效: {SelectedModel})";
     }
 
     [RelayCommand]
@@ -887,7 +941,12 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(SelectedModel):
                 if (string.IsNullOrWhiteSpace(SelectedModel))
                 {
-                    SelectedModel = "PP-OCRv6_small";
+                    if (AvailableModels.Count > 0)
+                    {
+                        var currentSaved = _settingsService.Current.Model;
+                        SelectedModel = AvailableModels.FirstOrDefault(m => string.Equals(m, currentSaved, StringComparison.OrdinalIgnoreCase))
+                                        ?? AvailableModels[0];
+                    }
                     return;
                 }
                 TriggerAutoSave(debounce: false);
@@ -1015,8 +1074,11 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.ShowCaptureImageNotification = ShowCaptureImageNotification;
         newSettings.ShowWindowAfterOcr = ShowWindowAfterOcr;
         newSettings.StartWithWindows = StartWithWindows;
-        newSettings.Model = string.IsNullOrWhiteSpace(SelectedModel) ? "PP-OCRv6_small" : SelectedModel;
-        newSettings.EmbeddedModel = newSettings.Model;
+        if (!string.IsNullOrWhiteSpace(SelectedModel))
+        {
+            newSettings.Model = SelectedModel;
+            newSettings.EmbeddedModel = SelectedModel;
+        }
         newSettings.ScanExternalModels = true;
         newSettings.UseExternalModel = true;
         newSettings.ExternalModelType = SelectedExternalModelType;
@@ -1089,6 +1151,7 @@ public partial class SettingsViewModel : ViewModelBase
             StartWithWindows = _startupService.IsEnabled();
             SelectedModel = current.Model;
             ScanExternalModels = current.ScanExternalModels;
+            LoadModels();
             ExternalModelPath = current.ExternalModelPath;
             ExternalApiUrl = current.ExternalApiUrl;
             SelectedExternalModelType = current.ExternalModelType;

@@ -50,8 +50,8 @@ ShawMuOCR.slnx
 
 ## ⚡ 核心设计原则
 
-1. **零文件打包分发 (No Bundled Models in Release)**：
-   发布编译时默认排除 `Models/` 庞大模型文件（`<CopyToPublishDirectory>Never</CopyToPublishDirectory>`），保持发布包体积小巧轻盈；用户按需放置或下载模型至同目录 `models/` 即可直接识别。
+1. **增量模型分发与开箱即用 (Incremental Models on Publish)**：
+   发布编译时通过 `<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>` 增量同步 `Models/`，若目标目录模型文件未变动则自动跳过拷贝，既保证开箱即用，又防止重复发布时清空已有模型目录。
 2. **纯托管与 Native AOT 优先**：
    核心 OCR 推理引擎采用纯托管 SIMD 优化版或 Vulkan 计算着色器，杜绝外部庞大 C++ 运行时依赖，全面兼容 Native AOT 提前编译。
 3. **安全隐私第一**：

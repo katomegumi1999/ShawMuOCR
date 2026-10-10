@@ -743,7 +743,7 @@ public class MuClipMemoryPoolTests
 
             for (int i = 0; i < 20; i++)
             {
-                if (!sB.PairedDevices.Any(p => p.DeviceId == "dev-unpair-a"))
+                if (!sB.PairedDevices.Any(p => p.DeviceId == "dev-unpair-a") && unpairedDeviceIdOnB != null)
                     break;
                 await Task.Delay(100);
             }

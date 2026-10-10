@@ -255,22 +255,15 @@ public class SettingsAutoSaveTests
         Assert.True(settingsService.SaveCallCount > initialSaveCalls);
         Assert.Equal(0, settingsService.Current.SelectedGpuIndex);
 
-        // 校验 ShowGpuDeviceSelector: 仅在 HasMultipleGpus 且非 CPU 模式时显示
-        if (vm.HasMultipleGpus)
-        {
-            vm.OcrBackend = "GPU";
-            Assert.True(vm.ShowGpuDeviceSelector);
+        // 只要检测到至少 1 块物理 GPU，均显示物理显卡选择器，方便用户随时查看与切换独显/核显
+        bool hasAnyGpu = vm.AvailableGpuDevices.Count > 1;
+        Assert.Equal(hasAnyGpu, vm.ShowGpuDeviceSelector);
 
-            vm.OcrBackend = "CPU";
-            Assert.False(vm.ShowGpuDeviceSelector);
-        }
-        else
-        {
-            // 单 GPU 或无 GPU 环境下无论选什么均不显示选择器
-            vm.OcrBackend = "GPU";
-            Assert.False(vm.ShowGpuDeviceSelector);
-            vm.OcrBackend = "CPU";
-            Assert.False(vm.ShowGpuDeviceSelector);
-        }
+        // 在纯 CPU 模式下，若用户主动手动指定某块物理显卡 (Index >= 0)，自动切换后端为 GPU
+        vm.SelectedGpuIndex = -1;
+        vm.OcrBackend = "CPU";
+        Assert.Equal("CPU", vm.OcrBackend);
+        vm.SelectedGpuIndex = 0;
+        Assert.Equal("GPU", vm.OcrBackend);
     }
 }

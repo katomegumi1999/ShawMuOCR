@@ -42,15 +42,15 @@ ShawMuOCR/
 
 ## 3. 必须坚守的设计铁律与避坑指南 (Critical Invariants)
 
-### 3.1 模型发布规则：严禁自动分发 Models 文件夹
+### 3.1 模型发布规则：增量同步 Models 文件夹 (PreserveNewest)
 - 在 `ShawMuOCR.csproj` 中，`Models\**` 必须保持：
   ```xml
   <None Update="Models\**">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    <CopyToPublishDirectory>Never</CopyToPublishDirectory>
+    <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
   </None>
   ```
-- **原因**：PP-OCR 模型文件体积较大，发布时如果将模型打入安装包或发布目录，会导致发布二进制体积膨胀且阻碍模型按需下载更新。本地开发调试 (`bin/Debug`) 会通过 `CopyToOutputDirectory` 自动复制；生产发布时用户按需将模型下载放入同级 `models/` 即可。
+- **原因**：`PreserveNewest` 会在发布时自动比对文件时间戳与大小，如果发布目录里已经有相同的模型文件，MSBuild 会直接跳过复制（0 额外开销）；而如果设为 `Never`，发布时的目录同步清理逻辑会把目标发布目录里原本存在的 `models/` 文件夹直接删除。因此统一使用 `PreserveNewest`，既避免重复复制耗时，又防止发布目录中的模型被清空。
 
 ### 3.2 模型加载与 ComboBox 绑定的 Null 崩溃陷阱
 - **Avalonia 机制陷阱**：在 Avalonia MVVM 中，当 `ComboBox.ItemsSource` 绑定的集合执行 `.Clear()` 时，Avalonia 会强制将 `SelectedItem` 触发置为 `null`！
@@ -75,7 +75,7 @@ ShawMuOCR/
 - 小沐 OCR 支持 CPU SIMD 与 GPU (Vulkan Compute) 双轨引擎：
   - GPU 推理依赖基于着色器的融合注意力与卷积优化；
   - ONNX 模型的卷积中间通道数必须为 4 的倍数（$C \pmod 4 = 0$），且转置（Transpose）算子不能有多余的 5 维动态冗余拓扑，否则 GPU 着色器构建失败将发生静默回退（Silent CPU Fallback）；
-  - 多显卡（GPU 数量 $\ge 2$）时，设置页将自动显示显卡切换下拉框，单显卡时保持纯净静默；
+  - 原生直连 `vulkan-1.dll` (`vkEnumeratePhysicalDevices`) 枚举所有物理显卡并识别 **[独显]** / **[核显]** 类型，设置页常驻显示物理显卡下拉选择器，支持在独显与核显之间自由切换；
   - 位图直通必须保持“零拷贝直通”（Zero-Copy Pixel Direct Pass），截图像素直接写入引擎，严禁二次缓冲复制。
 
 ### 3.5 Native AOT 裁剪安全性
