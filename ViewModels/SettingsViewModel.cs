@@ -286,19 +286,24 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(SelectedGpuDeviceOption))]
     [NotifyPropertyChangedFor(nameof(AutoResolvedBackendText))]
     [NotifyPropertyChangedFor(nameof(AutoResolvedReasonText))]
+    [NotifyPropertyChangedFor(nameof(ShowGpuDeviceSelector))]
     private int _selectedGpuIndex = -1;
 
     partial void OnSelectedGpuIndexChanged(int value)
     {
         if (!_isInitializing)
         {
-            ShawMuOCR.OCR.PaddleOcrV6Engine.SetSelectedGpuIndex(value);
-            if (value >= 0 && string.Equals(NormalizeBackendValue(OcrBackend), "CPU", StringComparison.OrdinalIgnoreCase))
+            try
             {
-                OcrBackend = "GPU";
+                ShawMuOCR.OCR.PaddleOcrV6Engine.SetSelectedGpuIndex(value);
+                OnPropertyChanged(nameof(AutoResolvedBackendText));
+                OnPropertyChanged(nameof(AutoResolvedReasonText));
+                OnPropertyChanged(nameof(ShowGpuDeviceSelector));
             }
-            OnPropertyChanged(nameof(AutoResolvedBackendText));
-            OnPropertyChanged(nameof(AutoResolvedReasonText));
+            catch (Exception ex)
+            {
+                StatusMessage = $"⚠️ 切换 GPU 设备失败: {ex.Message}";
+            }
         }
     }
 
@@ -319,7 +324,29 @@ public partial class SettingsViewModel : ViewModelBase
 
     public bool HasMultipleGpus => _discoveredGpus.Count >= 2;
 
-    public bool ShowGpuDeviceSelector => _discoveredGpus.Count >= 1;
+    public bool ShowGpuDeviceSelector
+    {
+        get
+        {
+            if (_discoveredGpus.Count == 0)
+            {
+                return false;
+            }
+
+            string normalized = NormalizeBackendValue(OcrBackend);
+            if (string.Equals(normalized, "GPU", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (string.Equals(normalized, "Auto", StringComparison.OrdinalIgnoreCase))
+            {
+                return ShawMuOCR.OCR.PaddleOcrV6Engine.ProbeBackendInfo().AutoSelectsGpu;
+            }
+
+            return false;
+        }
+    }
 
     private static string NormalizeBackendValue(string? backend)
     {

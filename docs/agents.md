@@ -75,7 +75,10 @@ ShawMuOCR/
 - 小沐 OCR 支持 CPU SIMD 与 GPU (Vulkan Compute) 双轨引擎：
   - GPU 推理依赖基于着色器的融合注意力与卷积优化；
   - ONNX 模型的卷积中间通道数必须为 4 的倍数（$C \pmod 4 = 0$），且转置（Transpose）算子不能有多余的 5 维动态冗余拓扑，否则 GPU 着色器构建失败将发生静默回退（Silent CPU Fallback）；
-  - 原生直连 `vulkan-1.dll` (`vkEnumeratePhysicalDevices`) 枚举所有物理显卡并识别 **[独显]** / **[核显]** 类型，设置页常驻显示物理显卡下拉选择器，支持在独显与核显之间自由切换；
+  - 原生直连 `vulkan-1.dll` (`vkEnumeratePhysicalDevices`) 枚举所有物理显卡并识别 **[独显]** / **[核显]** 类型；
+  - **GPU 选择器显隐规则与反射调用保护铁律**：
+    1. **显隐规则**：`SettingsViewModel.ShowGpuDeviceSelector` 在纯 `CPU` 模式下必须隐藏（`false`）；在 `GPU` 模式下当检测到物理显卡时显示（`true`）；在 `Auto` 模式下仅当 `PaddleOcrV6Engine.ProbeBackendInfo().AutoSelectsGpu == true` 时显示。
+    2. **反射与 Vulkan 设备生命周期保护**：`PaddleOcrV6Engine.SetSelectedGpuIndex` 必须提前校验 `deviceIndex` 合法性（越界或不在已枚举物理设备列表中直接安全 `return`），内层反射调用 `VkDevice.Create` 与构造函数初始化必须包裹 `try-catch` 兜底，且已创建的 `VkDevice` 实例需缓存复用（严禁在旧 `PaddleOcrAll` 引擎仍持有 `VkBuffer`/`VkPipeline` 时直接销毁底层 `VkDevice` 导致 `0xC0000005` 原生闪退）；`SettingsViewModel.OnSelectedGpuIndexChanged` 同样必须包裹 `try-catch` 并通过 `StatusMessage` 反馈异常。
   - 位图直通必须保持“零拷贝直通”（Zero-Copy Pixel Direct Pass），截图像素直接写入引擎，严禁二次缓冲复制。
 
 ### 3.5 Native AOT 裁剪安全性
