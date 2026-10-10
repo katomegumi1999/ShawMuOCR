@@ -6,6 +6,7 @@
 [Ll]og/
 [Ll]ogs/
 publish/
+dist/
 
 ## ==========================================
 ## User and Sensitive Configuration Files
