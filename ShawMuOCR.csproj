@@ -20,7 +20,7 @@
     <AvaloniaResource Include="Assets\**" />
     <None Update="Models\**">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+      <CopyToPublishDirectory>Never</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 
@@ -34,6 +34,7 @@
     <None Include="Libs\x64\muclip_core.dll">
       <Link>muclip_core.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 
