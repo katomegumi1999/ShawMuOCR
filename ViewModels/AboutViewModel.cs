@@ -32,7 +32,15 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
     private string _appName = "小沐 OCR (ShawMuOCR)";
 
     [ObservableProperty]
-    private string _appVersion = "v1.0.0 (Native AOT)";
+    private string _appVersion = GetAppVersion();
+
+    private static string GetAppVersion()
+    {
+        var ver = typeof(AboutViewModel).Assembly.GetName().Version;
+        if (ver == null) return "v1.0.0 (Native AOT)";
+        string vStr = ver.Build >= 0 ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : $"{ver.Major}.{ver.Minor}";
+        return $"v{vStr} (Native AOT)";
+    }
 
     [ObservableProperty]
     private string _modelName = "PP-OCRv6_small";
