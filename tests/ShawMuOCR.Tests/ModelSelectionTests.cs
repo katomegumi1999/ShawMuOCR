@@ -195,6 +195,16 @@ public class ModelSelectionTests
     }
 
     [Fact]
+    public void AboutViewModel_AppVersion_ReflectsVersion()
+    {
+        var provider = new OcrModelProvider();
+        var settingsService = new FakeSettingsService();
+        var diagnostics = new ShawMuOCR.Services.ModelMemoryDiagnosticsService(settingsService, provider);
+        var vm = new AboutViewModel(diagnostics, null);
+        Assert.Equal("v2.0.0 (Native AOT)", vm.AppVersion);
+    }
+
+    [Fact]
     public void ModelMemoryDiagnostics_WhenExternalModelSelected_ReportsExternalCustomModel()
     {
         var provider = new OcrModelProvider();

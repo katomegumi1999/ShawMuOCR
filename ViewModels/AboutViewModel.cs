@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Reflection;
 using System.Threading.Tasks;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -36,10 +37,36 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
 
     private static string GetAppVersion()
     {
-        var ver = typeof(AboutViewModel).Assembly.GetName().Version;
-        if (ver == null) return "v1.0.0 (Native AOT)";
-        string vStr = ver.Build >= 0 ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : $"{ver.Major}.{ver.Minor}";
-        return $"v{vStr} (Native AOT)";
+        try
+        {
+            var infoVer = typeof(AboutViewModel).Assembly
+                .GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>()?
+                .InformationalVersion;
+
+            if (!string.IsNullOrWhiteSpace(infoVer))
+            {
+                int plusIdx = infoVer.IndexOf('+');
+                string cleanVer = plusIdx > 0 ? infoVer.Substring(0, plusIdx).Trim() : infoVer.Trim();
+                if (!string.IsNullOrEmpty(cleanVer))
+                {
+                    return cleanVer.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                        ? $"{cleanVer} (Native AOT)"
+                        : $"v{cleanVer} (Native AOT)";
+                }
+            }
+
+            var ver = typeof(AboutViewModel).Assembly.GetName().Version;
+            if (ver != null)
+            {
+                string vStr = ver.Build >= 0 ? $"{ver.Major}.{ver.Minor}.{ver.Build}" : $"{ver.Major}.{ver.Minor}";
+                return $"v{vStr} (Native AOT)";
+            }
+        }
+        catch
+        {
+        }
+
+        return "v2.0.0 (Native AOT)";
     }
 
     [ObservableProperty]
