@@ -266,36 +266,54 @@ public class MuClipMemoryPoolTests
     }
 
     [Fact]
-    public void Test_MuClipSync_Random_Pin_Pairing()
+    public async Task Test_MuClipSync_Random_Pin_Pairing()
     {
-        string pinA = MuClipService.GenerateRandomPin();
-        string pinB = MuClipService.GenerateRandomPin();
-        Assert.Equal(6, pinA.Length);
-        Assert.Equal(6, pinB.Length);
+        string dirA = Path.Combine(Path.GetTempPath(), "muclip_sync_a_" + Guid.NewGuid().ToString("N"));
+        string dirB = Path.Combine(Path.GetTempPath(), "muclip_sync_b_" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dirA);
+        Directory.CreateDirectory(dirB);
 
-        using var syncA = new MuClipSync("device-a", "Machine A", "Windows", 43501, 43601, pinA);
-        using var syncB = new MuClipSync("device-b", "Machine B", "Windows", 43502, 43602, pinB);
+        using var sA = new MuClipService();
+        using var sB = new MuClipService();
 
-        string receivedPinOnB = string.Empty;
-        string senderOnB = string.Empty;
-        var pairEvent = new System.Threading.ManualResetEventSlim(false);
-
-        syncB.PairRequestReceived += (s, e) =>
+        try
         {
-            senderOnB = e.DeviceName;
-            receivedPinOnB = e.Pin;
-            syncB.SetPairingPin(e.Pin);
-            pairEvent.Set();
-        };
+            sA.Initialize(Path.Combine(dirA, "test.db"), startSync: true, syncPort: 43521, startListener: false, customDeviceId: "device-a", customDeviceName: "Machine A");
+            sB.Initialize(Path.Combine(dirB, "test.db"), startSync: true, syncPort: 43522, startListener: false, customDeviceId: "device-b", customDeviceName: "Machine B");
 
-        // Device A 发送全新随机 PIN 给 Device B 发起配对
-        string randomPairPin = MuClipService.GenerateRandomPin();
-        bool sent = syncA.SendPairRequest($"127.0.0.1:{syncB.BoundPort}", randomPairPin);
-        Assert.True(sent);
+            string randomPairPin = MuClipService.GenerateRandomPin();
+            Assert.Equal(6, randomPairPin.Length);
 
-        Assert.True(pairEvent.Wait(TimeSpan.FromSeconds(3)));
-        Assert.Equal(randomPairPin, receivedPinOnB);
-        Assert.Equal("Machine A", senderOnB);
+            var pairReqTcs = new TaskCompletionSource<(string reqId, string devName)>();
+            sB.IncomingPairRequested += (reqId, devId, devName, ip) =>
+            {
+                pairReqTcs.TrySetResult((reqId, devName));
+            };
+
+            var requestTask = Task.Run(async () =>
+            {
+                return await sA.RequestPairAsync("127.0.0.1", sB.SyncPort, randomPairPin, 10);
+            });
+
+            var incoming = await Task.WhenAny(pairReqTcs.Task, Task.Delay(5000));
+            Assert.Same(pairReqTcs.Task, incoming);
+
+            var (reqId, senderName) = await pairReqTcs.Task;
+            Assert.Equal("Machine A", senderName);
+
+            int code = sB.RespondPair(reqId, randomPairPin, true);
+            Assert.Equal(0, code);
+
+            var res = await requestTask;
+            Assert.True(res.Success, $"配对握手失败: {res.Message}");
+            Assert.Equal("Machine B", res.DeviceName);
+            Assert.Equal("device-b", res.DeviceId);
+        }
+        finally
+        {
+            try { if (Directory.Exists(dirA)) Directory.Delete(dirA, true); } catch { }
+            try { if (Directory.Exists(dirB)) Directory.Delete(dirB, true); } catch { }
+        }
     }
 
     [Fact]
@@ -688,9 +706,27 @@ public class MuClipMemoryPoolTests
             sA.AutoDiscoveryEnabled = false;
             sB.AutoDiscoveryEnabled = false;
 
-            // 模拟双端已完成配对
-            sA.AddOrUpdatePairedDevice("dev-unpair-b", "Device Beta", "127.0.0.1", sB.SyncPort);
-            sB.AddOrUpdatePairedDevice("dev-unpair-a", "Device Alpha", "127.0.0.1", sA.SyncPort);
+            string testPin = "741852";
+            var pairReqTcs = new TaskCompletionSource<string>();
+            sB.IncomingPairRequested += (reqId, devId, devName, ip) =>
+            {
+                pairReqTcs.TrySetResult(reqId);
+            };
+
+            var requestTask = Task.Run(async () =>
+            {
+                return await sA.RequestPairAsync("127.0.0.1", sB.SyncPort, testPin, 10);
+            });
+
+            var incoming = await Task.WhenAny(pairReqTcs.Task, Task.Delay(5000));
+            Assert.Same(pairReqTcs.Task, incoming);
+
+            var reqId = await pairReqTcs.Task;
+            sB.RespondPair(reqId, testPin, true);
+            var pairRes = await requestTask;
+            Assert.True(pairRes.Success, $"配对失败: {pairRes.Message}");
+
+            await Task.Delay(200);
 
             Assert.Contains(sA.PairedDevices, p => p.DeviceId == "dev-unpair-b");
             Assert.Contains(sB.PairedDevices, p => p.DeviceId == "dev-unpair-a");
