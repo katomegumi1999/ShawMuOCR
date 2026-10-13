@@ -1,6 +1,10 @@
 # 小沐 OCR (ShawMuOCR)
 
 <p align="center">
+  <a href="README.md">中文</a> | <a href="README.en.md">English</a>
+</p>
+
+<p align="center">
   <img src="Assets/logo.png" alt="小沐 OCR Logo" width="96" height="96" />
 </p>
 
@@ -9,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://www.23771139.xyz/ShawMuOCR/"><img src="https://img.shields.io/badge/官网-ShawMuOCR-0078D4?logo=google-chrome&logoColor=white" alt="Official Website" /></a>
   <a href="https://dotnet.microsoft.com/download/dotnet/11.0"><img src="https://img.shields.io/badge/.NET-11.0-512BD4?logo=dotnet&logoColor=white" alt=".NET 11" /></a>
   <a href="https://avaloniaui.net/"><img src="https://img.shields.io/badge/UI-Avalonia%2012-7A43B6?logo=avalonia&logoColor=white" alt="Avalonia UI" /></a>
   <a href="https://github.com/sdcb/SimdPaddleOCR"><img src="https://img.shields.io/badge/Inference-CPU%20SIMD%20%2F%20Vulkan%20GPU-0078D4" alt="Sdcb.SimdPaddleOCR" /></a>
@@ -208,6 +213,7 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
 ## 👤 作者与社区
 
 - **开发作者**：沐洵羽
+- **官方网站**：[https://www.23771139.xyz/ShawMuOCR/](https://www.23771139.xyz/ShawMuOCR/)
 - **哔哩哔哩 (B站)**：[@沐洵羽](https://space.bilibili.com/192158726)
 - **GitHub 仓库**：[katomegumi1999/ShawMuOCR](https://github.com/katomegumi1999/ShawMuOCR)
 - 欢迎在 GitHub 点上一颗 ⭐️ **Star**，您的支持是持续维护与迭代的最大动力！
