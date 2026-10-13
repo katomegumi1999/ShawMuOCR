@@ -28,6 +28,7 @@
                         <NativeMenuItem Header="截图复制" Click="OnTrayCaptureImageClick" />
                         <NativeMenuItem Header="截图标注" Click="OnTrayAnnotateClick" />
                         <NativeMenuItem Header="选区翻译" Click="OnTrayTranslateClick" />
+                        <NativeMenuItem Header="OCR 弹窗" Click="OnTrayOcrPopupClick" />
                         <NativeMenuItemSeparator />
                         <NativeMenuItem Header="打开主界面" Click="OnTrayOpenMainClick" />
                         <NativeMenuItem Header="小沐剪贴板" Click="OnTrayClipboardClick" />

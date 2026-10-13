@@ -158,6 +158,15 @@ public partial class MainWindow : Window
             vm.StartTranslateSelectionCommand.Execute(null);
             return;
         }
+
+        // OCR 弹窗快捷键
+        if (HotkeyGesture.TryParse(vm.CurrentOcrPopupHotkey, out var ocrPopupGesture) &&
+            mod == ocrPopupGesture.Modifiers && vk == ocrPopupGesture.VirtualKey)
+        {
+            e.Handled = true;
+            vm.StartOcrPopupCommand.Execute(null);
+            return;
+        }
     }
 
     private static void HandleSettingsHotkeyRecording(SettingsViewModel settingsVm, KeyEventArgs e)
@@ -188,6 +197,10 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingTranslateHotkey)
             {
                 settingsVm.ClearTranslateHotkeyCommand.Execute(null);
+            }
+            else if (settingsVm.IsRecordingOcrPopupHotkey)
+            {
+                settingsVm.ClearOcrPopupHotkeyCommand.Execute(null);
             }
             else if (settingsVm.IsRecordingClipboardPanelHotkey)
             {
@@ -235,6 +248,10 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingTranslateHotkey)
             {
                 settingsVm.OnTranslateHotkeyRecorded(gesture);
+            }
+            else if (settingsVm.IsRecordingOcrPopupHotkey)
+            {
+                settingsVm.OnOcrPopupHotkeyRecorded(gesture);
             }
             else if (settingsVm.IsRecordingClipboardPanelHotkey)
             {

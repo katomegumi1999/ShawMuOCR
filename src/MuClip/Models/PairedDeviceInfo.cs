@@ -15,6 +15,7 @@ public partial class PairedDeviceInfo : ObservableObject
     public int SyncPort { get; set; } = 42424;
     public string PairedAt { get; set; } = string.Empty;
     public string LastSyncAt { get; set; } = string.Empty;
+    public string PeerKey { get; set; } = string.Empty;
 
     /// <summary>
     /// 运行时动态在线状态（由心跳包与 TCP 探活判定）

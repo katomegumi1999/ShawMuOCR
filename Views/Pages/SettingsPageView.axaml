@@ -147,6 +147,32 @@
                             </StackPanel>
                         </Grid>
 
+                        <!-- 快捷键 5: OCR 弹窗 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="OCR 弹窗全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="框选屏幕区域后识别文字并在悬浮弹窗中显示结果（不自动复制）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding OcrPopupHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                         Command="{Binding StartRecordOcrPopupHotkeyCommand}"
+                                         Padding="10,5" />
+                                <Button Content="✕"
+                                         ToolTip.Tip="清空此快捷键(禁用)"
+                                         Command="{Binding ClearOcrPopupHotkeyCommand}"
+                                         Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
                         <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
 
                         <!-- 行为开关 -->

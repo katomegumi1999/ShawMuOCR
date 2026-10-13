@@ -13,8 +13,14 @@ using ShawMuOCR.Core.Translation;
 
 namespace ShawMuOCR.Views;
 
+public enum FloatingWindowMode
+{
+    Translation,
+    OcrPopup
+}
+
 /// <summary>
-/// 随动翻译浮窗（纯 UI 视图层）：
+/// 随动翻译浮窗 / OCR 弹窗（纯 UI 视图层）：
 /// 彻底与数据和后台业务解耦，只负责渲染展示与收集基础交互（如点击重试、复制、切换置顶等）。
 /// 所有 OCR 识别、网络翻译、耗时统计与数据流水线均由协调服务统筹推进，并直接推送至本视图。
 /// </summary>
@@ -22,16 +28,23 @@ public partial class TranslateFloatingWindow : Window
 {
     private readonly ISettingsService _settingsService;
     private readonly IClipboardService _clipboardService;
-    private readonly ITranslationService _translationService;
+    private readonly ITranslationService? _translationService;
+    private readonly FloatingWindowMode _mode;
 
     private string _currentOcrText = string.Empty;
-    private string _currentTranslatedText = string.Empty;
+    private string _currentResultText = string.Empty;
+    private string _originalResultText = string.Empty;
     private bool _isInitializingProvider = false;
 
     /// <summary>
-    /// 当用户点击浮窗内的“重试”按钮时触发
+    /// 当用户点击浮窗内的"重试"按钮时触发
     /// </summary>
     public event Action? RetryRequested;
+
+    /// <summary>
+    /// 当用户点击浮窗内的"新建"按钮时触发（发起新的 OCR 弹窗识别）
+    /// </summary>
+    public event Action? NewSessionRequested;
 
     public TranslateFloatingWindow()
     {
@@ -39,62 +52,117 @@ public partial class TranslateFloatingWindow : Window
         _settingsService = null!;
         _clipboardService = null!;
         _translationService = null!;
+        _mode = FloatingWindowMode.Translation;
     }
 
     public TranslateFloatingWindow(
         ISettingsService settingsService,
         IClipboardService clipboardService,
-        ITranslationService translationService)
+        ITranslationService? translationService,
+        FloatingWindowMode mode = FloatingWindowMode.Translation)
     {
         InitializeComponent();
 
         _settingsService = settingsService;
         _clipboardService = clipboardService;
         _translationService = translationService;
+        _mode = mode;
 
-        InitializeProviderComboBox();
-        UpdateLanguageDirectionText();
-        UpdateQuotaDisplay();
+        ApplyMode();
+
+        if (_mode == FloatingWindowMode.Translation)
+        {
+            InitializeProviderComboBox();
+            UpdateLanguageDirectionText();
+            UpdateQuotaDisplay();
+        }
         UpdateSourceTooltip(string.Empty);
 
         KeyDown += OnWindowKeyDown;
     }
 
+    private void ApplyMode()
+    {
+        switch (_mode)
+        {
+            case FloatingWindowMode.Translation:
+                Title = "选区翻译 - 小沐 OCR";
+                TitleIcon.Text = "\U0001f310";
+                TitleText.Text = "选区翻译";
+                ToolbarBorder.IsVisible = true;
+                QuotaRow.IsVisible = true;
+                RetryButton.IsVisible = true;
+                RestoreButton.IsVisible = true;
+                NewSessionButton.IsVisible = false;
+                CopySourceButton.IsVisible = true;
+                CopyResultText.Text = "复制译文";
+                break;
+            case FloatingWindowMode.OcrPopup:
+                Title = "OCR 弹窗 - 小沐 OCR";
+                TitleIcon.Text = "\U0001f4dd";
+                TitleText.Text = "OCR 弹窗";
+                ToolbarBorder.IsVisible = false;
+                QuotaRow.IsVisible = false;
+                RetryButton.IsVisible = false;
+                RestoreButton.IsVisible = true;
+                NewSessionButton.IsVisible = true;
+                CopySourceButton.IsVisible = false;
+                CopyResultText.Text = "复制结果";
+                break;
+        }
+    }
+
     #region 公共数据推送接口 (UI 只负责展示)
 
     /// <summary>
-    /// 仅首次唤起时计算初始位置靠在选区旁边
+    /// 首次唤起时计算初始位置靠在选区旁边。
+    /// 选区 ScreenRect 来自 Win32 物理像素，Avalonia WorkingArea 与 Window.Position 均为 DIP，
+    /// 因此先将选区换算到 DIP 再做边界防溢出判定。
     /// </summary>
     public void InitializePosition(ScreenRect sel)
     {
-        int windowW = 390;
-        int windowH = 430;
+        var screen = Screens.ScreenFromPoint(
+            new PixelPoint(sel.X + sel.Width / 2, sel.Y + sel.Height / 2)) ?? Screens.Primary;
 
-        int x = sel.X + sel.Width + 10;
-        int y = sel.Y;
-
-        var screens = Screens;
-        var screen = screens.ScreenFromPoint(new PixelPoint(sel.X + sel.Width / 2, sel.Y + sel.Height / 2)) ?? screens.Primary;
-        if (screen != null)
+        if (screen == null)
         {
-            var bounds = screen.WorkingArea;
-            if (x + windowW > bounds.X + bounds.Width)
-            {
-                x = sel.X - windowW - 10;
-            }
-            if (x < bounds.X)
-            {
-                x = Math.Max(bounds.X + 10, Math.Min(sel.X, bounds.X + bounds.Width - windowW - 10));
-                y = sel.Y + sel.Height + 10;
-            }
-            if (y + windowH > bounds.Y + bounds.Height)
-            {
-                y = Math.Max(bounds.Y + 10, bounds.Y + bounds.Height - windowH - 10);
-            }
+            Position = new PixelPoint(sel.X + sel.Width + 10, sel.Y);
+            return;
         }
 
-        Position = new PixelPoint(x, y);
-        BringToFront();
+        double scale = screen.Scaling;
+        var bounds = screen.WorkingArea;
+
+        double selX = sel.X / scale;
+        double selY = sel.Y / scale;
+        double selW = sel.Width / scale;
+        double selH = sel.Height / scale;
+
+        double dipW = Width > 0 ? Width : 390;
+        double dipH = Height > 0 ? Height : 430;
+        double margin = 10;
+
+        double x = selX + selW + margin;
+        double y = selY;
+
+        if (x + dipW > bounds.X + bounds.Width - margin)
+        {
+            x = selX - dipW - margin;
+        }
+        if (x < bounds.X + margin)
+        {
+            x = Math.Max(bounds.X + margin, Math.Min(selX, bounds.X + bounds.Width - dipW - margin));
+        }
+        if (y + dipH > bounds.Y + bounds.Height - margin)
+        {
+            y = selY - dipH - margin;
+        }
+        if (y < bounds.Y + margin)
+        {
+            y = bounds.Y + margin;
+        }
+
+        Position = new PixelPoint((int)Math.Round(x), (int)Math.Round(y));
     }
 
     /// <summary>
@@ -116,7 +184,7 @@ public partial class TranslateFloatingWindow : Window
     public void ShowLoading(string statusText)
     {
         LoadingPanel.IsVisible = true;
-        ResultScrollViewer.IsVisible = false;
+        ResultTextBox.IsVisible = false;
         ErrorPanel.IsVisible = false;
         LoadingStatusText.Text = statusText;
         ElapsedText.Text = "处理中...";
@@ -134,17 +202,21 @@ public partial class TranslateFloatingWindow : Window
     /// <summary>
     /// 推送并展示翻译成功结果与耗时额度数据
     /// </summary>
-    public void SetSuccessResult(string translatedText, string elapsedText, string quotaText)
+    public void SetSuccessResult(string resultText, string elapsedText, string quotaText)
     {
-        _currentTranslatedText = translatedText ?? string.Empty;
+        _currentResultText = resultText ?? string.Empty;
+        _originalResultText = _currentResultText;
         LoadingPanel.IsVisible = false;
         ErrorPanel.IsVisible = false;
 
-        ResultTextBlock.Text = _currentTranslatedText;
-        ResultScrollViewer.IsVisible = true;
+        ResultTextBox.Text = _currentResultText;
+        ResultTextBox.IsVisible = true;
 
         ElapsedText.Text = elapsedText;
-        QuotaInfoText.Text = quotaText;
+        if (_mode == FloatingWindowMode.Translation)
+        {
+            QuotaInfoText.Text = quotaText;
+        }
     }
 
     /// <summary>
@@ -153,7 +225,7 @@ public partial class TranslateFloatingWindow : Window
     public void SetError(string errorMsg, string elapsedText)
     {
         LoadingPanel.IsVisible = false;
-        ResultScrollViewer.IsVisible = false;
+        ResultTextBox.IsVisible = false;
         ErrorPanel.IsVisible = true;
 
         ErrorTextBlock.Text = errorMsg;
@@ -239,7 +311,7 @@ public partial class TranslateFloatingWindow : Window
                 UpdateLanguageDirectionText();
                 UpdateQuotaDisplay();
 
-                // 要求1：用户手动切换模型时不自动重新发起翻译，仅保存设置并刷新界面提示。用户如需重新翻译可主动点击“重试”按钮
+                // 要求1：用户手动切换模型时不自动重新发起翻译，仅保存设置并刷新界面提示。用户如需重新翻译可主动点击"重试"按钮
             }
         }
     }
@@ -359,11 +431,24 @@ public partial class TranslateFloatingWindow : Window
 
     private async void OnCopyResultClick(object? sender, RoutedEventArgs e)
     {
-        if (!string.IsNullOrWhiteSpace(_currentTranslatedText))
+        string text = ResultTextBox.Text ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(text))
         {
-            await _clipboardService.SetTextAsync(_currentTranslatedText);
-            ToastNotificationWindow.Show("译文已复制到剪贴板", TimeSpan.FromMilliseconds(50), "复制成功");
+            await _clipboardService.SetTextAsync(text);
+            string label = _mode == FloatingWindowMode.Translation ? "译文" : "识别结果";
+            ToastNotificationWindow.Show($"{label}已复制到剪贴板", TimeSpan.FromMilliseconds(50), "复制成功");
         }
+    }
+
+    private void OnRestoreClick(object? sender, RoutedEventArgs e)
+    {
+        ResultTextBox.Text = _originalResultText;
+        ResultTextBox.CaretIndex = _originalResultText.Length;
+    }
+
+    private void OnNewSessionClick(object? sender, RoutedEventArgs e)
+    {
+        NewSessionRequested?.Invoke();
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)

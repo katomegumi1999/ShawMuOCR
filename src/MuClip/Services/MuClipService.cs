@@ -162,6 +162,36 @@ public class MuClipService : IMuClipService
         return Random.Shared.Next(100000, 1000000).ToString("D6");
     }
 
+    public static string GenerateRandomLongTermKeyHex()
+    {
+        byte[] bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+        return Convert.ToHexString(bytes).ToLowerInvariant();
+    }
+
+    private static bool IsValidHexKey64(string? s)
+    {
+        if (string.IsNullOrWhiteSpace(s) || s.Trim().Length != 64) return false;
+        foreach (char c in s.Trim())
+        {
+            if (!Uri.IsHexDigit(c)) return false;
+        }
+        return true;
+    }
+
+    private static string BuildPairedDeviceSpec(string deviceId, string? ip, int port, string? name, string? type, string? peerKey)
+    {
+        int p = port > 0 ? port : 42424;
+        string safeIp = (ip ?? string.Empty).Trim();
+        string safeName = (name ?? string.Empty).Replace('|', ' ').Trim();
+        string safeType = string.IsNullOrWhiteSpace(type) ? "Windows" : type.Replace('|', ' ').Trim();
+        string safeKey = IsValidHexKey64(peerKey) ? peerKey!.Trim() : string.Empty;
+        if (string.IsNullOrEmpty(safeIp) && string.IsNullOrEmpty(safeKey))
+        {
+            return deviceId;
+        }
+        return $"{deviceId}|{safeIp}|{p}|{safeName}|{safeType}|{safeKey}";
+    }
+
     private static readonly byte[] s_dpapiEntropy = System.Text.Encoding.UTF8.GetBytes("ShawMuOCR_MuClip_SecureStorage_Entropy_v1");
 
     public static string EncryptSecret(string plainText)
@@ -268,39 +298,38 @@ public class MuClipService : IMuClipService
 
         _core = new MuClipCore(dbPath);
 
-        // 1. 优先从 SQLite 数据库 secure_config 表中解密读取协商好的 256 位长期主密钥 (Long-Term Key)
+        // 1. 优先从 SQLite 数据库 secure_config 表中解密读取本机永久 256 位设备密钥 (Long-Term Key)
         string? activeSessionKey = null;
         string? encryptedLtk = _core.GetConfig("long_term_key");
         if (!string.IsNullOrWhiteSpace(encryptedLtk))
         {
             string? decrypted = DecryptSecret(encryptedLtk);
-            if (!string.IsNullOrWhiteSpace(decrypted) && decrypted.Length == 64)
+            if (IsValidHexKey64(decrypted))
             {
-                activeSessionKey = decrypted;
+                activeSessionKey = decrypted!.Trim();
             }
         }
 
-        // 2. 若尚未协商长期密钥，解密读取首次配对 PIN 码
+        // 2. 若本机尚未生成永久长期密钥，立即使用 CSPRNG 生成每台设备独立的 256 位永久密钥并加密写入数据库（初始配对 PIN 仅用于信任验证）
         if (string.IsNullOrEmpty(activeSessionKey))
         {
-            string? encryptedPinFromDb = _core.GetConfig("pairing_pin");
-            if (!string.IsNullOrWhiteSpace(encryptedPinFromDb))
+            if (!string.IsNullOrWhiteSpace(pairingPin))
             {
-                string? decrypted = DecryptSecret(encryptedPinFromDb);
-                if (!string.IsNullOrWhiteSpace(decrypted) && decrypted.Length == 6 && decrypted != "000000")
+                activeSessionKey = pairingPin.Trim();
+                if (IsValidHexKey64(activeSessionKey))
                 {
-                    activeSessionKey = decrypted;
+                    _core.SetConfig("long_term_key", EncryptSecret(activeSessionKey));
+                }
+                else
+                {
+                    _core.SetConfig("pairing_pin", EncryptSecret(activeSessionKey));
                 }
             }
-        }
-
-        // 3. 初次安装启动若无任何记录，则使用传入的有效 PIN 或动态生成随机 6 位 PIN 并加密写入数据库
-        if (string.IsNullOrEmpty(activeSessionKey))
-        {
-            activeSessionKey = !string.IsNullOrWhiteSpace(pairingPin)
-                ? pairingPin
-                : GenerateRandomPin();
-            _core.SetConfig("pairing_pin", EncryptSecret(activeSessionKey));
+            else
+            {
+                activeSessionKey = GenerateRandomLongTermKeyHex();
+                _core.SetConfig("long_term_key", EncryptSecret(activeSessionKey));
+            }
         }
 
         PairingPin = activeSessionKey.Length == 6 ? activeSessionKey : "已信任 (长期密钥)";
@@ -351,14 +380,12 @@ public class MuClipService : IMuClipService
                 }
                 _sync.SetFileSaveDirectory(_fileSaveDirectory);
 
-                // 将已配对设备自动注入底层 Rust 广播白名单（携带最近 IP/端口以支持单播与心跳保活）
+                // 将已配对设备及其独立对端密钥注入底层 Rust Keyring（携带最近 IP/端口以支持单播与心跳保活）
                 lock (_lock)
                 {
                     foreach (var dev in _pairedDevices)
                     {
-                        string spec = !string.IsNullOrEmpty(dev.Ip)
-                            ? $"{dev.DeviceId}|{dev.Ip}|{(dev.SyncPort > 0 ? dev.SyncPort : 42424)}|{dev.DeviceName}"
-                            : dev.DeviceId;
+                        string spec = BuildPairedDeviceSpec(dev.DeviceId, dev.Ip, dev.SyncPort, dev.DeviceName, dev.DeviceType, dev.PeerKey);
                         _sync.AddPairedDevice(spec);
                     }
                 }
@@ -571,11 +598,6 @@ public class MuClipService : IMuClipService
     {
         if (string.Equals(e.DeviceId, _localDeviceId, StringComparison.OrdinalIgnoreCase)) return;
 
-        if (!string.IsNullOrWhiteSpace(e.Pin))
-        {
-            UpdatePairingPin(e.Pin);
-        }
-
         var (parsedHost, parsedPort) = ParseEndpoint(e.PeerIp, 42424);
         lock (_lock)
         {
@@ -589,7 +611,8 @@ public class MuClipService : IMuClipService
             }
         }
 
-        AddOrUpdatePairedDevice(e.DeviceId, e.DeviceName, parsedHost, parsedPort);
+        PairingPin = "已信任 (长期密钥)";
+        AddOrUpdatePairedDevice(e.DeviceId, e.DeviceName, parsedHost, parsedPort, e.Pin);
         PairEstablished?.Invoke(e.DeviceId, e.DeviceName);
     }
 
@@ -758,15 +781,8 @@ public class MuClipService : IMuClipService
 
         if (res.Success)
         {
-            if (!string.IsNullOrEmpty(res.LongTermKey))
-            {
-                UpdatePairingPin(res.LongTermKey);
-            }
-            else
-            {
-                UpdatePairingPin(pin);
-            }
-            AddOrUpdatePairedDevice(res.ResponderId, res.ResponderName, host, port);
+            PairingPin = "已信任 (长期密钥)";
+            AddOrUpdatePairedDevice(res.ResponderId, res.ResponderName, host, port, res.LongTermKey);
             return (true, res.ResponderId, res.ResponderName, "配对成功！");
         }
         else
@@ -795,16 +811,20 @@ public class MuClipService : IMuClipService
         var res = _sync.RequestPair(addr, pin, 60);
         if (res.Success)
         {
-            UpdatePairingPin(!string.IsNullOrEmpty(res.LongTermKey) ? res.LongTermKey : pin);
-            AddOrUpdatePairedDevice(res.ResponderId, res.ResponderName, host, port);
+            PairingPin = "已信任 (长期密钥)";
+            AddOrUpdatePairedDevice(res.ResponderId, res.ResponderName, host, port, res.LongTermKey);
         }
         return res.Success;
     }
 
     public void AddOrUpdatePairedDevice(string deviceId, string deviceName, string ip, int port)
+        => AddOrUpdatePairedDevice(deviceId, deviceName, ip, port, null);
+
+    public void AddOrUpdatePairedDevice(string deviceId, string deviceName, string ip, int port, string? peerKey)
     {
         if (string.IsNullOrWhiteSpace(deviceId)) return;
         var (host, resolvedPort) = ParseEndpoint(ip, port > 0 ? port : 42424);
+        string cleanPeerKey = IsValidHexKey64(peerKey) ? peerKey!.Trim() : string.Empty;
         lock (_lock)
         {
             var peerMatch = _peers.FirstOrDefault(p =>
@@ -816,6 +836,14 @@ public class MuClipService : IMuClipService
                 if (!string.IsNullOrEmpty(peerMatch.Ip)) host = peerMatch.Ip;
                 if (peerMatch.SyncPort > 0) resolvedPort = peerMatch.SyncPort;
             }
+            if (string.IsNullOrEmpty(cleanPeerKey) && peerMatch != null && IsValidHexKey64(peerMatch.Fingerprint))
+            {
+                cleanPeerKey = peerMatch.Fingerprint.Trim();
+            }
+
+            string resolvedType = peerMatch != null && !string.IsNullOrWhiteSpace(peerMatch.DeviceType) && peerMatch.DeviceType != "Manual"
+                ? peerMatch.DeviceType
+                : "Windows";
 
             var existing = _pairedDevices.FirstOrDefault(p => p.DeviceId == deviceId);
             if (existing != null)
@@ -823,6 +851,9 @@ public class MuClipService : IMuClipService
                 if (!string.IsNullOrEmpty(deviceName)) existing.DeviceName = deviceName;
                 if (!string.IsNullOrEmpty(host)) existing.Ip = host;
                 if (resolvedPort > 0) existing.SyncPort = resolvedPort;
+                if (!string.IsNullOrEmpty(cleanPeerKey)) existing.PeerKey = cleanPeerKey;
+                else cleanPeerKey = existing.PeerKey;
+                if (!string.IsNullOrEmpty(existing.DeviceType)) resolvedType = existing.DeviceType;
                 existing.IsManual = existing.IsManual || isManual;
                 existing.IsOnline = true;
                 existing.LastSyncAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
@@ -833,19 +864,19 @@ public class MuClipService : IMuClipService
                 {
                     DeviceId = deviceId,
                     DeviceName = !string.IsNullOrEmpty(deviceName) ? deviceName : $"局域网对端 ({host}:{resolvedPort})",
+                    DeviceType = resolvedType,
                     Ip = host,
                     SyncPort = resolvedPort > 0 ? resolvedPort : 42424,
                     PairedAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
                     LastSyncAt = DateTime.Now.ToString("yyyy-MM-dd HH:mm"),
+                    PeerKey = cleanPeerKey,
                     IsOnline = true,
                     IsManual = isManual
                 });
             }
             SavePairedDevices();
 
-            string spec = !string.IsNullOrEmpty(host)
-                ? $"{deviceId}|{host}|{(resolvedPort > 0 ? resolvedPort : 42424)}|{deviceName}"
-                : deviceId;
+            string spec = BuildPairedDeviceSpec(deviceId, host, resolvedPort, deviceName, resolvedType, cleanPeerKey);
             _sync?.AddPairedDevice(spec);
         }
         RefreshPeers();
@@ -1049,7 +1080,7 @@ public class MuClipService : IMuClipService
             // 同步匹配更新已配对设备的实时在线状态与映射端点
             bool pairedStatusChanged = false;
 
-            // 自动持久化同集群内通过密钥指纹匹配/Gossip自动互信的节点
+            // 自动持久化同集群内通过受信任介绍人 (Trusted Introducer Gossip) 自动互信的节点及其对端密钥
             if (_pairedDevices.Count > 0)
             {
                 foreach (var p in _peers)
@@ -1062,21 +1093,24 @@ public class MuClipService : IMuClipService
                         var nowStr = DateTime.Now.ToString("yyyy-MM-dd HH:mm");
                         var port = p.SyncPort > 0 ? p.SyncPort : 42424;
                         var name = !string.IsNullOrWhiteSpace(p.DeviceName) ? p.DeviceName : p.DeviceId;
+                        var devType = !string.IsNullOrWhiteSpace(p.DeviceType) ? p.DeviceType : "Windows";
+                        var peerKey = IsValidHexKey64(p.Fingerprint) ? p.Fingerprint.Trim() : string.Empty;
                         _pairedDevices.Add(new PairedDeviceInfo
                         {
                             DeviceId = p.DeviceId,
                             DeviceName = name,
-                            DeviceType = !string.IsNullOrWhiteSpace(p.DeviceType) ? p.DeviceType : "Windows",
+                            DeviceType = devType,
                             Ip = p.Ip ?? string.Empty,
                             SyncPort = port,
                             PairedAt = nowStr,
                             LastSyncAt = nowStr,
+                            PeerKey = peerKey,
                             IsOnline = p.IsOnline,
                             IsManual = p.IsManual
                         });
-                        if (!string.IsNullOrWhiteSpace(p.Ip))
+                        if (!string.IsNullOrWhiteSpace(p.Ip) || !string.IsNullOrEmpty(peerKey))
                         {
-                            _sync.AddPairedDevice($"{p.DeviceId}|{p.Ip}|{port}|{name}");
+                            _sync.AddPairedDevice(BuildPairedDeviceSpec(p.DeviceId, p.Ip, port, name, devType, peerKey));
                         }
                         pairedStatusChanged = true;
                     }
@@ -1121,14 +1155,20 @@ public class MuClipService : IMuClipService
                         paired.DeviceType = match.DeviceType;
                         pairedStatusChanged = true;
                     }
+                    if (IsValidHexKey64(match.Fingerprint) && paired.PeerKey != match.Fingerprint.Trim())
+                    {
+                        paired.PeerKey = match.Fingerprint.Trim();
+                        pairedStatusChanged = true;
+                        endpointChanged = true;
+                    }
                     if (paired.IsManual != match.IsManual)
                     {
                         paired.IsManual = match.IsManual;
                         pairedStatusChanged = true;
                     }
-                    if (endpointChanged && !string.IsNullOrEmpty(paired.DeviceId) && !string.IsNullOrEmpty(paired.Ip))
+                    if (endpointChanged && !string.IsNullOrEmpty(paired.DeviceId) && (!string.IsNullOrEmpty(paired.Ip) || !string.IsNullOrEmpty(paired.PeerKey)))
                     {
-                        string spec = $"{paired.DeviceId}|{paired.Ip}|{(paired.SyncPort > 0 ? paired.SyncPort : 42424)}|{paired.DeviceName}";
+                        string spec = BuildPairedDeviceSpec(paired.DeviceId, paired.Ip, paired.SyncPort, paired.DeviceName, paired.DeviceType, paired.PeerKey);
                         _sync.AddPairedDevice(spec);
                     }
                 }
@@ -1211,9 +1251,10 @@ public class MuClipService : IMuClipService
                 WriteBinaryStr(ms, d.Ip);
                 WriteBinaryStr(ms, d.PairedAt);
                 WriteBinaryStr(ms, d.LastSyncAt);
+                WriteBinaryStr(ms, EncryptSecret(d.PeerKey));
             }
 
-            string payload = "BIN1:" + Convert.ToBase64String(ms.ToArray());
+            string payload = "BIN2:" + Convert.ToBase64String(ms.ToArray());
             _core?.SetConfig("paired_devices", payload);
         }
         catch
@@ -1226,10 +1267,12 @@ public class MuClipService : IMuClipService
     {
         try
         {
-            // 纯数据库 secure_config 表读取，使用 BinarySpanReader 解码二进制帧
+            // 纯数据库 secure_config 表读取，使用 BinarySpanReader 解码二进制帧（兼容 BIN1 与带加密对端密钥的 BIN2）
             string? raw = _core?.GetConfig("paired_devices");
-            if (string.IsNullOrEmpty(raw) || !raw.StartsWith("BIN1:", StringComparison.Ordinal))
-                return;
+            if (string.IsNullOrEmpty(raw)) return;
+            bool isBin2 = raw.StartsWith("BIN2:", StringComparison.Ordinal);
+            bool isBin1 = raw.StartsWith("BIN1:", StringComparison.Ordinal);
+            if (!isBin1 && !isBin2) return;
 
             byte[] bytes = Convert.FromBase64String(raw.Substring(5));
             var reader = new BinarySpanReader(bytes);
@@ -1244,6 +1287,16 @@ public class MuClipService : IMuClipService
                 string ip = reader.ReadString();
                 string pairedAt = reader.ReadString();
                 string lastSyncAt = reader.ReadString();
+                string peerKey = string.Empty;
+                if (isBin2)
+                {
+                    string encKey = reader.ReadString();
+                    string? decKey = DecryptSecret(encKey);
+                    if (IsValidHexKey64(decKey))
+                    {
+                        peerKey = decKey!.Trim();
+                    }
+                }
                 list.Add(new PairedDeviceInfo
                 {
                     DeviceId = deviceId,
@@ -1253,6 +1306,7 @@ public class MuClipService : IMuClipService
                     SyncPort = syncPort > 0 ? syncPort : 42424,
                     PairedAt = pairedAt,
                     LastSyncAt = lastSyncAt,
+                    PeerKey = peerKey,
                     IsOnline = false
                 });
             }

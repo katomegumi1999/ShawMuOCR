@@ -52,6 +52,13 @@ public partial class SettingsViewModel : ViewModelBase
     private bool _isRecordingTranslateHotkey;
 
     [ObservableProperty]
+    private string _ocrPopupHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
+    private bool _isRecordingOcrPopupHotkey;
+
+    [ObservableProperty]
     private string _clipboardPanelHotkey;
 
     [ObservableProperty]
@@ -71,7 +78,7 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
     private bool _isRecordingPhrasesPanelHotkey;
 
-    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingTranslateHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
+    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingTranslateHotkey || IsRecordingOcrPopupHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
 
     // ==========================================
     // 翻译服务配置属性
@@ -434,6 +441,7 @@ public partial class SettingsViewModel : ViewModelBase
         _enableLogging = current.EnableLogging;
 
         _translateHotkey = current.TranslateHotkey;
+        _ocrPopupHotkey = current.OcrPopupHotkey;
         _enableClipboard = current.EnableClipboard;
         _clipboardPanelHotkey = current.ClipboardPanelHotkey;
         _phrasesPanelHotkey = current.PhrasesPanelHotkey;
@@ -742,6 +750,35 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void StartRecordOcrPopupHotkey()
+    {
+        _hotkeyService.IsPaused = true;
+        IsRecordingHotkey = false;
+        IsRecordingCaptureImageHotkey = false;
+        IsRecordingAnnotateHotkey = false;
+        IsRecordingTranslateHotkey = false;
+        IsRecordingOcrPopupHotkey = true;
+        StatusMessage = "请按下【OCR 弹窗】快捷键 (按 Backspace 清空，按 Esc 取消)...";
+    }
+
+    public void OnOcrPopupHotkeyRecorded(HotkeyGesture gesture)
+    {
+        IsRecordingOcrPopupHotkey = false;
+        _hotkeyService.IsPaused = false;
+        OcrPopupHotkey = gesture.ToString();
+        StatusMessage = $"✓ 已设置 OCR 弹窗快捷键: {OcrPopupHotkey}";
+    }
+
+    [RelayCommand]
+    private void ClearOcrPopupHotkey()
+    {
+        IsRecordingOcrPopupHotkey = false;
+        _hotkeyService.IsPaused = false;
+        OcrPopupHotkey = "无";
+        StatusMessage = "OCR 弹窗快捷键已清空(已禁用)";
+    }
+
+    [RelayCommand]
     private void StartRecordClipboardPanelHotkey()
     {
         _hotkeyService.IsPaused = true;
@@ -749,6 +786,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingCaptureImageHotkey = false;
         IsRecordingAnnotateHotkey = false;
         IsRecordingTranslateHotkey = false;
+        IsRecordingOcrPopupHotkey = false;
         IsRecordingClipboardPanelHotkey = true;
         IsRecordingPhrasesPanelHotkey = false;
         StatusMessage = "请按下【剪贴板快捷面板】快捷键 (默认 Ctrl+~，按 Backspace 清空，按 Esc 取消)...";
@@ -779,6 +817,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingCaptureImageHotkey = false;
         IsRecordingAnnotateHotkey = false;
         IsRecordingTranslateHotkey = false;
+        IsRecordingOcrPopupHotkey = false;
         IsRecordingClipboardPanelHotkey = false;
         IsRecordingPhrasesPanelHotkey = true;
         StatusMessage = "请按下【常用语快捷呼出】快捷键 (默认 Ctrl+1，按 Backspace 清空，按 Esc 取消)...";
@@ -832,6 +871,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingCaptureImageHotkey = false;
         IsRecordingAnnotateHotkey = false;
         IsRecordingTranslateHotkey = false;
+        IsRecordingOcrPopupHotkey = false;
         IsRecordingClipboardPanelHotkey = false;
         IsRecordingPhrasesPanelHotkey = false;
         _hotkeyService.IsPaused = false;
@@ -958,6 +998,7 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(CaptureImageHotkey):
             case nameof(AnnotateHotkey):
             case nameof(TranslateHotkey):
+            case nameof(OcrPopupHotkey):
             case nameof(EnableClipboard):
             case nameof(ClipboardPanelHotkey):
             case nameof(PhrasesPanelHotkey):
@@ -1009,6 +1050,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (!IsDisabledHotkey(CaptureImageHotkey)) activeHotkeys.Add(("截图复制", CaptureImageHotkey));
         if (!IsDisabledHotkey(AnnotateHotkey)) activeHotkeys.Add(("截图标注", AnnotateHotkey));
         if (!IsDisabledHotkey(TranslateHotkey)) activeHotkeys.Add(("选区翻译", TranslateHotkey));
+        if (!IsDisabledHotkey(OcrPopupHotkey)) activeHotkeys.Add(("OCR 弹窗", OcrPopupHotkey));
         if (EnableClipboard)
         {
             if (!IsDisabledHotkey(ClipboardPanelHotkey)) activeHotkeys.Add(("剪贴板面板", ClipboardPanelHotkey));
@@ -1048,6 +1090,11 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = "⚠️ 选区翻译快捷键格式无效！";
             return false;
         }
+        if (!IsDisabledHotkey(OcrPopupHotkey) && !HotkeyGesture.TryParse(OcrPopupHotkey, out _))
+        {
+            StatusMessage = "⚠️ OCR 弹窗快捷键格式无效！";
+            return false;
+        }
         if (EnableClipboard)
         {
             if (!IsDisabledHotkey(ClipboardPanelHotkey) && !HotkeyGesture.TryParse(ClipboardPanelHotkey, out _))
@@ -1069,6 +1116,7 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.CaptureImageHotkey = CaptureImageHotkey;
         newSettings.AnnotateHotkey = AnnotateHotkey;
         newSettings.TranslateHotkey = TranslateHotkey;
+        newSettings.OcrPopupHotkey = OcrPopupHotkey;
         newSettings.EnableClipboard = EnableClipboard;
         newSettings.ClipboardPanelHotkey = ClipboardPanelHotkey;
         newSettings.PhrasesPanelHotkey = PhrasesPanelHotkey;
@@ -1165,6 +1213,7 @@ public partial class SettingsViewModel : ViewModelBase
             CaptureImageHotkey = current.CaptureImageHotkey;
             AnnotateHotkey = current.AnnotateHotkey;
             TranslateHotkey = current.TranslateHotkey;
+            OcrPopupHotkey = current.OcrPopupHotkey;
             EnableClipboard = current.EnableClipboard;
             ClipboardPanelHotkey = current.ClipboardPanelHotkey;
             PhrasesPanelHotkey = current.PhrasesPanelHotkey;

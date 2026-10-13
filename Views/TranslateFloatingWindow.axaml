@@ -1,7 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="ShawMuOCR.Views.TranslateFloatingWindow"
-        Title="选区翻译 - 小沐 OCR"
+        Title="小沐 OCR"
         Width="390"
         Height="430"
         MinWidth="320"
@@ -50,8 +50,8 @@
                 <Grid ColumnDefinitions="Auto,*,Auto">
                     <!-- 左侧：标题 -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock Classes="emoji" Text="🌐" FontSize="14" VerticalAlignment="Center" />
-                        <TextBlock Text="选区翻译" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TitleIcon" Classes="emoji" Text="🌐" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TitleText" Text="选区翻译" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
                     </StackPanel>
 
                     <!-- 右侧：置顶与关闭 -->
@@ -76,7 +76,7 @@
             </Border>
 
             <!-- 2. 工具栏：模型切换 + 语言指示 + 原文悬浮查看 -->
-            <Border Grid.Row="1"
+            <Border x:Name="ToolbarBorder" Grid.Row="1"
                     Background="{DynamicResource FloatingWindowHeaderBg}"
                     BorderBrush="{DynamicResource FloatingWindowDivider}"
                     BorderThickness="0,0,0,1"
@@ -141,13 +141,15 @@
                                    HorizontalAlignment="Center" />
                     </StackPanel>
 
-                    <!-- 译文结果内容 -->
-                    <ScrollViewer x:Name="ResultScrollViewer" IsVisible="False" VerticalScrollBarVisibility="Auto">
-                        <SelectableTextBlock x:Name="ResultTextBlock"
-                                             TextWrapping="Wrap"
-                                             FontSize="13"
-                                             LineHeight="20" />
-                    </ScrollViewer>
+                    <!-- 结果内容 (可编辑输入框) -->
+                    <TextBox x:Name="ResultTextBox"
+                             IsVisible="False"
+                             TextWrapping="Wrap"
+                             AcceptsReturn="True"
+                             FontSize="13"
+                             LineHeight="20"
+                             BorderThickness="0"
+                             Background="Transparent" />
 
                     <!-- 错误提示 -->
                     <StackPanel x:Name="ErrorPanel"
@@ -181,7 +183,7 @@
                 </Grid>
 
                 <!-- 第二行：当月累计已用与额度 -->
-                <Grid ColumnDefinitions="Auto,*">
+                <Grid x:Name="QuotaRow" ColumnDefinitions="Auto,*">
                     <TextBlock Text="📊 累计:" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <TextBlock Grid.Column="1" x:Name="QuotaInfoText"
                                Text="当月已用: --"
@@ -199,35 +201,58 @@
                     BorderThickness="0,1,0,0"
                     Padding="12,8">
                 <Grid ColumnDefinitions="*,Auto,Auto">
-                    <!-- 左侧重试 -->
-                    <Button Grid.Column="0"
-                            x:Name="RetryButton"
-                            Classes="subtle"
-                            Click="OnRetryClick"
-                            HorizontalAlignment="Left"
-                            Padding="8,5"
-                            ToolTip.Tip="重新发起翻译">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="🔄" FontSize="11" VerticalAlignment="Center" />
-                            <TextBlock Text="重试" FontSize="12" VerticalAlignment="Center" />
-                        </StackPanel>
-                    </Button>
+                    <!-- 左侧按钮组 -->
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                        <Button x:Name="RetryButton"
+                                Classes="subtle"
+                                Click="OnRetryClick"
+                                Padding="8,5"
+                                ToolTip.Tip="重新发起翻译">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="↻" FontSize="13" VerticalAlignment="Center" />
+                                <TextBlock Text="重试" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RestoreButton"
+                                Classes="subtle"
+                                Click="OnRestoreClick"
+                                Padding="8,5"
+                                IsVisible="False"
+                                ToolTip.Tip="还原为本次识别的原始结果">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="↩" FontSize="13" VerticalAlignment="Center" />
+                                <TextBlock Text="还原" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="NewSessionButton"
+                                Classes="subtle"
+                                Click="OnNewSessionClick"
+                                Padding="8,5"
+                                IsVisible="False"
+                                ToolTip.Tip="发起新的 OCR 弹窗识别">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Classes="emoji" Text="📷" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock Text="新建" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
 
-                    <!-- 右侧复制原文与复制译文 -->
+                    <!-- 右侧复制原文与复制结果 -->
                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
-                        <Button Classes="subtle"
+                        <Button x:Name="CopySourceButton" Classes="subtle"
                                 Click="OnCopySourceClick"
                                 Padding="8,5"
                                 ToolTip.Tip="复制 OCR 识别的原文">
                             <TextBlock Text="复制原文" FontSize="12" VerticalAlignment="Center" />
                         </Button>
                         <Button Classes="accent"
+                                x:Name="CopyResultButton"
                                 Click="OnCopyResultClick"
                                 Padding="12,5"
-                                ToolTip.Tip="复制翻译后的译文">
+                                ToolTip.Tip="复制识别结果">
                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                 <TextBlock Classes="emoji" Text="📋" FontSize="11" VerticalAlignment="Center" />
-                                <TextBlock Text="复制译文" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock x:Name="CopyResultText" Text="复制译文" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </StackPanel>

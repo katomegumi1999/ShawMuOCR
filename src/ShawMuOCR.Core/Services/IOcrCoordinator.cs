@@ -24,6 +24,7 @@ public interface IOcrCoordinator : IDisposable
     Task StartCaptureImageAsync();
     Task StartAnnotateScreenshotAsync();
     Task StartTranslateSelectionAsync();
+    Task StartOcrPopupAsync();
     Task RunOcrAsync(OcrImage image);
     Task<OcrResult> RecognizeDirectAsync(OcrImage image);
 }
