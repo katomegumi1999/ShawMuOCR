@@ -121,18 +121,16 @@
             <!-- 3. 主体译文展示区 (充满中间区域) -->
             <Border Grid.Row="2"
                     Margin="12,8,12,4"
-                    Background="{DynamicResource FloatingWindowCardBg}"
-                    BorderBrush="{DynamicResource FloatingWindowBorder}"
-                    BorderThickness="1"
                     CornerRadius="8"
-                    Padding="12">
+                    ClipToBounds="True">
                 <Grid>
                     <!-- 加载指示器 -->
                     <StackPanel x:Name="LoadingPanel"
                                 IsVisible="True"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                Spacing="12">
+                                Spacing="12"
+                                Background="{DynamicResource FloatingWindowCardBg}">
                         <ProgressBar IsIndeterminate="True" Width="180" Height="4" HorizontalAlignment="Center" />
                         <TextBlock x:Name="LoadingStatusText"
                                    Text="正在 OCR 识别文字..."
@@ -141,7 +139,7 @@
                                    HorizontalAlignment="Center" />
                     </StackPanel>
 
-                    <!-- 结果内容 (可编辑输入框) -->
+                    <!-- 结果内容 (可编辑输入框，整个区域都是输入框) -->
                     <TextBox x:Name="ResultTextBox"
                              IsVisible="False"
                              TextWrapping="Wrap"
@@ -149,7 +147,8 @@
                              FontSize="13"
                              LineHeight="20"
                              BorderThickness="0"
-                             Background="Transparent" />
+                             Background="{DynamicResource FloatingWindowCardBg}"
+                             Padding="12" />
 
                     <!-- 错误提示 -->
                     <StackPanel x:Name="ErrorPanel"
@@ -157,7 +156,8 @@
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Spacing="8"
-                                Margin="12">
+                                Margin="12"
+                                Background="{DynamicResource FloatingWindowCardBg}">
                         <TextBlock Classes="emoji" Text="⚠️" FontSize="24" HorizontalAlignment="Center" />
                         <TextBlock x:Name="ErrorTextBlock"
                                    Text="翻译失败"
