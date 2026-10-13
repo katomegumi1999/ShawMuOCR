@@ -27,6 +27,7 @@ public class FileOcrTests
         public Task StartCaptureImageAsync() => Task.CompletedTask;
         public Task StartAnnotateScreenshotAsync() => Task.CompletedTask;
         public Task StartTranslateSelectionAsync() => Task.CompletedTask;
+        public Task StartOcrPopupAsync() => Task.CompletedTask;
         public Task RunOcrAsync(OcrImage image)
         {
             WasRunOcrCalled = true;

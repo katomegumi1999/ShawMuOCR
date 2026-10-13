@@ -169,12 +169,17 @@ public partial class MainViewModel : ViewModelBase
     private string _currentTranslateHotkey = "Alt+T";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOcrPopupHotkey))]
+    private string _currentOcrPopupHotkey = "Alt+D";
+
+    [ObservableProperty]
     private string _currentModel = "PP-OCRv6_small";
 
     public bool HasHotkey => !string.IsNullOrWhiteSpace(CurrentHotkey) && CurrentHotkey != "无" && CurrentHotkey != "None";
     public bool HasCaptureImageHotkey => !string.IsNullOrWhiteSpace(CurrentCaptureImageHotkey) && CurrentCaptureImageHotkey != "无" && CurrentCaptureImageHotkey != "None";
     public bool HasAnnotateHotkey => !string.IsNullOrWhiteSpace(CurrentAnnotateHotkey) && CurrentAnnotateHotkey != "无" && CurrentAnnotateHotkey != "None";
     public bool HasTranslateHotkey => !string.IsNullOrWhiteSpace(CurrentTranslateHotkey) && CurrentTranslateHotkey != "无" && CurrentTranslateHotkey != "None";
+    public bool HasOcrPopupHotkey => !string.IsNullOrWhiteSpace(CurrentOcrPopupHotkey) && CurrentOcrPopupHotkey != "无" && CurrentOcrPopupHotkey != "None";
 
     public int CharCount => RecognizedText?.Length ?? 0;
     public bool HasResult => !string.IsNullOrEmpty(RecognizedText);
@@ -230,6 +235,7 @@ public partial class MainViewModel : ViewModelBase
         _currentCaptureImageHotkey = _settingsService.Current.CaptureImageHotkey;
         _currentAnnotateHotkey = _settingsService.Current.AnnotateHotkey;
         _currentTranslateHotkey = _settingsService.Current.TranslateHotkey;
+        _currentOcrPopupHotkey = _settingsService.Current.OcrPopupHotkey;
         _currentModel = _settingsService.Current.Model;
 
         _coordinator.StateChanged += OnCoordinatorStateChanged;
@@ -320,6 +326,7 @@ public partial class MainViewModel : ViewModelBase
             CurrentCaptureImageHotkey = settings.CaptureImageHotkey;
             CurrentAnnotateHotkey = settings.AnnotateHotkey;
             CurrentTranslateHotkey = settings.TranslateHotkey;
+            CurrentOcrPopupHotkey = settings.OcrPopupHotkey;
             CurrentModel = settings.Model;
             OnPropertyChanged(nameof(IsClipboardEnabled));
             if (!settings.EnableClipboard && CurrentPage == AppNavPage.Clipboard)
@@ -355,6 +362,13 @@ public partial class MainViewModel : ViewModelBase
     {
         User32.AllowSetForegroundWindow(User32.ASFW_ANY);
         await _coordinator.StartTranslateSelectionAsync();
+    }
+
+    [RelayCommand]
+    private async Task StartOcrPopupAsync()
+    {
+        User32.AllowSetForegroundWindow(User32.ASFW_ANY);
+        await _coordinator.StartOcrPopupAsync();
     }
 
     [RelayCommand]

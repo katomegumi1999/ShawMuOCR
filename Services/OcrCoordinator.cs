@@ -30,6 +30,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
     private string? _statusMessage = "就绪";
     private bool _disposed;
     private TranslateFloatingWindow? _activeTranslateWindow;
+    private TranslateFloatingWindow? _activeOcrPopupWindow;
     private CancellationTokenSource? _translateCts;
     private string _lastTranslateOcrText = string.Empty;
 
@@ -454,6 +455,51 @@ public sealed class OcrCoordinator : IOcrCoordinator
         }
     }
 
+    public async Task StartOcrPopupAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        CheckAndTriggerWarmup();
+
+        lock (_stateLock)
+        {
+            if (_currentState is OcrState.Selecting or OcrState.Recognizing)
+            {
+                return;
+            }
+            SetState(OcrState.Selecting, "正在框选 OCR 区域...");
+        }
+
+        try
+        {
+            ToastNotificationWindow.Dismiss();
+
+            var virtualBounds = _captureService.GetVirtualScreenBounds();
+            var fullScreenshot = _captureService.CaptureVirtualScreen();
+
+            var selection = await _selectionService.SelectRegionExAsync(fullScreenshot, virtualBounds);
+
+            fullScreenshot.Dispose();
+
+            if (selection == null)
+            {
+                SetState(OcrState.Idle, "OCR 弹窗已取消");
+                return;
+            }
+
+            SetState(OcrState.Idle, "OCR 弹窗已就绪");
+
+            await PushOcrPopupPipelineAsync(selection.Image, selection.ScreenBounds);
+
+            GC.Collect(2, GCCollectionMode.Optimized, false, false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("OCR 弹窗流程失败", ex);
+            SetState(OcrState.Failed, $"OCR 弹窗错误: {ex.Message}");
+        }
+    }
+
     public async Task RunOcrAsync(OcrImage image)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -583,8 +629,6 @@ public sealed class OcrCoordinator : IOcrCoordinator
                 _activeTranslateWindow = null;
                 CancelTranslatePipeline();
             };
-
-            _activeTranslateWindow.Show();
         }
         return _activeTranslateWindow;
     }
@@ -605,6 +649,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
             if (isNewWindow)
             {
                 win.InitializePosition(bounds);
+                win.Show();
             }
             else
             {
@@ -763,6 +808,97 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
     #endregion
 
+    #region OCR 弹窗数据流水线管理
+
+    private TranslateFloatingWindow EnsureOcrPopupWindow()
+    {
+        if (_activeOcrPopupWindow == null || !_activeOcrPopupWindow.IsVisible)
+        {
+            _activeOcrPopupWindow = new TranslateFloatingWindow(
+                _settingsService,
+                _clipboardService,
+                translationService: null,
+                FloatingWindowMode.OcrPopup);
+
+            _activeOcrPopupWindow.NewSessionRequested += OnOcrPopupNewSessionRequested;
+            _activeOcrPopupWindow.Closed += (_, _) =>
+            {
+                _activeOcrPopupWindow = null;
+            };
+        }
+        return _activeOcrPopupWindow;
+    }
+
+    private void OnOcrPopupNewSessionRequested()
+    {
+        _ = StartOcrPopupAsync();
+    }
+
+    private async Task PushOcrPopupPipelineAsync(OcrImage image, ScreenRect bounds)
+    {
+        TranslateFloatingWindow win = null!;
+        await Dispatcher.UIThread.InvokeAsync(() =>
+        {
+            bool isNewWindow = (_activeOcrPopupWindow == null || !_activeOcrPopupWindow.IsVisible);
+            win = EnsureOcrPopupWindow();
+            if (isNewWindow)
+            {
+                win.InitializePosition(bounds);
+                win.Show();
+            }
+            else
+            {
+                win.BringToFront();
+            }
+            win.ShowLoading("正在 OCR 识别文字...");
+        });
+
+        var totalSw = Stopwatch.StartNew();
+        try
+        {
+            await AwaitWarmupAsync();
+
+            OcrResult ocrResult;
+            try
+            {
+                ocrResult = await _ocrEngine.RecognizeAsync(image);
+            }
+            finally
+            {
+                image.Dispose();
+            }
+
+            totalSw.Stop();
+
+            if (!ocrResult.IsSuccess || string.IsNullOrWhiteSpace(ocrResult.Text))
+            {
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    string errMsg = !string.IsNullOrWhiteSpace(ocrResult.ErrorMessage)
+                        ? $"OCR 提取失败: {ocrResult.ErrorMessage}"
+                        : "未在选区中检测到可识别文字。";
+                    win.SetError(errMsg, $"{totalSw.ElapsedMilliseconds} ms (OCR 提取未命中)");
+                });
+                return;
+            }
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                string elapsedInfo = $"{totalSw.ElapsedMilliseconds} ms (OCR {ocrResult.Elapsed.TotalMilliseconds:F0}ms)";
+                win.SetSuccessResult(ocrResult.Text, elapsedInfo, string.Empty);
+            });
+        }
+        catch (Exception ex)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                win.SetError($"处理异常: {ex.Message}", $"{totalSw.ElapsedMilliseconds} ms (系统异常)");
+            });
+        }
+    }
+
+    #endregion
+
     public void Dispose()
     {
         if (!_disposed)
@@ -772,6 +908,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
             CancelTranslatePipeline();
             _activeTranslateWindow?.Close();
             _activeTranslateWindow = null;
+            _activeOcrPopupWindow?.Close();
+            _activeOcrPopupWindow = null;
             _currentSession?.Dispose();
             _ocrEngine.Dispose();
         }

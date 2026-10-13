@@ -44,6 +44,7 @@ public partial class App : Application
     private const int HOTKEY_ID_TRANSLATE = 4;
     private const int HOTKEY_ID_CLIPBOARD = 5;
     private const int HOTKEY_ID_PHRASES = 6;
+    private const int HOTKEY_ID_OCR_POPUP = 7;
 
     private ISettingsService? _settingsService;
     private IStartupService? _startupService;
@@ -331,6 +332,26 @@ public partial class App : Application
             _hotkeyService.Unregister(HOTKEY_ID_TRANSLATE);
         }
 
+        bool ocrPopupSuccess = true;
+        if (!IsDisabledHotkey(settings.OcrPopupHotkey))
+        {
+            if (HotkeyGesture.TryParse(settings.OcrPopupHotkey, out var ocrPopupGesture))
+            {
+                ocrPopupSuccess = _hotkeyService.Register(HOTKEY_ID_OCR_POPUP, ocrPopupGesture, () =>
+                {
+                    _ = _coordinator.StartOcrPopupAsync();
+                });
+            }
+            else
+            {
+                ocrPopupSuccess = false;
+            }
+        }
+        else
+        {
+            _hotkeyService.Unregister(HOTKEY_ID_OCR_POPUP);
+        }
+
         bool clipboardSuccess = true;
         if (settings.EnableClipboard && !IsDisabledHotkey(settings.ClipboardPanelHotkey))
         {
@@ -375,7 +396,7 @@ public partial class App : Application
 
         if (_mainViewModel != null)
         {
-            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !translateSuccess && !clipboardSuccess)
+            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !translateSuccess && !ocrPopupSuccess && !clipboardSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 快捷键注册失败，请检查冲突并重新设置";
             }
@@ -395,11 +416,15 @@ public partial class App : Application
             {
                 _mainViewModel.StatusMessage = $"⚠️ 选区翻译快捷键 {settings.TranslateHotkey} 注册失败(可能被占用)";
             }
+            else if (!ocrPopupSuccess)
+            {
+                _mainViewModel.StatusMessage = $"⚠️ OCR 弹窗快捷键 {settings.OcrPopupHotkey} 注册失败(可能被占用)";
+            }
             else if (!clipboardSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 剪贴板快捷键 {settings.ClipboardPanelHotkey} 注册失败(可能被占用)";
             }
-            else if (_mainViewModel.StatusMessage.StartsWith("⚠️ 快捷键") || _mainViewModel.StatusMessage.StartsWith("⚠️ 截图") || _mainViewModel.StatusMessage.StartsWith("⚠️ 选区") || _mainViewModel.StatusMessage.StartsWith("⚠️ 剪贴板"))
+            else if (_mainViewModel.StatusMessage.StartsWith("⚠️ 快捷键") || _mainViewModel.StatusMessage.StartsWith("⚠️ 截图") || _mainViewModel.StatusMessage.StartsWith("⚠️ 选区") || _mainViewModel.StatusMessage.StartsWith("⚠️ OCR") || _mainViewModel.StatusMessage.StartsWith("⚠️ 剪贴板"))
             {
                 _mainViewModel.StatusMessage = "就绪";
             }
@@ -456,6 +481,11 @@ public partial class App : Application
     private void OnTrayTranslateClick(object? sender, EventArgs e)
     {
         _ = _coordinator?.StartTranslateSelectionAsync();
+    }
+
+    private void OnTrayOcrPopupClick(object? sender, EventArgs e)
+    {
+        _ = _coordinator?.StartOcrPopupAsync();
     }
 
     private void OnTrayOpenMainClick(object? sender, EventArgs e)

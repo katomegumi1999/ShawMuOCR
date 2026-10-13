@@ -193,6 +193,11 @@ public sealed class AppSettings
     public string TranslateHotkey { get; set; } = "Alt+T";
 
     /// <summary>
+    /// OCR 弹窗全局快捷键（默认 "Alt+D"），截屏识别后在悬浮窗中显示结果而不自动复制
+    /// </summary>
+    public string OcrPopupHotkey { get; set; } = "Alt+D";
+
+    /// <summary>
     /// 是否启用小沐剪贴板功能（默认关闭）
     /// </summary>
     public bool EnableClipboard { get; set; } = false;
@@ -306,6 +311,7 @@ public sealed class AppSettings
         LastSaveDirectory = LastSaveDirectory,
 
         TranslateHotkey = TranslateHotkey,
+        OcrPopupHotkey = OcrPopupHotkey,
         EnableClipboard = EnableClipboard,
         ClipboardPanelHotkey = ClipboardPanelHotkey,
         PhrasesPanelHotkey = PhrasesPanelHotkey,
