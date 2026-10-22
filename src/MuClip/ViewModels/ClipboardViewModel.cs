@@ -2446,6 +2446,167 @@ public partial class ClipboardViewModel : ObservableObject
             }
         }
     }
+
+    #region 加密备份与还原 (.mubc)
+
+    public Func<string, Task<string?>>? RequestPickSaveBackupFileFunc { get; set; }
+    public Func<Task<string?>>? RequestPickOpenBackupFileFunc { get; set; }
+
+    [ObservableProperty]
+    private string _backupExportPassword = string.Empty;
+
+    [ObservableProperty]
+    private string _backupExportPasswordConfirm = string.Empty;
+
+    [ObservableProperty]
+    private string _backupExportStatus = string.Empty;
+
+    [ObservableProperty]
+    private bool _isExportingBackup;
+
+    [ObservableProperty]
+    private string _backupImportFilePath = string.Empty;
+
+    [ObservableProperty]
+    private string _backupImportPassword = string.Empty;
+
+    [ObservableProperty]
+    private bool _backupImportReplaceAll; // false: 增量合并(推荐), true: 完全覆盖
+
+    [ObservableProperty]
+    private string _backupImportStatus = string.Empty;
+
+    [ObservableProperty]
+    private bool _isImportingBackup;
+
+    [RelayCommand]
+    public async Task PickBackupImportFileAsync()
+    {
+        if (RequestPickOpenBackupFileFunc != null)
+        {
+            string? file = await RequestPickOpenBackupFileFunc.Invoke();
+            if (!string.IsNullOrEmpty(file))
+            {
+                BackupImportFilePath = file;
+                BackupImportStatus = $"已选中备份: {System.IO.Path.GetFileName(file)}";
+            }
+        }
+    }
+
+    [RelayCommand]
+    public async Task ExportBackupAsync()
+    {
+        if (IsExportingBackup) return;
+
+        string pwd = BackupExportPassword.Trim();
+        string pwdConfirm = BackupExportPasswordConfirm.Trim();
+
+        if (string.IsNullOrEmpty(pwd))
+        {
+            BackupExportStatus = "⚠️ 备份密码不能为空，请设置密码。";
+            return;
+        }
+
+        if (pwd != pwdConfirm)
+        {
+            BackupExportStatus = "⚠️ 两次输入的密码不一致，请重新输入。";
+            return;
+        }
+
+        if (RequestPickSaveBackupFileFunc == null)
+        {
+            BackupExportStatus = "⚠️ 未连接文件保存服务。";
+            return;
+        }
+
+        string defaultFileName = $"muclip_backup_{DateTime.Now:yyyyMMdd_HHmmss}.mubc";
+        string? targetPath = await RequestPickSaveBackupFileFunc.Invoke(defaultFileName);
+        if (string.IsNullOrEmpty(targetPath))
+        {
+            return;
+        }
+
+        IsExportingBackup = true;
+        BackupExportStatus = "正在打包加密并导出备份中...";
+
+        try
+        {
+            var summary = await Task.Run(() => _service.ExportEncryptedBackup(targetPath, pwd));
+            if (summary != null)
+            {
+                BackupExportStatus = $"✅ 导出成功！历史 {summary.HistoryCount} 条，短语 {summary.PhraseCount} 条，规则 {summary.RuleCount} 条";
+                StatusMessage = $"加密备份导出成功: {System.IO.Path.GetFileName(targetPath)}";
+                BackupExportPassword = string.Empty;
+                BackupExportPasswordConfirm = string.Empty;
+            }
+            else
+            {
+                BackupExportStatus = "❌ 导出备份失败，请检查写入权限或目标路径。";
+            }
+        }
+        catch (Exception ex)
+        {
+            BackupExportStatus = $"❌ 导出异常: {ex.Message}";
+        }
+        finally
+        {
+            IsExportingBackup = false;
+        }
+    }
+
+    [RelayCommand]
+    public async Task ImportBackupAsync()
+    {
+        if (IsImportingBackup) return;
+
+        string path = BackupImportFilePath.Trim();
+        string pwd = BackupImportPassword.Trim();
+
+        if (string.IsNullOrEmpty(path) || !System.IO.File.Exists(path))
+        {
+            BackupImportStatus = "⚠️ 请先选择有效的 .mubc 备份文件。";
+            return;
+        }
+
+        if (string.IsNullOrEmpty(pwd))
+        {
+            BackupImportStatus = "⚠️ 请输入备份解密密码。";
+            return;
+        }
+
+        IsImportingBackup = true;
+        BackupImportStatus = "正在验证密码并解密导入...";
+
+        try
+        {
+            bool replaceAll = BackupImportReplaceAll;
+            var summary = await Task.Run(() => _service.ImportEncryptedBackup(path, pwd, replaceAll));
+            if (summary != null)
+            {
+                string modeText = replaceAll ? "完全覆盖模式" : "增量去重合并模式";
+                BackupImportStatus = $"✅ 恢复成功 ({modeText})！历史 {summary.HistoryCount} 条，短语 {summary.PhraseCount} 条";
+                StatusMessage = $"备份已成功恢复: 历史 {summary.HistoryCount} 条";
+                Refresh();
+                LoadItems();
+                LoadPhrases();
+                LoadRuleTemplates();
+            }
+            else
+            {
+                BackupImportStatus = "❌ 导入失败：密码错误或备份文件被篡改/已损坏。";
+            }
+        }
+        catch (Exception ex)
+        {
+            BackupImportStatus = $"❌ 导入异常: {ex.Message}";
+        }
+        finally
+        {
+            IsImportingBackup = false;
+        }
+    }
+
+    #endregion
 }
 
 public class PaletteColorItem

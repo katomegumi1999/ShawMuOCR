@@ -513,6 +513,55 @@ public class PhraseReorderAndConditionalRuleTests
         var tplsAfter = core.QueryRuleTemplates();
         Assert.DoesNotContain(tplsAfter, t => t.Id == tplId);
     }
+
+    [Fact]
+    public async Task ClipboardViewModel_Backup_Export_And_Import_Workflow_WorksCorrectly()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "muclip_vm_backup_" + Guid.NewGuid().ToString("N"));
+        string dbPath = Path.Combine(tempDir, "test.db");
+        string backupFile = Path.Combine(tempDir, "backup.mubc");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            using var service = new MuClipService();
+            service.Initialize(dbPath, startSync: false, startListener: false);
+            var vm = new MuClip.ViewModels.ClipboardViewModel(service);
+
+            // 1. 测试密码不一致验证
+            vm.BackupExportPassword = "password1";
+            vm.BackupExportPasswordConfirm = "password2";
+            await vm.ExportBackupAsync();
+            Assert.Contains("不一致", vm.BackupExportStatus);
+
+            // 2. 模拟文件保存回调并成功导出
+            vm.BackupExportPasswordConfirm = "password1";
+            vm.RequestPickSaveBackupFileFunc = _ => Task.FromResult<string?>(backupFile);
+            await vm.ExportBackupAsync();
+            Assert.Contains("导出成功", vm.BackupExportStatus);
+            Assert.True(File.Exists(backupFile));
+
+            // 3. 导入时密码为空
+            vm.BackupImportFilePath = backupFile;
+            vm.BackupImportPassword = "";
+            await vm.ImportBackupAsync();
+            Assert.Contains("请输入备份解密密码", vm.BackupImportStatus);
+
+            // 4. 导入时输入错误密码
+            vm.BackupImportPassword = "WrongPassword!";
+            await vm.ImportBackupAsync();
+            Assert.Contains("失败", vm.BackupImportStatus);
+
+            // 5. 导入时输入正确密码
+            vm.BackupImportPassword = "password1";
+            await vm.ImportBackupAsync();
+            Assert.Contains("成功", vm.BackupImportStatus);
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { }
+        }
+    }
 }
 
 

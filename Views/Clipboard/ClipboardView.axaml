@@ -413,6 +413,132 @@
                             </StackPanel>
                         </Button>
 
+                        <!-- 独立加密数据库备份与还原 (.mubc) -->
+                        <Button Padding="8,5"
+                                ToolTip.Tip="独立口令加密数据库备份与还原 (.mubc)">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedRight">
+                                    <Border Width="400" MaxHeight="560" Padding="4">
+                                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                            <StackPanel Spacing="12" Margin="4">
+                                                <!-- 标题与说明 -->
+                                                <StackPanel Spacing="3">
+                                                    <DockPanel LastChildFill="True">
+                                                        <TextBlock DockPanel.Dock="Left" Text="🔐 独立加密备份与还原" FontWeight="SemiBold" FontSize="13" />
+                                                        <TextBlock DockPanel.Dock="Right" Text=".mubc"
+                                                                   FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                   FontWeight="Bold" VerticalAlignment="Center" />
+                                                    </DockPanel>
+                                                    <TextBlock Text="采用 XChaCha20-Poly1305 + PBKDF2 高强度单文件加密，全量归档历史记录、常用语与规则："
+                                                               FontSize="11"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               TextWrapping="Wrap" />
+                                                </StackPanel>
+
+                                                <!-- 1. 导出备份卡片 -->
+                                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6"
+                                                        Padding="10">
+                                                    <StackPanel Spacing="8">
+                                                        <TextBlock Text="📦 导出加密备份文件" FontWeight="SemiBold" FontSize="11.5" />
+                                                        
+                                                        <Grid ColumnDefinitions="65,*" VerticalAlignment="Center">
+                                                            <TextBlock Grid.Column="0" Text="备份密码:" FontSize="11" VerticalAlignment="Center" />
+                                                            <TextBox Grid.Column="1" Text="{Binding BackupExportPassword, Mode=TwoWay}"
+                                                                     PasswordChar="●" Height="28" FontSize="11"
+                                                                     PlaceholderText="设置本次备份的专属保护口令" />
+                                                        </Grid>
+
+                                                        <Grid ColumnDefinitions="65,*" VerticalAlignment="Center">
+                                                            <TextBlock Grid.Column="0" Text="确认密码:" FontSize="11" VerticalAlignment="Center" />
+                                                            <TextBox Grid.Column="1" Text="{Binding BackupExportPasswordConfirm, Mode=TwoWay}"
+                                                                     PasswordChar="●" Height="28" FontSize="11"
+                                                                     PlaceholderText="再次输入确认密码" />
+                                                        </Grid>
+
+                                                        <TextBlock Text="{Binding BackupExportStatus}"
+                                                                   FontSize="10.5"
+                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                   TextWrapping="Wrap"
+                                                                   IsVisible="{Binding BackupExportStatus.Length}" />
+
+                                                        <Button Classes="accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                                Padding="8,5" Command="{Binding ExportBackupCommand}"
+                                                                IsEnabled="{Binding !IsExportingBackup}">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <TextBlock Text="🚀" FontSize="11" />
+                                                                <TextBlock Text="选择保存路径并导出备份" FontWeight="SemiBold" FontSize="11" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <!-- 2. 导入恢复卡片 -->
+                                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6"
+                                                        Padding="10">
+                                                    <StackPanel Spacing="8">
+                                                        <TextBlock Text="📥 导入并恢复数据" FontWeight="SemiBold" FontSize="11.5" />
+
+                                                        <!-- 选文件行 -->
+                                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                                            <TextBox Grid.Column="0" Text="{Binding BackupImportFilePath, Mode=TwoWay}"
+                                                                     Height="28" FontSize="11"
+                                                                     PlaceholderText="请选择要恢复的 .mubc 文件" />
+                                                            <Button Grid.Column="1" Padding="8,4" Command="{Binding PickBackupImportFileCommand}">
+                                                                <TextBlock Text="浏览..." FontSize="11" />
+                                                            </Button>
+                                                        </Grid>
+
+                                                        <!-- 解密密码 -->
+                                                        <Grid ColumnDefinitions="65,*" VerticalAlignment="Center">
+                                                            <TextBlock Grid.Column="0" Text="解密密码:" FontSize="11" VerticalAlignment="Center" />
+                                                            <TextBox Grid.Column="1" Text="{Binding BackupImportPassword, Mode=TwoWay}"
+                                                                     PasswordChar="●" Height="28" FontSize="11"
+                                                                     PlaceholderText="输入此备份文件的解密密码" />
+                                                        </Grid>
+
+                                                        <!-- 恢复模式 -->
+                                                        <StackPanel Spacing="4">
+                                                            <CheckBox IsChecked="{Binding BackupImportReplaceAll, Mode=TwoWay}"
+                                                                      Content="完全覆盖模式 (清空当前库全部数据后还原)"
+                                                                      FontSize="11" />
+                                                            <TextBlock Text="* 未勾选时默认执行增量合并去重：平滑合并到已有记录，无损迁移。"
+                                                                       FontSize="10" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                                       TextWrapping="Wrap" Margin="20,0,0,0" />
+                                                        </StackPanel>
+
+                                                        <TextBlock Text="{Binding BackupImportStatus}"
+                                                                   FontSize="10.5"
+                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                   TextWrapping="Wrap"
+                                                                   IsVisible="{Binding BackupImportStatus.Length}" />
+
+                                                        <Button HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                                                Padding="8,5" Command="{Binding ImportBackupCommand}"
+                                                                IsEnabled="{Binding !IsImportingBackup}">
+                                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                                <TextBlock Text="⚡" FontSize="11" />
+                                                                <TextBlock Text="验证密码并开始导入" FontWeight="SemiBold" FontSize="11" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Border>
+                                            </StackPanel>
+                                        </ScrollViewer>
+                                    </Border>
+                                </Flyout>
+                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                <TextBlock Text="📦" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="备份/还原" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
                         <Button Command="{Binding RefreshCommand}"
                                 Padding="8,5"
                                 ToolTip.Tip="从 Rust 内存池热缓存刷新">

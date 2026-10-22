@@ -771,6 +771,106 @@ public class MuClipMemoryPoolTests
             try { if (Directory.Exists(dirB)) Directory.Delete(dirB, true); } catch { }
         }
     }
+
+    [Fact]
+    public void Test_MuClipService_DatabaseKey_DPAPI_Persistence()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "muclip_dpapi_" + Guid.NewGuid().ToString("N"));
+        string tempDb = Path.Combine(tempDir, "muclip.db");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            string key1 = MuClipService.GetOrCreateDatabaseKey(tempDb);
+            Assert.Equal(64, key1.Length);
+            Assert.True(File.Exists(tempDb + ".key"));
+
+            // 再次调用应该能够通过 DPAPI 还原同一密钥
+            string key2 = MuClipService.GetOrCreateDatabaseKey(tempDb);
+            Assert.Equal(key1, key2);
+
+            // 使用该 key 初始化服务
+            using var service = new MuClipService();
+            service.Initialize(tempDb, startSync: false, startListener: false);
+            service.AddRecord("Encrypted DB Item", broadcast: false);
+            Assert.Contains(service.HistoryItems, it => it.Content == "Encrypted DB Item");
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { }
+        }
+    }
+
+    [Fact]
+    public void Test_MuClip_EncryptedBackup_Export_And_Import()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), "muclip_backup_" + Guid.NewGuid().ToString("N"));
+        string dbPathA = Path.Combine(tempDir, "dbA", "muclip.db");
+        string dbPathB = Path.Combine(tempDir, "dbB", "muclip.db");
+        string backupFile = Path.Combine(tempDir, "test_backup.mubc");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            // 1. 初始化 A 库并添加数据
+            using (var serviceA = new MuClipService())
+            {
+                serviceA.Initialize(dbPathA, startSync: false, startListener: false);
+                serviceA.AddRecord("历史条目 1", broadcast: false);
+                serviceA.AddRecord("历史条目 2", broadcast: false);
+                serviceA.AddPhrase("常用语 A");
+
+                // 导出加密备份
+                var exportSummary = serviceA.ExportEncryptedBackup(backupFile, "MySecurePass123!");
+                Assert.NotNull(exportSummary);
+                Assert.True(exportSummary.HistoryCount >= 2);
+                Assert.True(exportSummary.PhraseCount >= 1);
+                Assert.True(File.Exists(backupFile));
+            }
+
+            // 2. 错误密码解密应当被拒绝
+            using (var serviceB = new MuClipService())
+            {
+                serviceB.Initialize(dbPathB, startSync: false, startListener: false);
+                var badSummary = serviceB.ImportEncryptedBackup(backupFile, "WrongPassword!!!", replaceAll: false);
+                Assert.Null(badSummary);
+            }
+
+            // 3. 正确密码导入（增量合并模式）
+            using (var serviceB = new MuClipService())
+            {
+                serviceB.Initialize(dbPathB, startSync: false, startListener: false);
+                serviceB.AddRecord("B端原有独立条目", broadcast: false);
+
+                var importSummary = serviceB.ImportEncryptedBackup(backupFile, "MySecurePass123!", replaceAll: false);
+                Assert.NotNull(importSummary);
+                Assert.True(importSummary.HistoryCount >= 2);
+
+                var history = serviceB.HistoryItems;
+                Assert.Contains(history, it => it.Content == "历史条目 1");
+                Assert.Contains(history, it => it.Content == "历史条目 2");
+                Assert.Contains(history, it => it.Content == "B端原有独立条目");
+
+                var phrases = serviceB.Phrases;
+                Assert.Contains(phrases, p => p.Content == "常用语 A");
+            }
+
+            // 4. 完全覆盖模式
+            using (var serviceB = new MuClipService())
+            {
+                serviceB.Initialize(dbPathB, startSync: false, startListener: false);
+                var overwriteSummary = serviceB.ImportEncryptedBackup(backupFile, "MySecurePass123!", replaceAll: true);
+                Assert.NotNull(overwriteSummary);
+
+                var history = serviceB.HistoryItems;
+                Assert.Contains(history, it => it.Content == "历史条目 1");
+                Assert.DoesNotContain(history, it => it.Content == "B端原有独立条目");
+            }
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempDir)) Directory.Delete(tempDir, true); } catch { }
+        }
+    }
 }
 
 

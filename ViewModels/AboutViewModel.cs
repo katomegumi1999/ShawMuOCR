@@ -74,7 +74,7 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
         }
         catch
         {
-            return "v2.0.0 (Native AOT)";
+            return "v3.0.0 (Native AOT)";
         }
     }
 

@@ -1,4 +1,6 @@
+using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using MuClip.Models;
 
 namespace MuClip.Interop;
@@ -409,6 +411,71 @@ public sealed class MuClipCore : IDisposable
         finally
         {
             MuClipNative.FreeString(ptr);
+        }
+    }
+
+    /// <summary>
+    /// 导出全量加密数据库备份文件 (.mubc)
+    /// </summary>
+    /// <param name="exportPath">导出的备份文件目标路径</param>
+    /// <param name="password">加密密码（由用户输入的独立主口令）</param>
+    /// <returns>备份统计信息对象，若失败则返回 null</returns>
+    public unsafe BackupSummary? ExportEncryptedBackup(string exportPath, string password)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrWhiteSpace(exportPath)) throw new ArgumentException("导出路径不能为空", nameof(exportPath));
+        if (string.IsNullOrWhiteSpace(password)) throw new ArgumentException("备份密码不能为空", nameof(password));
+
+        byte[] pathBytes = Encoding.UTF8.GetBytes(exportPath + "\0");
+        byte[] pwdBytes = Encoding.UTF8.GetBytes(password + "\0");
+        fixed (byte* pPath = pathBytes)
+        fixed (byte* pPwd = pwdBytes)
+        {
+            IntPtr ptr = MuClipNative.CoreExportDb(_handle, pPath, pPwd);
+            if (ptr == IntPtr.Zero) return null;
+            try
+            {
+                string? json = Marshal.PtrToStringUTF8(ptr);
+                if (string.IsNullOrWhiteSpace(json)) return null;
+                return JsonSerializer.Deserialize(json, PhraseRuleJsonContext.Default.BackupSummary);
+            }
+            finally
+            {
+                MuClipNative.FreeString(ptr);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 导入全量加密数据库备份文件 (.mubc)
+    /// </summary>
+    /// <param name="importPath">备份文件路径</param>
+    /// <param name="password">解密密码</param>
+    /// <param name="replaceAll">true 为完全覆盖当前库；false 为增量合并去重</param>
+    /// <returns>恢复统计信息对象，若密码错误或损坏则返回 null</returns>
+    public unsafe BackupSummary? ImportEncryptedBackup(string importPath, string password, bool replaceAll)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrWhiteSpace(importPath)) throw new ArgumentException("导入路径不能为空", nameof(importPath));
+        if (string.IsNullOrWhiteSpace(password)) throw new ArgumentException("解密密码不能为空", nameof(password));
+
+        byte[] pathBytes = Encoding.UTF8.GetBytes(importPath + "\0");
+        byte[] pwdBytes = Encoding.UTF8.GetBytes(password + "\0");
+        fixed (byte* pPath = pathBytes)
+        fixed (byte* pPwd = pwdBytes)
+        {
+            IntPtr ptr = MuClipNative.CoreImportDb(_handle, pPath, pPwd, replaceAll ? 1 : 0);
+            if (ptr == IntPtr.Zero) return null;
+            try
+            {
+                string? json = Marshal.PtrToStringUTF8(ptr);
+                if (string.IsNullOrWhiteSpace(json)) return null;
+                return JsonSerializer.Deserialize(json, PhraseRuleJsonContext.Default.BackupSummary);
+            }
+            finally
+            {
+                MuClipNative.FreeString(ptr);
+            }
         }
     }
 

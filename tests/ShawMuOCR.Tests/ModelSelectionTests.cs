@@ -271,7 +271,7 @@ public class ModelSelectionTests
         var settingsService = new FakeSettingsService();
         var diagnostics = new ShawMuOCR.Services.ModelMemoryDiagnosticsService(settingsService, provider);
         var vm = new AboutViewModel(diagnostics, null);
-        Assert.Equal("v2.0.0 (Native AOT)", vm.AppVersion);
+        Assert.Equal("v3.0.0 (Native AOT)", vm.AppVersion);
         Assert.False(string.IsNullOrWhiteSpace(vm.WindowsVersionText));
         Assert.Contains(".NET", vm.DotNetRuntimeText);
         Assert.Contains("v12.", vm.AvaloniaVersionText);

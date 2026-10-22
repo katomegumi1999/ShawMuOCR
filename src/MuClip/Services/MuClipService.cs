@@ -118,6 +118,45 @@ public partial class MuClipService : IMuClipService
         }
     }
 
+    /// <summary>
+    /// 获取或生成绑定当前 Windows 账户的 DPAPI 加密数据库密钥 (256 位十六进制)
+    /// </summary>
+    public static string GetOrCreateDatabaseKey(string dbPath)
+    {
+        if (string.IsNullOrWhiteSpace(dbPath) || dbPath == ":memory:")
+        {
+            return GenerateRandomLongTermKeyHex();
+        }
+
+        string keyFilePath = dbPath + ".key";
+        try
+        {
+            if (File.Exists(keyFilePath))
+            {
+                string encryptedBase64 = File.ReadAllText(keyFilePath).Trim();
+                string? decrypted = DecryptSecret(encryptedBase64);
+                if (IsValidHexKey64(decrypted))
+                {
+                    return decrypted!;
+                }
+            }
+
+            // 首次运行：随机生成 256 位高强度密钥，并通过 DPAPI (DataProtectionScope.CurrentUser) 加密保存
+            string newKey = GenerateRandomLongTermKeyHex();
+            string encrypted = EncryptSecret(newKey);
+            if (!string.IsNullOrEmpty(encrypted))
+            {
+                File.WriteAllText(keyFilePath, encrypted);
+            }
+            return newKey;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MuClip] 获取/生成数据库加密密钥异常: {ex.Message}");
+            return GenerateRandomLongTermKeyHex();
+        }
+    }
+
     public bool RegisterQuickPanelHotkey(uint modifiers = 0x0002, uint vk = 0xC0)
     {
         if (_clipboardService.IsListening)
@@ -170,7 +209,8 @@ public partial class MuClipService : IMuClipService
         }
 
         _dbPath = dbPath;
-        _core = new MuClipCore(dbPath);
+        string dbKey = GetOrCreateDatabaseKey(dbPath);
+        _core = new MuClipCore(dbPath, dbKey);
 
         if (!string.IsNullOrEmpty(customDeviceId))
         {
@@ -371,6 +411,26 @@ public partial class MuClipService : IMuClipService
                 }
             });
         }
+    }
+
+    public BackupSummary? ExportEncryptedBackup(string exportPath, string password)
+    {
+        if (_core == null) return null;
+        return _core.ExportEncryptedBackup(exportPath, password);
+    }
+
+    public BackupSummary? ImportEncryptedBackup(string importPath, string password, bool replaceAll)
+    {
+        if (_core == null) return null;
+        var summary = _core.ImportEncryptedBackup(importPath, password, replaceAll);
+        if (summary != null)
+        {
+            RefreshHistory();
+            RefreshPhrases();
+            LoadPhraseRules();
+            LoadRuleTemplates();
+        }
+        return summary;
     }
 
     public void Dispose()

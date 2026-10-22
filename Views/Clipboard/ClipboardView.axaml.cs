@@ -487,6 +487,61 @@ public partial class ClipboardView : UserControl
                 }
                 return null;
             };
+
+            vm.RequestPickSaveBackupFileFunc = async (defaultFileName) =>
+            {
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel == null) return null;
+                var file = await topLevel.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
+                {
+                    Title = "导出加密数据库备份 (.mubc)",
+                    DefaultExtension = "mubc",
+                    SuggestedFileName = defaultFileName,
+                    FileTypeChoices = new[]
+                    {
+                        new FilePickerFileType("MuClip 加密数据库备份 (*.mubc)")
+                        {
+                            Patterns = new[] { "*.mubc" }
+                        },
+                        new FilePickerFileType("所有文件 (*.*)")
+                        {
+                            Patterns = new[] { "*.*" }
+                        }
+                    }
+                });
+                if (file != null)
+                {
+                    return file.TryGetLocalPath() ?? file.Path.LocalPath;
+                }
+                return null;
+            };
+
+            vm.RequestPickOpenBackupFileFunc = async () =>
+            {
+                var topLevel = TopLevel.GetTopLevel(this);
+                if (topLevel == null) return null;
+                var files = await topLevel.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+                {
+                    Title = "选择要导入的加密数据库备份 (.mubc)",
+                    AllowMultiple = false,
+                    FileTypeFilter = new[]
+                    {
+                        new FilePickerFileType("MuClip 加密数据库备份 (*.mubc)")
+                        {
+                            Patterns = new[] { "*.mubc" }
+                        },
+                        new FilePickerFileType("所有文件 (*.*)")
+                        {
+                            Patterns = new[] { "*.*" }
+                        }
+                    }
+                });
+                if (files.Count > 0)
+                {
+                    return files[0].TryGetLocalPath() ?? files[0].Path.LocalPath;
+                }
+                return null;
+            };
         }
     }
 

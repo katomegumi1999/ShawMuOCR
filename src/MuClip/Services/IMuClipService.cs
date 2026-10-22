@@ -23,6 +23,10 @@ public interface IMuClipService : IClipboardHistoryService, IClipboardPhraseServ
     void Initialize(string? dbPath = null, bool startSync = true, ushort syncPort = 42424, string? pairingPin = null, bool startListener = true, string? customDeviceId = null, string? customDeviceName = null);
     bool RegisterQuickPanelHotkey(uint modifiers = 0x0002, uint vk = 0xC0);
 
+    // === 加密数据库备份与还原 (.mubc) ===
+    BackupSummary? ExportEncryptedBackup(string exportPath, string password);
+    BackupSummary? ImportEncryptedBackup(string importPath, string password, bool replaceAll);
+
     // === 细粒度子领域服务访问入口 ===
     IClipboardHistoryService History { get; }
     IClipboardPhraseService PhrasesService { get; }

@@ -142,6 +142,14 @@ internal static unsafe partial class MuClipNative
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial IntPtr CoreQueryTemplates(IntPtr handle);
 
+    [LibraryImport(DllName, EntryPoint = "muclip_core_export_db")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreExportDb(IntPtr handle, byte* exportPath, byte* password);
+
+    [LibraryImport(DllName, EntryPoint = "muclip_core_import_db")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreImportDb(IntPtr handle, byte* importPath, byte* password, int replaceAll);
+
     // -------------------------------------------------------------------------
     // MuClip P2P Sync Engine
     // -------------------------------------------------------------------------
