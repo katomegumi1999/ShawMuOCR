@@ -18,7 +18,7 @@ public class CpuThrottleSchedulerTests
         Assert.Equal(10, schedulerLow.CpuLimitPercent);
 
         using var schedulerHigh = new CpuThrottleScheduler(9999, 150);
-        Assert.Equal(Environment.ProcessorCount, schedulerHigh.MaxCores);
+        Assert.Equal(Math.Max(8, Environment.ProcessorCount), schedulerHigh.MaxCores);
         Assert.Equal(100, schedulerHigh.CpuLimitPercent);
     }
 

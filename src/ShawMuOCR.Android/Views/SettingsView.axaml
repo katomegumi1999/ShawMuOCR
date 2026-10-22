@@ -1,0 +1,114 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ShawMuOCR.Android.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="700"
+             x:Class="ShawMuOCR.Android.Views.SettingsView"
+             x:DataType="vm:SettingsViewModel">
+
+    <ScrollViewer Margin="12">
+        <StackPanel Spacing="16">
+            <!-- 硬件与推理设置卡片 -->
+            <Border Padding="16" CornerRadius="12" Background="{DynamicResource SystemChromeLowColor}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="⚙️ 推理硬件加速配置" FontWeight="Bold" FontSize="16" />
+
+                    <!-- 推理后端 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="推理后端 (Backend)" FontWeight="SemiBold" FontSize="14" />
+                            <TextBlock Text="Auto 自动匹配 / CPU (Neon SIMD) / GPU (Vulkan)" FontSize="11" Opacity="0.75" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding AvailableBackends}"
+                                  SelectedItem="{Binding SelectedBackend}"
+                                  MinWidth="120" />
+                    </Grid>
+
+                    <!-- 检测线程数 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="检测算子线程数 (IntraOp)" FontWeight="SemiBold" FontSize="14" />
+                            <TextBlock Text="默认满血跑满手机 8 核/多核（由手机系统底层自主温控调频）" FontSize="11" Opacity="0.75" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding AvailableThreadCounts}"
+                                  SelectedItem="{Binding DetIntraOpThreads}"
+                                  MinWidth="120" />
+                    </Grid>
+
+                    <!-- 行并发数 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="识别行并发度 (WorkerCount)" FontWeight="SemiBold" FontSize="14" />
+                            <TextBlock Text="手机端推荐 1~2（避免超开分配到小核导致争用降速）" FontSize="11" Opacity="0.75" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding AvailableWorkerCounts}"
+                                  SelectedItem="{Binding LineWorkerCount}"
+                                  MinWidth="120" />
+                    </Grid>
+
+                    <!-- 最大边长限制 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="图像最长边限制 (MaxSideLen)" FontWeight="SemiBold" FontSize="14" />
+                            <TextBlock Text="限制输入大图缩放，防止移动端显存或内存溢出" FontSize="11" Opacity="0.75" />
+                        </StackPanel>
+                        <ComboBox Grid.Column="1"
+                                  ItemsSource="{Binding AvailableMaxSideLens}"
+                                  SelectedItem="{Binding SelectedMaxSideLen}"
+                                  MinWidth="120" />
+                    </Grid>
+
+                    <!-- 文字方向自动校正 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" VerticalAlignment="Center">
+                            <TextBlock Text="文字方向校正 (Angle CLS)" FontWeight="SemiBold" FontSize="14" />
+                            <TextBlock Text="默认启用：自动检测文字旋转角度并纠正 (PP-LCNet 方向分类器)" FontSize="11" Opacity="0.75" />
+                        </StackPanel>
+                        <ToggleSwitch Grid.Column="1" IsChecked="{Binding EnableAngle}" />
+                    </Grid>
+
+                    <!-- 应用设置按钮 -->
+                    <Button Command="{Binding ApplySettingsCommand}"
+                            Content="💾 保存并应用配置"
+                            Classes="accent"
+                            HorizontalAlignment="Stretch"
+                            HorizontalContentAlignment="Center"
+                            Padding="12"
+                            Margin="0,8,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- 状态卡片 -->
+            <Border Padding="12" CornerRadius="8" Background="{DynamicResource SystemChromeMediumColor}">
+                <TextBlock Text="{Binding StatusMessage}" FontSize="12" TextWrapping="Wrap" />
+            </Border>
+
+            <!-- 内置模型与运行环境卡片 -->
+            <Border Padding="16" CornerRadius="12" Background="{DynamicResource SystemChromeLowColor}">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="📦 模型与运行环境" FontWeight="Bold" FontSize="16" />
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="当前集成模型：" FontWeight="SemiBold" FontSize="13" />
+                        <TextBlock Text="{Binding ModelDescription}" FontSize="12" Opacity="0.8" TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="4">
+                        <TextBlock Text="硬件架构环境：" FontWeight="SemiBold" FontSize="13" />
+                        <TextBlock Text="{Binding ArchitectureInfo}" FontSize="12" Opacity="0.8" />
+                    </StackPanel>
+
+                    <TextBlock Text="💡 提示：本应用针对 ARM64-v8a 优化，模型已打包至 APK 内部，安装即用。未来可无缝扩充加入 Tiny / Medium 模型 NuGet 包。"
+                               FontSize="11"
+                               Opacity="0.7"
+                               TextWrapping="Wrap"
+                               Margin="0,6,0,0" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

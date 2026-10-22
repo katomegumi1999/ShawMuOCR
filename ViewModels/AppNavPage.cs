@@ -9,5 +9,7 @@ public enum AppNavPage
     Settings = 4,
     About = 5,
     Batch = 6,
-    HttpApi = 7
+    HttpApi = 7,
+    Theme = 8,
+    Log = 9
 }

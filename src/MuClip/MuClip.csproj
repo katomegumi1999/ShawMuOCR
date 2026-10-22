@@ -1,8 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <RootNamespace>MuClip</RootNamespace>
-    <OutputType Condition="'$(Standalone)' == 'true'">WinExe</OutputType>
-    <OutputType Condition="'$(OutputType)' == ''">Library</OutputType>
+    <OutputType>Library</OutputType>
     <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
     <TargetFramework>net11.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
@@ -18,21 +17,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-
-  <ItemGroup>
     <ProjectReference Include="..\ShawMuOCR.Core\ShawMuOCR.Core.csproj" />
     <ProjectReference Include="..\ShawMuOCR.Windows\ShawMuOCR.Windows.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.3" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.3" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.3" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.3" />
+    <PackageReference Include="Avalonia" Version="12.1.4" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
-    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="11.0.0-rc.2.26504.105" />
   </ItemGroup>
 
   <ItemGroup>

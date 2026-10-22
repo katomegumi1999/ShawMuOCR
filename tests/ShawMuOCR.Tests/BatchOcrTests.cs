@@ -425,16 +425,16 @@ public class BatchOcrTests
             var settingsService = new JsonSettingsService(tempJsonPath);
             var factory = new FakeEngineFactory();
 
-            int expectedHalfCores = Math.Max(1, Environment.ProcessorCount / 2);
-
-            // 1. 验证默认 CPU 调度配置：一半核心 + 50% 利用率上限
+            // 1. 验证默认调度配置：GPU 模式 1 路，CPU 模式半核，利用率默认 50%
             var batchVm = new BatchOcrViewModel(factory, settingsService);
-            Assert.Equal(expectedHalfCores, batchVm.MaxCores);
+            int expectedBatchCores = batchVm.IsGpuAccelerated ? 1 : Math.Max(1, Environment.ProcessorCount / 2);
+            Assert.Equal(expectedBatchCores, batchVm.MaxCores);
             Assert.Equal(50, batchVm.CpuLimitPercent);
             Assert.True(batchVm.HasLogs);
 
             using var httpVm = new HttpApiViewModel(factory, settingsService);
-            Assert.Equal(expectedHalfCores, httpVm.MaxCores);
+            int expectedHttpCores = httpVm.IsGpuAccelerated ? 1 : Math.Max(1, Environment.ProcessorCount / 2);
+            Assert.Equal(expectedHttpCores, httpVm.MaxCores);
             Assert.Equal(50, httpVm.CpuLimitPercent);
             Assert.Equal(8080, httpVm.Port);
             Assert.False(httpVm.AllowRemote);

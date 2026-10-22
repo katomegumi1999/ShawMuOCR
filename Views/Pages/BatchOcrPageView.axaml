@@ -211,25 +211,31 @@
                                 VerticalAlignment="Center" />
                     </Grid>
 
-                    <!-- 分隔线：下方放置 CPU 调度与性能控制 -->
+                    <!-- 分隔线：下方放置 推理调度与性能控制 (跟随系统设置自动联动 GPU/CPU) -->
                     <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
 
-                    <DockPanel LastChildFill="False">
-                        <TextBlock DockPanel.Dock="Left" Text="⚡ CPU 调度与性能控制" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                    <DockPanel LastChildFill="True">
+                        <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding SchedulerTitle}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                            <Border Background="{DynamicResource AccentFillColorTertiaryBrush}" CornerRadius="4" Padding="6,1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DeviceBadgeText}" FontSize="10.5" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                            </Border>
+                        </StackPanel>
                         <TextBlock DockPanel.Dock="Right"
-                                   Text="{Binding MaxProcessorCount, StringFormat='本机共 {0} 逻辑核 (默认半核 / 50%限流)'}"
+                                   Text="{Binding SchedulerSummaryText}"
                                    FontSize="11"
                                    Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                   VerticalAlignment="Center" />
+                                   VerticalAlignment="Center"
+                                   HorizontalAlignment="Right" />
                     </DockPanel>
 
                     <Grid ColumnDefinitions="*,16,*">
-                        <!-- 并发核心数量上限 -->
+                        <!-- 并发上限 -->
                         <StackPanel Grid.Column="0" Spacing="1">
                             <DockPanel LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Left" Text="多核并行上限:" FontSize="12" />
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding ConcurrencyLabel}" FontSize="12" />
                                 <TextBlock DockPanel.Dock="Right"
-                                           Text="{Binding MaxCores, StringFormat='{}{0} 核'}"
+                                           Text="{Binding ConcurrencyValueText}"
                                            FontWeight="SemiBold" FontSize="12"
                                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </DockPanel>
@@ -239,12 +245,12 @@
                                     Margin="0,-4" />
                         </StackPanel>
 
-                        <!-- CPU 利用率上限 -->
+                        <!-- 利用率与负载上限 -->
                         <StackPanel Grid.Column="2" Spacing="1">
                             <DockPanel LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Left" Text="CPU 利用率上限:" FontSize="12" />
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding UsageLimitLabel}" FontSize="12" />
                                 <TextBlock DockPanel.Dock="Right"
-                                           Text="{Binding CpuLimitPercent, StringFormat='{}{0}%'}"
+                                           Text="{Binding UsageLimitValueText}"
                                            FontWeight="SemiBold" FontSize="12"
                                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </DockPanel>
@@ -364,7 +370,6 @@
                                         <!-- 文件名称与原始路径 -->
                                         <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="0,0,12,0">
                                             <TextBlock Text="{Binding FileName}"
-                                                       FontWeight="Medium"
                                                        FontSize="13"
                                                        TextTrimming="CharacterEllipsis" />
                                             <TextBlock Text="{Binding FilePath}"
@@ -423,6 +428,54 @@
                     </ItemsControl>
                 </ScrollViewer>
             </Grid>
+        </Border>
+
+        <!-- 多路并发/并发流安全提示遮罩弹窗 -->
+        <Border Grid.Row="0" Grid.RowSpan="3"
+                Background="#60000000"
+                IsVisible="{Binding IsConcurrencyWarningOpen}"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                ZIndex="100">
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="22,18"
+                    Width="430"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    BoxShadow="0 8 24 #30000000">
+                <StackPanel Spacing="14">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="⚠️" FontSize="18" Foreground="#D97706" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ConcurrencyWarningTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding ConcurrencyWarningMessage}"
+                               FontSize="12"
+                               LineHeight="18"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
+
+                    <!-- 操作按钮 -->
+                    <Grid ColumnDefinitions="*,10,*">
+                        <Button Grid.Column="0"
+                                Content="{Binding CancelConcurrencyButtonText}"
+                                Command="{Binding CancelConcurrencyWarningCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Padding="0,8" />
+                        <Button Grid.Column="2"
+                                Content="{Binding ConfirmConcurrencyButtonText}"
+                                Command="{Binding ConfirmConcurrencyWarningCommand}"
+                                Classes="accent"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Padding="0,8" />
+                    </Grid>
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </UserControl>

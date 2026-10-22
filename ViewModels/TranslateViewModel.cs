@@ -21,7 +21,7 @@ public partial class TranslateViewModel : ViewModelBase
     public IReadOnlyList<LanguageItem> SourceLanguages { get; } = TranslationLanguages.All;
     public IReadOnlyList<LanguageItem> TargetLanguages { get; } = TranslationLanguages.AllTargets;
 
-    public string[] AvailableProviders { get; } = ["Baidu", "Google", "OpenAI"];
+    public IReadOnlyList<TranslationProviderItem> AvailableProviders { get; } = TranslationProviders.All;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSourceText))]
@@ -40,7 +40,21 @@ public partial class TranslateViewModel : ViewModelBase
     private LanguageItem _selectedTargetLang;
 
     [ObservableProperty]
-    private string _selectedProvider = "Baidu";
+    [NotifyPropertyChangedFor(nameof(SelectedProvider))]
+    private TranslationProviderItem _selectedProviderItem;
+
+    public string SelectedProvider
+    {
+        get => SelectedProviderItem?.Id ?? "Baidu";
+        set
+        {
+            var item = AvailableProviders.FirstOrDefault(p => string.Equals(p.Id, value, StringComparison.OrdinalIgnoreCase));
+            if (item != null)
+            {
+                SelectedProviderItem = item;
+            }
+        }
+    }
 
     [ObservableProperty]
     private bool _isTranslating;
@@ -74,7 +88,7 @@ public partial class TranslateViewModel : ViewModelBase
         _coordinator = coordinator;
 
         var s = _settingsService.Current;
-        _selectedProvider = s.TranslateProvider;
+        _selectedProviderItem = AvailableProviders.FirstOrDefault(p => string.Equals(p.Id, s.TranslateProvider, StringComparison.OrdinalIgnoreCase)) ?? AvailableProviders[0];
         _selectedSourceLang = SourceLanguages.FirstOrDefault(x => x.Code == s.TranslateSourceLang) ?? SourceLanguages[0];
         _selectedTargetLang = TargetLanguages.FirstOrDefault(x => x.Code == s.TranslateTargetLang) ?? TargetLanguages[0];
 
@@ -88,7 +102,7 @@ public partial class TranslateViewModel : ViewModelBase
         Dispatcher.UIThread.Post(UpdateQuotaInfo);
     }
 
-    partial void OnSelectedProviderChanged(string value)
+    partial void OnSelectedProviderItemChanged(TranslationProviderItem value)
     {
         UpdateQuotaInfo();
     }
@@ -157,11 +171,19 @@ public partial class TranslateViewModel : ViewModelBase
     {
         if (SelectedSourceLang.Code == "auto")
         {
-            // 若为自动检测，切换为英语和中文互相替换
-            var en = SourceLanguages.FirstOrDefault(l => l.Code == "en") ?? SourceLanguages[0];
-            var zh = TargetLanguages.FirstOrDefault(l => l.Code == "zh") ?? TargetLanguages[0];
-            SelectedSourceLang = en;
-            SelectedTargetLang = zh;
+            // 若源语言为自动检测，按目标语言直接翻转（如目标为中文则切换为中文->英语；若非中文则切换为该语言->中文）
+            var oldTgtCode = SelectedTargetLang.Code;
+            var newSrc = SourceLanguages.FirstOrDefault(l => l.Code == oldTgtCode)
+                         ?? SourceLanguages.FirstOrDefault(l => l.Code == "zh")
+                         ?? SourceLanguages[0];
+
+            string newTgtCode = (oldTgtCode == "zh" || oldTgtCode == "zh-CN") ? "en" : "zh";
+            var newTgt = TargetLanguages.FirstOrDefault(l => l.Code == newTgtCode)
+                         ?? TargetLanguages.FirstOrDefault(l => l.Code != newSrc.Code)
+                         ?? TargetLanguages[0];
+
+            SelectedSourceLang = newSrc;
+            SelectedTargetLang = newTgt;
         }
         else
         {

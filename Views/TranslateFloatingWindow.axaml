@@ -1,41 +1,306 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="ShawMuOCR.Views.TranslateFloatingWindow"
-        Title="小沐 OCR"
-        Width="390"
-        Height="430"
+        Title="选区翻译 / OCR 窗格"
+        Width="380"
+        Height="440"
         MinWidth="320"
         MinHeight="280"
         WindowStartupLocation="Manual"
         WindowDecorations="None"
+        CanResize="False"
         Topmost="True"
         ShowInTaskbar="False"
-        Background="Transparent">
+        Background="Transparent"
+        FontFamily="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif">
 
     <Window.Resources>
         <ResourceDictionary>
+            <!-- 窗体级根字典强占位，确保即使在最深层动态查找时也优先击中本地纯净画刷 -->
+            <SolidColorBrush x:Key="ButtonForeground" Color="#202020" />
+            <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+            <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#202020" />
+            <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#666666" />
+            <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#8E8E93" />
+            <SolidColorBrush x:Key="TextControlForeground" Color="#202020" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FFFFFF" />
+
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <SolidColorBrush x:Key="FloatingWindowBackground" Color="#FFFFFF" />
-                    <SolidColorBrush x:Key="FloatingWindowHeaderBg" Color="#F5F5F5" />
-                    <SolidColorBrush x:Key="FloatingWindowCardBg" Color="#F9F9F9" />
-                    <SolidColorBrush x:Key="FloatingWindowBorder" Color="#D0D0D0" />
-                    <SolidColorBrush x:Key="FloatingWindowDivider" Color="#E5E5E5" />
+                    <SolidColorBrush x:Key="FloatingWindowHeaderBg" Color="#F7F7F8" />
+                    <SolidColorBrush x:Key="FloatingWindowCardBg" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="FloatingWindowBorder" Color="#E2E2E5" />
+                    <SolidColorBrush x:Key="FloatingWindowDivider" Color="#EBEBEF" />
+                    <SolidColorBrush x:Key="FloatingWindowTextPrimary" Color="#202020" />
+                    <SolidColorBrush x:Key="FloatingWindowTextSecondary" Color="#666666" />
+                    <SolidColorBrush x:Key="FloatingWindowTextTertiary" Color="#8E8E93" />
+                    <SolidColorBrush x:Key="FloatingWindowHoverBrush" Color="#18000000" />
+                    <SolidColorBrush x:Key="FloatingWindowPressedBrush" Color="#28000000" />
+
+                    <!-- 全量覆盖 Fluent 主题键，彻底切断全局个性主题向本窗体的渗透 -->
+                    <SolidColorBrush x:Key="ButtonForeground" Color="#202020" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#202020" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#202020" />
+                    <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#A0A0A0" />
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#18000000" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#28000000" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+
+                    <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#18000000" />
+                    <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#28000000" />
+
+                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#202020" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#666666" />
+                    <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#8E8E93" />
+                    <SolidColorBrush x:Key="TextControlForeground" Color="#202020" />
+                    <SolidColorBrush x:Key="TextControlCaretBrush" Color="#202020" />
+
+                    <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#F7F7F8" />
+                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#FFFFFF" />
+                    <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#F7F7F8" />
+                    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#EDEDF0" />
+                    <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#EBEBEF" />
                 </ResourceDictionary>
                 <ResourceDictionary x:Key="Dark">
                     <SolidColorBrush x:Key="FloatingWindowBackground" Color="#1F1F1F" />
                     <SolidColorBrush x:Key="FloatingWindowHeaderBg" Color="#262626" />
-                    <SolidColorBrush x:Key="FloatingWindowCardBg" Color="#2B2B2B" />
+                    <SolidColorBrush x:Key="FloatingWindowCardBg" Color="#282828" />
                     <SolidColorBrush x:Key="FloatingWindowBorder" Color="#3E3E3E" />
                     <SolidColorBrush x:Key="FloatingWindowDivider" Color="#333333" />
+                    <SolidColorBrush x:Key="FloatingWindowTextPrimary" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="FloatingWindowTextSecondary" Color="#AAAAAA" />
+                    <SolidColorBrush x:Key="FloatingWindowTextTertiary" Color="#777777" />
+                    <SolidColorBrush x:Key="FloatingWindowHoverBrush" Color="#20FFFFFF" />
+                    <SolidColorBrush x:Key="FloatingWindowPressedBrush" Color="#30FFFFFF" />
+
+                    <!-- 全量覆盖 Fluent 主题键，彻底切断全局个性主题向本窗体的渗透 -->
+                    <SolidColorBrush x:Key="ButtonForeground" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#666666" />
+                    <SolidColorBrush x:Key="ButtonBackground" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#20FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#30FFFFFF" />
+                    <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="Transparent" />
+                    <SolidColorBrush x:Key="ButtonBorderBrush" Color="Transparent" />
+
+                    <SolidColorBrush x:Key="SubtleFillColorSecondaryBrush" Color="#20FFFFFF" />
+                    <SolidColorBrush x:Key="SubtleFillColorTertiaryBrush" Color="#30FFFFFF" />
+
+                    <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#AAAAAA" />
+                    <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#777777" />
+                    <SolidColorBrush x:Key="TextControlForeground" Color="#EDEDED" />
+                    <SolidColorBrush x:Key="TextControlCaretBrush" Color="#EDEDED" />
+
+                    <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#282828" />
+                    <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#262626" />
+                    <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#282828" />
+                    <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#2F2F2F" />
+                    <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#383838" />
+                    <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#333333" />
                 </ResourceDictionary>
             </ResourceDictionary.ThemeDictionaries>
         </ResourceDictionary>
     </Window.Resources>
 
-    <Border Background="{DynamicResource FloatingWindowBackground}"
-            BorderBrush="{DynamicResource FloatingWindowBorder}"
+    <Window.Styles>
+        <!-- 默认文字颜色隔离：所有未显式指定颜色的 TextBlock 均使用浮窗的纯净主要文字色 -->
+        <Style Selector="TextBlock:not(.emoji)">
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+
+        <!-- subtle 按钮全态隔离：背景、文字色完全隔离全局个性主题 -->
+        <Style Selector="Button.subtle">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Button.subtle:pointerover">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+        <Style Selector="Button.subtle:pressed">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowPressedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+        <Style Selector="Button.subtle TextBlock:not(.emoji)">
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+
+        <!-- accent 主按钮全态隔离：固定蓝色与纯白文字 -->
+        <Style Selector="Button.accent">
+            <Setter Property="Background" Value="#0078D4" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Button.accent:pointerover">
+            <Setter Property="Background" Value="#106EBE" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.accent:pressed">
+            <Setter Property="Background" Value="#005A9E" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.accent TextBlock:not(.emoji)">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+
+        <!-- iconActionBtn 图标按钮样式隔离 -->
+        <Style Selector="Button.iconActionBtn">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextSecondary}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="Button.iconActionBtn:pointerover">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+        <Style Selector="Button.iconActionBtn:pressed">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowPressedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+        <Style Selector="Button.iconActionBtn TextBlock:not(.emoji)">
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextSecondary}" />
+        </Style>
+        <Style Selector="Button.iconActionBtn:pointerover TextBlock:not(.emoji)">
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+
+        <!-- ComboBox 下拉框样式：极简纯透明文字下拉，完全移除向下箭头与白色底色，保留 100% 原生交互 -->
+        <Style Selector="ComboBox.transparentCombo">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Padding" Value="4,0" />
+            <Setter Property="MinHeight" Value="22" />
+            <Setter Property="Height" Value="24" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Grid>
+                        <!-- 纯透明底衬，悬停时触发高亮 -->
+                        <Border x:Name="Background"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="{TemplateBinding CornerRadius}" />
+                        <!-- 纯文字展示区，无任何右侧箭头占用空间 -->
+                        <ContentControl x:Name="ContentPresenter"
+                                        Content="{TemplateBinding SelectionBoxItem}"
+                                        Margin="{TemplateBinding Padding}"
+                                        HorizontalContentAlignment="{TemplateBinding HorizontalContentAlignment}"
+                                        ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                        VerticalContentAlignment="{TemplateBinding VerticalContentAlignment}" />
+                        <!-- 原生下拉弹窗，完全保留原生选择行为与外部点击自动关闭 -->
+                        <Popup Name="PART_Popup"
+                               WindowManagerAddShadowHint="False"
+                               IsOpen="{TemplateBinding IsDropDownOpen, Mode=TwoWay}"
+                               MinWidth="{Binding Bounds.Width, RelativeSource={RelativeSource TemplatedParent}}"
+                               MaxHeight="{TemplateBinding MaxDropDownHeight}"
+                               PlacementTarget="Background"
+                               IsLightDismissEnabled="True"
+                               InheritsTransform="True">
+                            <Border x:Name="PopupBorder"
+                                    Background="{DynamicResource FloatingWindowCardBg}"
+                                    BorderBrush="{DynamicResource FloatingWindowBorder}"
+                                    BorderThickness="1"
+                                    Padding="4"
+                                    CornerRadius="6"
+                                    MinWidth="68"
+                                    BoxShadow="0 4 12 0 #33000000">
+                                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                                              VerticalScrollBarVisibility="Auto">
+                                    <ItemsPresenter Name="PART_ItemsPresenter"
+                                                    ItemsPanel="{TemplateBinding ItemsPanel}" />
+                                </ScrollViewer>
+                            </Border>
+                        </Popup>
+                    </Grid>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <!-- 悬停与展开状态：半透明药丸背景 -->
+        <Style Selector="ComboBox.transparentCombo:pointerover /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowHoverBrush}" />
+        </Style>
+        <Style Selector="ComboBox.transparentCombo:pressed /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowPressedBrush}" />
+        </Style>
+        <Style Selector="ComboBox.transparentCombo:dropdownopen /template/ Border#Background">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowPressedBrush}" />
+        </Style>
+
+        <!-- 下拉列表各项样式：紧凑高度、悬停效果与圆角 -->
+        <Style Selector="ComboBox.transparentCombo ComboBoxItem">
+            <Setter Property="Padding" Value="8,4" />
+            <Setter Property="MinHeight" Value="24" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style Selector="ComboBox.transparentCombo ComboBoxItem:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowHoverBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+        <Style Selector="ComboBox.transparentCombo ComboBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="{DynamicResource FloatingWindowPressedBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+
+        <!-- TextBox#ResultTextBox 输入框透明无边框样式 -->
+        <Style Selector="TextBox#ResultTextBox">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource FloatingWindowTextPrimary}" />
+            <Setter Property="CaretBrush" Value="{DynamicResource FloatingWindowTextPrimary}" />
+        </Style>
+        <Style Selector="TextBox#ResultTextBox /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="TextBox#ResultTextBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="TextBox#ResultTextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+        <Style Selector="TextBox#ResultTextBox:focus-visible /template/ Border#PART_BorderElement">
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+    </Window.Styles>
+
+    <!-- 外层实体卡片：实心背景与精细边框，Win11 原生圆角裁切，不受全局半透明影响 -->
+    <Border x:Name="RootCardBorder"
+            Background="{DynamicResource FloatingWindowBackground}"
             BorderThickness="1"
+            BorderBrush="{DynamicResource FloatingWindowBorder}"
             CornerRadius="10"
             BoxShadow="0 8 32 0 #50000000"
             ClipToBounds="True">
@@ -45,110 +310,145 @@
                     Background="{DynamicResource FloatingWindowHeaderBg}"
                     BorderBrush="{DynamicResource FloatingWindowDivider}"
                     BorderThickness="0,0,0,1"
-                    Padding="12,7"
+                    Padding="10,8"
                     PointerPressed="OnTitlePointerPressed">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <!-- 左侧：标题 -->
+                    <!-- 左侧：标题与模式图标 -->
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock x:Name="TitleIcon" Classes="emoji" Text="🌐" FontSize="14" VerticalAlignment="Center" />
-                        <TextBlock x:Name="TitleText" Text="选区翻译" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TitleIcon" Classes="emoji" Text="🌐" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock x:Name="TitleText" Text="选区翻译" FontWeight="Bold" FontSize="13"
+                                   Foreground="{DynamicResource FloatingWindowTextPrimary}"
+                                   VerticalAlignment="Center" Cursor="SizeAll" ToolTip.Tip="按住拖拽移动面板" />
+                        <TextBlock x:Name="TitleElapsedBadge"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource FloatingWindowTextSecondary}"
+                                   Opacity="0.75"
+                                   VerticalAlignment="Center"
+                                   Margin="2,1,0,0"
+                                   IsVisible="False" />
                     </StackPanel>
 
+                    <!-- 中间占位/拖拽区 -->
+                    <Panel Grid.Column="1" Background="Transparent" Cursor="SizeAll" />
+
                     <!-- 右侧：置顶与关闭 -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
                         <Button x:Name="PinButton"
-                                Classes="subtle"
-                                Width="28" Height="28"
+                                Classes="iconActionBtn"
+                                Width="26" Height="26"
                                 Padding="0"
                                 Click="OnPinClick"
                                 ToolTip.Tip="切换置顶状态">
-                            <TextBlock x:Name="PinIcon" Classes="emoji" Text="📌" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <TextBlock x:Name="PinIcon" Classes="emoji" Text="📌" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Button>
-                        <Button Classes="subtle"
-                                Width="28" Height="28"
+                        <Button Classes="iconActionBtn"
+                                Width="26" Height="26"
                                 Padding="0"
                                 Click="OnCloseClick"
-                                ToolTip.Tip="关闭 (Esc)">
-                            <TextBlock Text="✕" FontSize="12" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                ToolTip.Tip="关闭面板 (Esc)">
+                            <TextBlock Text="✕" FontSize="11" Opacity="0.7" HorizontalAlignment="Center" VerticalAlignment="Center" />
                         </Button>
                     </StackPanel>
                 </Grid>
             </Border>
 
-            <!-- 2. 工具栏：模型切换 + 语言指示 + 原文悬浮查看 -->
+            <!-- 2. 工具栏：模型切换 + 开放语言选择 + 原文悬浮查看 (仅在选区翻译模式下呈现) -->
             <Border x:Name="ToolbarBorder" Grid.Row="1"
                     Background="{DynamicResource FloatingWindowHeaderBg}"
                     BorderBrush="{DynamicResource FloatingWindowDivider}"
                     BorderThickness="0,0,0,1"
-                    Padding="12,6">
+                    Padding="8,4">
                 <Grid ColumnDefinitions="Auto,*,Auto">
-                    <!-- 接口/模型选择 -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock Text="模型:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                        <ComboBox x:Name="ProviderComboBox"
-                                  Width="140"
-                                  Height="30"
-                                  FontSize="12"
-                                  SelectionChanged="OnProviderSelectionChanged" />
+                    <!-- 左侧：模型选择 (极简透明文字下拉，节省横向空间) -->
+                    <ComboBox Grid.Column="0"
+                              x:Name="ProviderComboBox"
+                              Classes="transparentCombo"
+                              Width="72"
+                              Height="24"
+                              FontSize="11"
+                              ToolTip.Tip="选择翻译引擎 / 模型"
+                              SelectionChanged="OnProviderSelectionChanged" />
+
+                    <!-- 中间：开放语言方向选择 (源语言 ⇄ 目标语言) -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <!-- 源语言选择 -->
+                        <ComboBox x:Name="SourceLangComboBox"
+                                  Classes="transparentCombo"
+                                  Width="44"
+                                  Height="24"
+                                  FontSize="11"
+                                  ToolTip.Tip="选择源语言"
+                                  SelectionChanged="OnSourceLangSelectionChanged" />
+
+                        <!-- 语言互换按钮 (小巧图标按钮) -->
+                        <Button x:Name="SwapLangButton"
+                                Classes="subtle"
+                                Width="20" Height="20"
+                                Padding="0"
+                                Click="OnSwapLangClick"
+                                ToolTip.Tip="互换源语言与目标语言"
+                                VerticalAlignment="Center">
+                            <TextBlock Text="⇄" FontSize="11" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Button>
+
+                        <!-- 目标语言选择 -->
+                        <ComboBox x:Name="TargetLangComboBox"
+                                  Classes="transparentCombo"
+                                  Width="44"
+                                  Height="24"
+                                  FontSize="11"
+                                  ToolTip.Tip="选择目标语言"
+                                  SelectionChanged="OnTargetLangSelectionChanged" />
                     </StackPanel>
 
-                    <!-- 语言方向标签 -->
-                    <TextBlock Grid.Column="1"
-                               x:Name="LanguageDirectionText"
-                               Text="[自动 ➔ 中文]"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                               VerticalAlignment="Center"
-                               Margin="8,0"
-                               TextTrimming="CharacterEllipsis" />
-
-                    <!-- 原文悬浮浮现 Button (鼠标 move 浮现，点击复制) -->
+                    <!-- 右侧：原文查看 Button -->
                     <Button Grid.Column="2"
                             x:Name="SourceHoverButton"
                             Classes="subtle"
-                            Padding="8,4"
+                            Padding="5,2"
+                            Height="24"
                             Click="OnCopySourceClick"
                             ToolTip.ServiceEnabled="True"
                             ToolTip.ShowDelay="0">
-                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="📄" FontSize="12" VerticalAlignment="Center" />
-                            <TextBlock Text="原文" FontSize="12" VerticalAlignment="Center" />
+                        <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="📄" FontSize="10.5" VerticalAlignment="Center" />
+                            <TextBlock Text="原文" FontSize="11" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
                 </Grid>
             </Border>
 
-            <!-- 3. 主体译文展示区 (充满中间区域) -->
-            <Border Grid.Row="2"
-                    Margin="12,8,12,4"
-                    CornerRadius="8"
-                    ClipToBounds="True">
-                <Grid>
+            <!-- 3. 主体结果展示区 (透明无边框且与 Grid 无额外间距) -->
+            <Panel Grid.Row="2" Margin="0">
+                <Grid Margin="0">
                     <!-- 加载指示器 -->
                     <StackPanel x:Name="LoadingPanel"
                                 IsVisible="True"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
-                                Spacing="12"
-                                Background="{DynamicResource FloatingWindowCardBg}">
-                        <ProgressBar IsIndeterminate="True" Width="180" Height="4" HorizontalAlignment="Center" />
+                                Spacing="10"
+                                Background="Transparent">
+                        <ProgressBar IsIndeterminate="True" Width="160" Height="4" HorizontalAlignment="Center" />
                         <TextBlock x:Name="LoadingStatusText"
                                    Text="正在 OCR 识别文字..."
                                    FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   Foreground="{DynamicResource FloatingWindowTextSecondary}"
                                    HorizontalAlignment="Center" />
                     </StackPanel>
 
-                    <!-- 结果内容 (可编辑输入框，整个区域都是输入框) -->
+                    <!-- 结果内容 (透明无边框输入框，紧贴网格边缘，仅保留文字舒适阅读内边距) -->
                     <TextBox x:Name="ResultTextBox"
                              IsVisible="False"
                              TextWrapping="Wrap"
                              AcceptsReturn="True"
-                             FontSize="13"
-                             LineHeight="20"
+                             FontSize="12.5"
+                             LineHeight="19"
+                             Margin="0"
                              BorderThickness="0"
-                             Background="{DynamicResource FloatingWindowCardBg}"
-                             Padding="12" />
+                             Background="Transparent"
+                             Foreground="{DynamicResource FloatingWindowTextPrimary}"
+                             CaretBrush="{DynamicResource FloatingWindowTextPrimary}"
+                             Padding="12,8" />
 
                     <!-- 错误提示 -->
                     <StackPanel x:Name="ErrorPanel"
@@ -156,103 +456,125 @@
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Spacing="8"
-                                Margin="12"
-                                Background="{DynamicResource FloatingWindowCardBg}">
-                        <TextBlock Classes="emoji" Text="⚠️" FontSize="24" HorizontalAlignment="Center" />
+                                Margin="10"
+                                Background="Transparent">
+                        <TextBlock Classes="emoji" Text="⚠️" FontSize="22" HorizontalAlignment="Center" />
                         <TextBlock x:Name="ErrorTextBlock"
-                                   Text="翻译失败"
+                                   Text="识别/翻译失败"
                                    FontSize="12"
-                                   Foreground="#FF6B6B"
+                                   Foreground="#EF4444"
                                    TextWrapping="Wrap"
                                    TextAlignment="Center" />
                     </StackPanel>
                 </Grid>
-            </Border>
+            </Panel>
 
-            <!-- 4. 状态与额度提示区 (两行展示) -->
-            <StackPanel Grid.Row="3" Margin="14,4,14,4" Spacing="2">
+            <!-- 4. 状态与额度提示区 -->
+            <StackPanel x:Name="StatusStackPanel" Grid.Row="3" Margin="12,4,12,4" Spacing="2">
                 <!-- 第一行：总耗时 -->
                 <Grid ColumnDefinitions="Auto,*">
-                    <TextBlock Text="⏱ 耗时:" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock Text="⏱ 耗时:" FontSize="10.5" Foreground="{DynamicResource FloatingWindowTextTertiary}" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <TextBlock Grid.Column="1" x:Name="ElapsedText"
                                Text="耗时: --"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               FontSize="10.5"
+                               Foreground="{DynamicResource FloatingWindowTextSecondary}"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center" />
                 </Grid>
 
                 <!-- 第二行：当月累计已用与额度 -->
                 <Grid x:Name="QuotaRow" ColumnDefinitions="Auto,*">
-                    <TextBlock Text="📊 累计:" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" Margin="0,0,4,0" />
+                    <TextBlock Text="📊 累计:" FontSize="10.5" Foreground="{DynamicResource FloatingWindowTextTertiary}" VerticalAlignment="Center" Margin="0,0,4,0" />
                     <TextBlock Grid.Column="1" x:Name="QuotaInfoText"
                                Text="当月已用: --"
-                               FontSize="11"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               FontSize="10.5"
+                               Foreground="{DynamicResource FloatingWindowTextSecondary}"
                                TextTrimming="CharacterEllipsis"
                                VerticalAlignment="Center" />
                 </Grid>
             </StackPanel>
 
-            <!-- 5. 底部操作栏 -->
+            <!-- 5. 底部操作栏 (主要按钮紧凑轻量，不再占用过多面积) -->
             <Border Grid.Row="4"
                     Background="{DynamicResource FloatingWindowHeaderBg}"
                     BorderBrush="{DynamicResource FloatingWindowDivider}"
                     BorderThickness="0,1,0,0"
-                    Padding="12,8">
-                <Grid ColumnDefinitions="*,Auto,Auto">
+                    Padding="8,5">
+                <Grid ColumnDefinitions="*,Auto">
                     <!-- 左侧按钮组 -->
-                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Left">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5" HorizontalAlignment="Left">
                         <Button x:Name="RetryButton"
                                 Classes="subtle"
                                 Click="OnRetryClick"
-                                Padding="8,5"
+                                Padding="6,3"
                                 ToolTip.Tip="重新发起翻译">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Text="↻" FontSize="13" VerticalAlignment="Center" />
-                                <TextBlock Text="重试" FontSize="12" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Text="↻" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock Text="重试" FontSize="11" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="RestoreButton"
                                 Classes="subtle"
                                 Click="OnRestoreClick"
-                                Padding="8,5"
+                                Padding="6,3"
                                 IsVisible="False"
                                 ToolTip.Tip="还原为本次识别的原始结果">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Text="↩" FontSize="13" VerticalAlignment="Center" />
-                                <TextBlock Text="还原" FontSize="12" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Text="↩" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock Text="还原" FontSize="11" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                         <Button x:Name="NewSessionButton"
                                 Classes="subtle"
                                 Click="OnNewSessionClick"
-                                Padding="8,5"
+                                Padding="6,3"
                                 IsVisible="False"
-                                ToolTip.Tip="发起新的 OCR 弹窗识别">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Classes="emoji" Text="📷" FontSize="11" VerticalAlignment="Center" />
-                                <TextBlock Text="新建" FontSize="12" VerticalAlignment="Center" />
+                                ToolTip.Tip="发起新的屏幕识别 (继续识别)">
+                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Classes="emoji" Text="📷" FontSize="10.5" VerticalAlignment="Center" />
+                                <TextBlock Text="新建" FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="ClearNoteButton"
+                                Classes="subtle"
+                                Click="OnClearNoteClick"
+                                Padding="6,3"
+                                IsVisible="False"
+                                ToolTip.Tip="清空便笺编辑区">
+                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Classes="emoji" Text="🧹" FontSize="10.5" VerticalAlignment="Center" />
+                                <TextBlock Text="清空" FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="SavePhraseButton"
+                                Classes="subtle"
+                                Click="OnSavePhraseClick"
+                                Padding="6,3"
+                                IsVisible="False"
+                                ToolTip.Tip="将当前便笺内容保存为常用语">
+                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Classes="emoji" Text="⭐" FontSize="10.5" VerticalAlignment="Center" />
+                                <TextBlock Text="保存常用语" FontSize="11" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </StackPanel>
 
                     <!-- 右侧复制原文与复制结果 -->
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="5">
                         <Button x:Name="CopySourceButton" Classes="subtle"
                                 Click="OnCopySourceClick"
-                                Padding="8,5"
+                                Padding="6,3"
                                 ToolTip.Tip="复制 OCR 识别的原文">
-                            <TextBlock Text="复制原文" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="复制原文" FontSize="11" VerticalAlignment="Center" />
                         </Button>
                         <Button Classes="accent"
                                 x:Name="CopyResultButton"
                                 Click="OnCopyResultClick"
-                                Padding="12,5"
+                                Padding="8,3"
                                 ToolTip.Tip="复制识别结果">
-                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <TextBlock Classes="emoji" Text="📋" FontSize="11" VerticalAlignment="Center" />
-                                <TextBlock x:Name="CopyResultText" Text="复制译文" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                <TextBlock Classes="emoji" Text="📋" FontSize="10.5" VerticalAlignment="Center" />
+                                <TextBlock x:Name="CopyResultText" Text="复制译文" FontWeight="Medium" FontSize="11" Foreground="#FFFFFF" VerticalAlignment="Center" />
                             </StackPanel>
                         </Button>
                     </StackPanel>

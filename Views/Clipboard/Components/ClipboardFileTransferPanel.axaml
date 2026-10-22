@@ -1,0 +1,331 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MuClip.ViewModels"
+             xmlns:models="using:MuClip.Models"
+             x:Class="ShawMuOCR.Views.Clipboard.Components.ClipboardFileTransferPanel"
+             x:Name="PanelRoot"
+             DragDrop.AllowDrop="True"
+             x:DataType="vm:ClipboardViewModel">
+
+    <Grid ColumnDefinitions="360,*" DragDrop.AllowDrop="True">
+        <!-- 左侧卡片：设备选择 + 操作区 + 日志区 -->
+        <Border Grid.Column="0" Margin="0,0,10,0"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14"
+                DragDrop.AllowDrop="True">
+            <Grid RowDefinitions="Auto,Auto,Auto,*" RowSpacing="10" ClipToBounds="True">
+                <!-- 标题与刷新按钮 -->
+                <DockPanel Grid.Row="0" LastChildFill="True">
+                    <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <TextBlock Text="📤" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock Text="发送文件到对端设备" FontWeight="SemiBold" FontSize="13.5" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button DockPanel.Dock="Right" Classes="subtle" Padding="6,2" HorizontalAlignment="Right"
+                            Command="{Binding ScanPeersCommand}" ToolTip.Tip="刷新在线设备">
+                        <TextBlock Text="🔄 刷新设备" FontSize="10.5" />
+                    </Button>
+                </DockPanel>
+
+                <!-- 选择接收端设备 (固定高度区域，支持整行点击勾选多选) -->
+                <StackPanel Grid.Row="1" Spacing="6">
+                    <!-- 固定高度多选设备列表 -->
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Height="130">
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <Panel>
+                                <!-- 空设备提示 -->
+                                <TextBlock Text="暂未发现设备，可点击右上角刷新或在下方手动输入"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           FontSize="11" TextWrapping="Wrap" TextAlignment="Center"
+                                           Margin="10" VerticalAlignment="Center"
+                                           IsVisible="{Binding !AvailableTransferTargets.Count}" />
+
+                                <!-- 在线与附近设备列表 -->
+                                <ItemsControl ItemsSource="{Binding AvailableTransferTargets}"
+                                              IsVisible="{Binding AvailableTransferTargets.Count}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:TransferTargetDeviceItem">
+                                            <!-- 整行点击切换勾选 -->
+                                            <CheckBox IsChecked="{Binding IsSelected, Mode=TwoWay}"
+                                                      HorizontalAlignment="Stretch"
+                                                      HorizontalContentAlignment="Stretch"
+                                                      Margin="0,1" Padding="6,4">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                        <TextBlock Text="💻" FontSize="12" VerticalAlignment="Center" />
+                                                        <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" FontSize="11.5"
+                                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="150" />
+                                                        <TextBlock Text="{Binding Endpoint}" FontSize="10"
+                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                   VerticalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="110" />
+                                                    </StackPanel>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                        <Border Background="#10B981" CornerRadius="3" Padding="4,1" IsVisible="{Binding IsOnline}">
+                                                            <TextBlock Text="在线" Foreground="White" FontSize="9" FontWeight="SemiBold" />
+                                                        </Border>
+                                                        <Border Background="#20007ACC" CornerRadius="3" Padding="4,1" IsVisible="{Binding IsPaired}">
+                                                            <TextBlock Text="已配对" FontSize="9" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </CheckBox>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Panel>
+                        </ScrollViewer>
+                    </Border>
+
+                    <!-- 手动输入 IP:Port 备用 -->
+                    <TextBox Text="{Binding ManualTargetEndpoint, Mode=TwoWay}"
+                             PlaceholderText="或手动输入目标 IP:42424" FontSize="11" Margin="0,2,0,0" />
+                </StackPanel>
+
+                <!-- 操作与输出目录配置区 (选择文件 / 立即发送 / 复合输出目录) -->
+                <StackPanel Grid.Row="2" Spacing="8">
+                    <!-- 第一排：选择文件 与 立即发送 -->
+                    <Grid ColumnDefinitions="*,*" ColumnSpacing="8">
+                        <Button Grid.Column="0"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                Padding="10,8" Command="{Binding PickSendFileCommand}"
+                                ToolTip.Tip="从本地选择一个或多个文件加入传输队列">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="📁" FontSize="13" />
+                                <TextBlock Text="选择文件..." FontSize="12" FontWeight="SemiBold" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Grid.Column="1" Classes="accent"
+                                HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                                Padding="10,8" Command="{Binding StartSendFileCommand}"
+                                IsEnabled="{Binding !IsSendingFile}"
+                                ToolTip.Tip="向所有勾选的设备立即发送队列中的待发送文件">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="🚀" FontSize="13" />
+                                <TextBlock Text="立即发送" FontSize="12" FontWeight="Bold" IsVisible="{Binding !IsSendingFile}" />
+                                <TextBlock Text="发送中..." FontSize="12" FontWeight="Bold" IsVisible="{Binding IsSendingFile}" />
+                            </StackPanel>
+                        </Button>
+                    </Grid>
+
+                    <!-- 第二排：输出目录复合控件 (左边是 Button，剩下的是目录输入框) -->
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="2">
+                        <Grid ColumnDefinitions="Auto,*">
+                            <Button Grid.Column="0" Command="{Binding BrowseSaveDirectoryCommand}"
+                                    Padding="8,5" CornerRadius="4,0,0,4" Classes="subtle"
+                                    ToolTip.Tip="点击选择文件接收/输出目录">
+                                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                    <TextBlock Text="📂" FontSize="12" />
+                                    <TextBlock Text="输出目录" FontSize="11" FontWeight="SemiBold" />
+                                </StackPanel>
+                            </Button>
+
+                            <TextBox Grid.Column="1"
+                                     Text="{Binding FileSaveDirectory, Mode=TwoWay}"
+                                     FontSize="11"
+                                     BorderThickness="0"
+                                     Background="Transparent"
+                                     VerticalAlignment="Center"
+                                     ToolTip.Tip="{Binding FileSaveDirectory, StringFormat='文件保存目录: {0}'}">
+                                <TextBox.InnerRightContent>
+                                    <Button Command="{Binding OpenSaveDirectoryCommand}"
+                                            Classes="subtle" Padding="6,2" Margin="0,0,2,0"
+                                            ToolTip.Tip="在资源管理器中打开该目录">
+                                        <TextBlock Text="打开" FontSize="10" />
+                                    </Button>
+                                </TextBox.InnerRightContent>
+                            </TextBox>
+                        </Grid>
+                    </Border>
+                </StackPanel>
+
+                <!-- 日志区 (自动输出特性介绍、接收目录、添加/移除文件等日志) -->
+                <Grid Grid.Row="3" RowDefinitions="Auto,*" RowSpacing="6" MinHeight="0" ClipToBounds="True">
+                    <DockPanel Grid.Row="0" LastChildFill="True">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="📋" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="传输与操作日志" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <Button DockPanel.Dock="Right" Classes="subtle" Padding="5,2"
+                                Command="{Binding ClearTransferLogCommand}"
+                                ToolTip.Tip="清空日志信息">
+                            <TextBlock Text="清空" FontSize="10.5" />
+                        </Button>
+                    </DockPanel>
+
+                    <Border Grid.Row="1"
+                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="6"
+                            MinHeight="50"
+                            VerticalAlignment="Stretch"
+                            ClipToBounds="True">
+                        <TextBox Text="{Binding TransferLogText, Mode=OneWay}"
+                                 IsReadOnly="True"
+                                 AcceptsReturn="True"
+                                 TextWrapping="Wrap"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 FontFamily="Consolas, Cascadia Code, Courier New, monospace"
+                                 FontSize="10.5"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 VerticalAlignment="Stretch"
+                                 HorizontalAlignment="Stretch" />
+                    </Border>
+                </Grid>
+            </Grid>
+        </Border>
+
+        <!-- 右侧卡片：传输任务列表 (文件队列与传输动态) -->
+        <Border Grid.Column="1"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14"
+                DragDrop.AllowDrop="True">
+            <Grid RowDefinitions="Auto,*" DragDrop.AllowDrop="True">
+                <!-- 列表头部 -->
+                <DockPanel Grid.Row="0" Margin="0,0,0,10" LastChildFill="True">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="📊 传输任务列表" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                CornerRadius="8" Padding="6,1" VerticalAlignment="Center"
+                                IsVisible="{Binding ActiveTransferCount}">
+                            <TextBlock Text="{Binding ActiveTransferCount, StringFormat='{}传输中 {0}'}" FontSize="10.5" Foreground="White" FontWeight="Bold" />
+                        </Border>
+                    </StackPanel>
+
+                    <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                                    ToolTip.Tip="{Binding FileSaveDirectory, StringFormat='当前文件接收目录: {0}'}">
+                            <TextBlock Text="接收目录:" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding FileSaveDirectory}" FontSize="11" FontWeight="Medium" MaxWidth="160" TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                        </StackPanel>
+                        <Button Command="{Binding OpenSaveDirectoryCommand}" Padding="8,4" ToolTip.Tip="在资源管理器中打开保存文件夹">
+                            <TextBlock Text="📂 打开目录" FontSize="11" />
+                        </Button>
+                        <Button Classes="subtle" Padding="8,4"
+                                Command="{Binding ClearCompletedTransfersCommand}"
+                                ToolTip.Tip="清理已完成、失败或取消的历史传输任务">
+                            <TextBlock Text="🗑 清理已完成" FontSize="11" />
+                        </Button>
+                    </StackPanel>
+                </DockPanel>
+
+                <!-- 任务列表滚动区域 -->
+                <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto" DragDrop.AllowDrop="True">
+                    <Panel DragDrop.AllowDrop="True">
+                        <!-- 空任务提示与拖拽提示 -->
+                        <Border IsVisible="{Binding !FileTransfers.Count}"
+                                Padding="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <StackPanel Spacing="10" HorizontalAlignment="Center">
+                                <TextBlock Text="📂" FontSize="36" HorizontalAlignment="Center" />
+                                <TextBlock Text="暂无文件传输任务" FontWeight="SemiBold" FontSize="14" HorizontalAlignment="Center" />
+                                <TextBlock Text="可直接将文件拖拽到此窗口添加发送队列，&#x0a;或点击左侧「选择文件...」添加到传输任务列表。"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           FontSize="11.5" TextAlignment="Center" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- 任务卡片列表 -->
+                        <ItemsControl ItemsSource="{Binding FileTransfers}" IsVisible="{Binding FileTransfers.Count}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:FileTransferItem">
+                                    <Border Margin="0,0,0,10" Padding="12,10" CornerRadius="8"
+                                            Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                        <Grid RowDefinitions="Auto,Auto,Auto" RowSpacing="8">
+                                            <!-- 第一行：方向徽章 + 文件名 + 对端设备 + 操作按钮 -->
+                                            <DockPanel Grid.Row="0" LastChildFill="True">
+                                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                    <Border Background="{Binding DirectionColor}" CornerRadius="4" Padding="6,2">
+                                                        <TextBlock Text="{Binding DirectionBadge}" Foreground="White" FontSize="11" FontWeight="Bold" />
+                                                    </Border>
+                                                    <TextBlock Text="{Binding FileName}" FontWeight="SemiBold" FontSize="13" TextTrimming="CharacterEllipsis" MaxWidth="300" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding PeerName, StringFormat='{}对端: {0}'}" FontSize="11"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                                </StackPanel>
+
+                                                <!-- 右侧操作按钮 -->
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <Button Classes="subtle" Padding="6,3" CornerRadius="4"
+                                                            Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).RemoveTransferItemCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            IsVisible="{Binding CanRemove}"
+                                                            ToolTip.Tip="从任务列表中移除此项">
+                                                        <TextBlock Text="✕ 移除" FontSize="11" Foreground="#EF4444" />
+                                                    </Button>
+
+                                                    <Button Classes="subtle" Padding="6,3" CornerRadius="4"
+                                                            Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).CancelTransferCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            IsVisible="{Binding CanCancel}"
+                                                            ToolTip.Tip="取消正在进行的传输">
+                                                        <TextBlock Text="✕ 取消" FontSize="11" Foreground="#EF4444" />
+                                                    </Button>
+
+                                                    <Button Classes="subtle" Padding="6,3" CornerRadius="4"
+                                                            Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).OpenItemFolderCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            IsVisible="{Binding CanOpenFolder}"
+                                                            ToolTip.Tip="在资源管理器中打开所在文件夹">
+                                                        <TextBlock Text="📂 打开文件夹" FontSize="11" />
+                                                    </Button>
+
+                                                    <Button Classes="accent" Padding="8,3" CornerRadius="4"
+                                                            Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).OpenItemFileCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            IsVisible="{Binding CanOpenFile}"
+                                                            ToolTip.Tip="打开文件">
+                                                        <TextBlock Text="打开文件" FontSize="11" />
+                                                    </Button>
+                                                </StackPanel>
+                                            </DockPanel>
+
+                                            <!-- 第二行：进度条 -->
+                                            <ProgressBar Grid.Row="1" Minimum="0" Maximum="100"
+                                                         Value="{Binding ProgressPercent}"
+                                                         Height="6" CornerRadius="3" />
+
+                                            <!-- 第三行：传输速率 + 已传输大小 + 预计剩余时间 + 状态文字 -->
+                                            <DockPanel Grid.Row="2" LastChildFill="True">
+                                                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding FormattedPercent}" FontWeight="Bold" FontSize="11.5" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding FormattedSpeed, StringFormat='{}⚡ {0}'}" FontSize="11"
+                                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="SemiBold" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding FormattedSize}" FontSize="11"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                                    <TextBlock Text="{Binding FormattedRemainingTime}" FontSize="11"
+                                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center"
+                                                               IsVisible="{Binding !!FormattedRemainingTime.Length}" />
+                                                </StackPanel>
+
+                                                <TextBlock DockPanel.Dock="Right" Text="{Binding StatusText}" FontSize="11"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                            </DockPanel>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </Panel>
+                </ScrollViewer>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

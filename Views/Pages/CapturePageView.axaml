@@ -45,8 +45,7 @@
                                     IsVisible="{Binding HasHotkey}">
                                 <TextBlock Text="{Binding CurrentHotkey, StringFormat='快捷键: {0}'}"
                                            FontSize="11"
-                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                                           FontWeight="Medium" />
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </Border>
                         </StackPanel>
 
@@ -88,8 +87,7 @@
                                     IsVisible="{Binding HasCaptureImageHotkey}">
                                 <TextBlock Text="{Binding CurrentCaptureImageHotkey, StringFormat='快捷键: {0}'}"
                                            FontSize="11"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           FontWeight="Medium" />
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                             </Border>
                         </StackPanel>
 
@@ -130,8 +128,7 @@
                                     IsVisible="{Binding HasAnnotateHotkey}">
                                 <TextBlock Text="{Binding CurrentAnnotateHotkey, StringFormat='快捷键: {0}'}"
                                            FontSize="11"
-                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                           FontWeight="Medium" />
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                             </Border>
                         </StackPanel>
 
@@ -168,7 +165,7 @@
                                 Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="6" Padding="12,10">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="🛡️ 无激活全屏遮罩 (WS_EX_NOACTIVATE)" FontWeight="Medium" FontSize="13" />
+                                <TextBlock Text="🛡️ 无激活全屏遮罩 (WS_EX_NOACTIVATE)" FontWeight="SemiBold" FontSize="13" />
                                 <TextBlock Text="截屏遮罩在生成和选区期间绝不抢占前台焦点，彻底避免外部应用因失焦导致右键菜单或弹窗意外关闭。"
                                            FontSize="11"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -181,8 +178,8 @@
                                 Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="6" Padding="12,10">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="⌨️ 低级键盘钩子 (WH_KEYBOARD_LL)" FontWeight="Medium" FontSize="13" />
-                                <TextBlock Text="在 Windows 底层拦截组合键序列，确保 Alt/Ctrl 等修饰键绝不穿透泄漏给当前活动软件。"
+                                <TextBlock Text="⌨️ 系统级内核热键" FontWeight="SemiBold" FontSize="13" />
+                                <TextBlock Text="采用 Windows 原生内核级热键注册机制，响应灵敏且极低开销，确保全局快捷键准确触发且不与应用层冲突。"
                                            FontSize="11"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />
@@ -194,7 +191,7 @@
                                 Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="6" Padding="12,10">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="🖥️ 高分屏 DPI 缩放与多显示器支持" FontWeight="Medium" FontSize="13" />
+                                <TextBlock Text="🖥️ 高分屏 DPI 缩放与多显示器支持" FontWeight="SemiBold" FontSize="13" />
                                 <TextBlock Text="采用多屏真实虚拟桌面坐标系，完美适配 125%、150% 等高分屏物理像素定位，跨屏框选无缝自适应。"
                                            FontSize="11"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -207,7 +204,7 @@
                                 Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="6" Padding="12,10">
                             <StackPanel Spacing="4">
-                                <TextBlock Text="📌 独立置顶贴图与矢量合成" FontWeight="Medium" FontSize="13" />
+                                <TextBlock Text="📌 独立置顶贴图与矢量合成" FontWeight="SemiBold" FontSize="13" />
                                 <TextBlock Text="基于 SkiaSharp 矢量对象模型，标注图元支持撤销重做，导出的贴图窗口支持 25%~400% 滚轮缩放与鼠标拖拽。"
                                            FontSize="11"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"

@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="ShawMuOCR.App"
              xmlns:local="using:ShawMuOCR"
+             xmlns:services="using:ShawMuOCR.Services"
              RequestedThemeVariant="Default">
 
     <Application.DataTemplates>
@@ -10,10 +11,54 @@
 
     <Application.Styles>
         <FluentTheme />
+        <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
+
+        <!-- 全局统一字体栈：确保中英文、数字和符号风格高度一致，解决 Inter 与微软雅黑混排割裂 -->
+        <Style Selector="Window">
+            <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif" />
+        </Style>
         <!-- 全局彩色 Emoji 样式：显式绑定彩色表情字体并锁定常规字重，防止父容器加粗或字体回退时退化为单色黑白轮廓 -->
         <Style Selector="TextBlock.emoji">
             <Setter Property="FontFamily" Value="Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, sans-serif" />
             <Setter Property="FontWeight" Value="Normal" />
+        </Style>
+
+        <!-- 全局下拉框滚轮防护：未展开下拉框时禁止滚轮直接改动选中项，并将滚轮平滑传递给父级容器 -->
+        <Style Selector="ComboBox">
+            <Setter Property="services:ComboBoxHelper.DisableWheelChange" Value="True" />
+        </Style>
+
+        <!-- 全局输入框统一风格：无背景色（透明透出卡片与Grid底色），显式显示高亮光标 -->
+        <Style Selector="TextBox">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CaretBrush" Value="{DynamicResource TextControlForeground}" />
+        </Style>
+        <Style Selector="TextBox /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox:pointerover /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox:focus-visible /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+        </Style>
+        <Style Selector="TextBox:disabled /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
         </Style>
     </Application.Styles>
 
@@ -28,7 +73,8 @@
                         <NativeMenuItem Header="截图复制" Click="OnTrayCaptureImageClick" />
                         <NativeMenuItem Header="截图标注" Click="OnTrayAnnotateClick" />
                         <NativeMenuItem Header="选区翻译" Click="OnTrayTranslateClick" />
-                        <NativeMenuItem Header="OCR 弹窗" Click="OnTrayOcrPopupClick" />
+                        <NativeMenuItem Header="OCR 窗格" Click="OnTrayOcrPopupClick" />
+                        <NativeMenuItem Header="随手便笺" Click="OnTrayQuickNoteClick" />
                         <NativeMenuItemSeparator />
                         <NativeMenuItem Header="打开主界面" Click="OnTrayOpenMainClick" />
                         <NativeMenuItem Header="小沐剪贴板" Click="OnTrayClipboardClick" />

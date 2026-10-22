@@ -51,3 +51,25 @@ public static class TranslationLanguages
         return item?.DisplayName ?? code;
     }
 }
+
+public record TranslationProviderItem(string Id, string DisplayName)
+{
+    public override string ToString() => DisplayName;
+}
+
+public static class TranslationProviders
+{
+    public static IReadOnlyList<TranslationProviderItem> All { get; } = new[]
+    {
+        new TranslationProviderItem("Baidu", "百度翻译"),
+        new TranslationProviderItem("Google", "谷歌翻译"),
+        new TranslationProviderItem("OpenAI", "OpenAI"),
+        new TranslationProviderItem("Volcengine", "火山引擎"),
+        new TranslationProviderItem("Aliyun", "阿里云翻译"),
+    };
+
+    public static string GetDisplayName(string id)
+    {
+        return All.FirstOrDefault(p => string.Equals(p.Id, id, StringComparison.OrdinalIgnoreCase))?.DisplayName ?? id;
+    }
+}

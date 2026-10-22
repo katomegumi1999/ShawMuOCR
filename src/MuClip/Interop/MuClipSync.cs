@@ -371,12 +371,19 @@ public sealed class MuClipSync : IDisposable
     /// </summary>
     public unsafe int TestPeer(string peerAddr)
     {
-        ThrowIfDisposed();
-        if (string.IsNullOrWhiteSpace(peerAddr)) return -1;
-        byte[] bytes = Encoding.UTF8.GetBytes(peerAddr.Trim() + "\0");
-        fixed (byte* p = bytes)
+        if (!TryAcquireHandle(out var handle)) return -1;
+        try
         {
-            return MuClipNative.SyncTestPeer(_handle, p);
+            if (string.IsNullOrWhiteSpace(peerAddr)) return -1;
+            byte[] bytes = Encoding.UTF8.GetBytes(peerAddr.Trim() + "\0");
+            fixed (byte* p = bytes)
+            {
+                return MuClipNative.SyncTestPeer(handle, p);
+            }
+        }
+        finally
+        {
+            ReleaseHandle();
         }
     }
 

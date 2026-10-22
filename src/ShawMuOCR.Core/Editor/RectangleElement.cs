@@ -11,6 +11,7 @@ public sealed class RectangleElement : IImageElement
     public float Bottom { get; set; }
     public SKColor Color { get; set; } = new SKColor(229, 57, 53); // Red
     public float StrokeWidth { get; set; } = 3f;
+    public float Rotation { get; set; } = 0f;
 
     public SKRect BoundingBox => new(
         Math.Min(Left, Right),
@@ -23,6 +24,13 @@ public sealed class RectangleElement : IImageElement
         var rect = BoundingBox;
         if (rect.Width <= 0 || rect.Height <= 0) return;
 
+        canvas.Save();
+        if (Math.Abs(Rotation) > 0.01f)
+        {
+            var center = new SKPoint(rect.MidX, rect.MidY);
+            canvas.RotateDegrees(Rotation, center.X, center.Y);
+        }
+
         using var paint = new SKPaint
         {
             Color = Color,
@@ -33,11 +41,17 @@ public sealed class RectangleElement : IImageElement
         };
 
         canvas.DrawRect(rect, paint);
+        canvas.Restore();
     }
 
     public bool HitTest(SKPoint point)
     {
         var box = BoundingBox;
+        if (Math.Abs(Rotation) > 0.01f)
+        {
+            point = GeometryHelper.RotatePoint(point, new SKPoint(box.MidX, box.MidY), -Rotation);
+        }
+
         float tol = Math.Max(StrokeWidth + 4f, 8f);
 
         var outer = new SKRect(box.Left - tol, box.Top - tol, box.Right + tol, box.Bottom + tol);
@@ -60,6 +74,14 @@ public sealed class RectangleElement : IImageElement
         Bottom += dy;
     }
 
+    public void Resize(SKRect newBounds)
+    {
+        Left = newBounds.Left;
+        Top = newBounds.Top;
+        Right = newBounds.Right;
+        Bottom = newBounds.Bottom;
+    }
+
     public IImageElement Clone()
     {
         return new RectangleElement
@@ -70,7 +92,8 @@ public sealed class RectangleElement : IImageElement
             Right = Right,
             Bottom = Bottom,
             Color = Color,
-            StrokeWidth = StrokeWidth
+            StrokeWidth = StrokeWidth,
+            Rotation = Rotation
         };
     }
 }

@@ -8,6 +8,7 @@ using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.OCR;
+using ShawMuOCR.Windows.Clipboard;
 
 namespace ShawMuOCR.ViewModels;
 
@@ -59,6 +60,19 @@ public partial class SettingsViewModel : ViewModelBase
     private bool _isRecordingOcrPopupHotkey;
 
     [ObservableProperty]
+    private string _quickNoteHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
+    private bool _isRecordingQuickNoteHotkey;
+
+    [ObservableProperty]
+    private bool _isResetConfirmOpen;
+
+    [ObservableProperty]
+    private bool _resetClearApiCredentials;
+
+    [ObservableProperty]
     private string _clipboardPanelHotkey;
 
     [ObservableProperty]
@@ -78,13 +92,25 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
     private bool _isRecordingPhrasesPanelHotkey;
 
-    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingTranslateHotkey || IsRecordingOcrPopupHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
+    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingTranslateHotkey || IsRecordingOcrPopupHotkey || IsRecordingQuickNoteHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
 
     // ==========================================
     // 翻译服务配置属性
     // ==========================================
     [ObservableProperty]
-    private string _translateProvider = "Baidu";
+    [NotifyPropertyChangedFor(nameof(TranslateProvider))]
+    private TranslationProviderItem _selectedTranslateProvider;
+
+    public string TranslateProvider
+    {
+        get => SelectedTranslateProvider?.Id ?? "Baidu";
+        set
+        {
+            var item = AvailableTranslateProviders.FirstOrDefault(p => string.Equals(p.Id, value, StringComparison.OrdinalIgnoreCase))
+                       ?? AvailableTranslateProviders[0];
+            SelectedTranslateProvider = item;
+        }
+    }
 
     [ObservableProperty]
     private LanguageItem _selectedTranslateSourceLang;
@@ -94,7 +120,7 @@ public partial class SettingsViewModel : ViewModelBase
 
     public IReadOnlyList<LanguageItem> TranslateSourceLanguages { get; } = TranslationLanguages.All;
     public IReadOnlyList<LanguageItem> TranslateTargetLanguages { get; } = TranslationLanguages.AllTargets;
-    public string[] AvailableTranslateProviders { get; } = ["Baidu", "Google", "OpenAI"];
+    public IReadOnlyList<TranslationProviderItem> AvailableTranslateProviders { get; } = TranslationProviders.All;
 
     // 百度翻译
     [ObservableProperty]
@@ -137,6 +163,38 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     private int _openAiUsedCount = 0;
+
+    // 火山引擎翻译
+    [ObservableProperty]
+    private string _volcengineAccessKey = string.Empty;
+
+    [ObservableProperty]
+    private string _volcengineSecretKey = string.Empty;
+
+    [ObservableProperty]
+    private string _volcengineRegion = "cn-north-1";
+
+    [ObservableProperty]
+    private int _volcengineMonthlyLimit = 2000000;
+
+    [ObservableProperty]
+    private int _volcengineUsedCount = 0;
+
+    // 阿里云机器翻译
+    [ObservableProperty]
+    private string _aliyunAccessKeyId = string.Empty;
+
+    [ObservableProperty]
+    private string _aliyunAccessKeySecret = string.Empty;
+
+    [ObservableProperty]
+    private string _aliyunApiEndpoint = "http://mt.cn-hangzhou.aliyuncs.com/api/translate/web/general";
+
+    [ObservableProperty]
+    private int _aliyunMonthlyLimit = 1000000;
+
+    [ObservableProperty]
+    private int _aliyunUsedCount = 0;
 
     [ObservableProperty]
     private bool _autoCopy;
@@ -280,7 +338,7 @@ public partial class SettingsViewModel : ViewModelBase
     public string OcrBackendHint => NormalizeBackendValue(OcrBackend) switch
     {
         "GPU" => "强制使用纯 C# Vulkan GPU 硬件加速推理（DET + CLS + REC）",
-        "Auto" => "自动选择最优后端：支持硬件协作矩阵 (CoopMatrix) 或 AMD Wave64 (SubgroupMin≥64) 时自动启用 Vulkan，否则走 CPU AVX2 SIMD",
+        "Auto" => "自动选择最优后端：支持硬件协作矩阵 (CoopMatrix) 或子群并行 (AMD Wave32/Wave64, SubgroupMin≥32) 时自动启用 Vulkan，否则走 CPU AVX2 SIMD",
         _ => "默认使用纯托管 CPU SIMD (AVX2 / AVX-512) 向量指令加速，无首次编译开销且完全不占用 GPU"
     };
 
@@ -379,7 +437,15 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private bool _enableLogging;
 
+    [ObservableProperty]
+    private bool _enableLogAutoClean;
+
+    [ObservableProperty]
+    private int _logRetentionDays = 7;
+
     public string SettingsFilePath => _settingsService.SettingsFilePath;
+    public string AppDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR");
+    public string MuClipDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR", "Muclip");
     public string LogDirectory => _loggerService?.LogDirectory ?? string.Empty;
     public string CurrentLogFilePath => _loggerService?.CurrentLogFilePath ?? string.Empty;
 
@@ -395,6 +461,7 @@ public partial class SettingsViewModel : ViewModelBase
     };
     public ObservableCollection<int> AvailableMaxSideLens { get; } = new();
     public ObservableCollection<int> AvailableIdleSleepMinutes { get; } = new();
+    public ObservableCollection<int> AvailableLogRetentionDays { get; } = new();
 
     public event Action? RequestClose;
     public event Action<AboutViewModel>? RequestOpenAbout;
@@ -439,14 +506,17 @@ public partial class SettingsViewModel : ViewModelBase
         _enableIdleSleep = current.EnableIdleSleep;
         _idleSleepMinutes = current.IdleSleepMinutes;
         _enableLogging = current.EnableLogging;
+        _enableLogAutoClean = current.EnableLogAutoClean;
+        _logRetentionDays = current.LogRetentionDays > 0 ? current.LogRetentionDays : 7;
 
         _translateHotkey = current.TranslateHotkey;
         _ocrPopupHotkey = current.OcrPopupHotkey;
+        _quickNoteHotkey = current.QuickNoteHotkey;
         _enableClipboard = current.EnableClipboard;
         _clipboardPanelHotkey = current.ClipboardPanelHotkey;
         _phrasesPanelHotkey = current.PhrasesPanelHotkey;
         _clipboardPanelBackground = current.ClipboardPanelBackground;
-        _translateProvider = current.TranslateProvider;
+        _selectedTranslateProvider = AvailableTranslateProviders.FirstOrDefault(p => string.Equals(p.Id, current.TranslateProvider, StringComparison.OrdinalIgnoreCase)) ?? AvailableTranslateProviders[0];
         _selectedTranslateSourceLang = TranslateSourceLanguages.FirstOrDefault(x => x.Code == current.TranslateSourceLang) ?? TranslateSourceLanguages[0];
         _selectedTranslateTargetLang = TranslateTargetLanguages.FirstOrDefault(x => x.Code == current.TranslateTargetLang) ?? TranslateTargetLanguages[0];
 
@@ -466,9 +536,22 @@ public partial class SettingsViewModel : ViewModelBase
         _openAiMonthlyLimit = current.OpenAiMonthlyLimit;
         _openAiUsedCount = current.OpenAiUsedCount;
 
+        _volcengineAccessKey = current.VolcengineAccessKey;
+        _volcengineSecretKey = current.VolcengineSecretKey;
+        _volcengineRegion = current.VolcengineRegion;
+        _volcengineMonthlyLimit = current.VolcengineMonthlyLimit;
+        _volcengineUsedCount = current.VolcengineUsedCount;
+
+        _aliyunAccessKeyId = current.AliyunAccessKeyId;
+        _aliyunAccessKeySecret = current.AliyunAccessKeySecret;
+        _aliyunApiEndpoint = current.AliyunApiEndpoint;
+        _aliyunMonthlyLimit = current.AliyunMonthlyLimit;
+        _aliyunUsedCount = current.AliyunUsedCount;
+
         LoadModels();
         LoadMaxSideLens();
         LoadIdleSleepMinutes();
+        LoadLogRetentionDays();
         _settingsService.SettingsChanged += OnExternalSettingsChanged;
         StatusMessage = HasNoModels
             ? "⚠️ 未在 models 目录下检测到任何 OCR 模型，请将 models 文件夹放入程序目录后点击刷新"
@@ -509,6 +592,21 @@ public partial class SettingsViewModel : ViewModelBase
         if (!AvailableIdleSleepMinutes.Contains(IdleSleepMinutes))
         {
             IdleSleepMinutes = 3;
+        }
+    }
+
+    private void LoadLogRetentionDays()
+    {
+        AvailableLogRetentionDays.Clear();
+        AvailableLogRetentionDays.Add(3);
+        AvailableLogRetentionDays.Add(7);
+        AvailableLogRetentionDays.Add(14);
+        AvailableLogRetentionDays.Add(30);
+        AvailableLogRetentionDays.Add(60);
+
+        if (!AvailableLogRetentionDays.Contains(LogRetentionDays))
+        {
+            AvailableLogRetentionDays.Add(LogRetentionDays);
         }
     }
 
@@ -758,7 +856,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingAnnotateHotkey = false;
         IsRecordingTranslateHotkey = false;
         IsRecordingOcrPopupHotkey = true;
-        StatusMessage = "请按下【OCR 弹窗】快捷键 (按 Backspace 清空，按 Esc 取消)...";
+        StatusMessage = "请按下【OCR 窗格】快捷键 (按 Backspace 清空，按 Esc 取消)...";
     }
 
     public void OnOcrPopupHotkeyRecorded(HotkeyGesture gesture)
@@ -766,7 +864,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingOcrPopupHotkey = false;
         _hotkeyService.IsPaused = false;
         OcrPopupHotkey = gesture.ToString();
-        StatusMessage = $"✓ 已设置 OCR 弹窗快捷键: {OcrPopupHotkey}";
+        StatusMessage = $"✓ 已设置 OCR 窗格快捷键: {OcrPopupHotkey}";
     }
 
     [RelayCommand]
@@ -775,7 +873,39 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingOcrPopupHotkey = false;
         _hotkeyService.IsPaused = false;
         OcrPopupHotkey = "无";
-        StatusMessage = "OCR 弹窗快捷键已清空(已禁用)";
+        StatusMessage = "OCR 窗格快捷键已清空(已禁用)";
+    }
+
+    [RelayCommand]
+    private void StartRecordQuickNoteHotkey()
+    {
+        _hotkeyService.IsPaused = true;
+        IsRecordingHotkey = false;
+        IsRecordingCaptureImageHotkey = false;
+        IsRecordingAnnotateHotkey = false;
+        IsRecordingTranslateHotkey = false;
+        IsRecordingOcrPopupHotkey = false;
+        IsRecordingQuickNoteHotkey = true;
+        IsRecordingClipboardPanelHotkey = false;
+        IsRecordingPhrasesPanelHotkey = false;
+        StatusMessage = "请按下【随手便笺】快捷键 (默认 Alt+N，按 Backspace 清空，按 Esc 取消)...";
+    }
+
+    public void OnQuickNoteHotkeyRecorded(HotkeyGesture gesture)
+    {
+        IsRecordingQuickNoteHotkey = false;
+        _hotkeyService.IsPaused = false;
+        QuickNoteHotkey = gesture.ToString();
+        StatusMessage = $"✓ 已设置随手便笺快捷键: {QuickNoteHotkey}";
+    }
+
+    [RelayCommand]
+    private void ClearQuickNoteHotkey()
+    {
+        IsRecordingQuickNoteHotkey = false;
+        _hotkeyService.IsPaused = false;
+        QuickNoteHotkey = "无";
+        StatusMessage = "随手便笺快捷键已清空(已禁用)";
     }
 
     [RelayCommand]
@@ -862,6 +992,22 @@ public partial class SettingsViewModel : ViewModelBase
         OpenAiUsedCount = 0;
         TriggerAutoSave(debounce: false);
         StatusMessage = "已重置 OpenAI 当月已用 Token 计数";
+    }
+
+    [RelayCommand]
+    public void ResetVolcengineUsedCount()
+    {
+        VolcengineUsedCount = 0;
+        TriggerAutoSave(debounce: false);
+        StatusMessage = "已重置火山引擎翻译当月已用字符计数";
+    }
+
+    [RelayCommand]
+    public void ResetAliyunUsedCount()
+    {
+        AliyunUsedCount = 0;
+        TriggerAutoSave(debounce: false);
+        StatusMessage = "已重置阿里云机器翻译当月已用字符计数";
     }
 
     [RelayCommand]
@@ -990,8 +1136,11 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(EnableIdleSleep):
             case nameof(IdleSleepMinutes):
             case nameof(EnableLogging):
+            case nameof(EnableLogAutoClean):
+            case nameof(LogRetentionDays):
             case nameof(SelectedExternalModelTypeDisplay):
             case nameof(TranslateProvider):
+            case nameof(SelectedTranslateProvider):
             case nameof(SelectedTranslateSourceLang):
             case nameof(SelectedTranslateTargetLang):
             case nameof(Hotkey):
@@ -1031,6 +1180,14 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(OpenAiApiKey):
             case nameof(OpenAiModel):
             case nameof(OpenAiMonthlyLimit):
+            case nameof(VolcengineAccessKey):
+            case nameof(VolcengineSecretKey):
+            case nameof(VolcengineRegion):
+            case nameof(VolcengineMonthlyLimit):
+            case nameof(AliyunAccessKeyId):
+            case nameof(AliyunAccessKeySecret):
+            case nameof(AliyunApiEndpoint):
+            case nameof(AliyunMonthlyLimit):
             case nameof(ExternalModelPath):
             case nameof(ExternalApiUrl):
                 TriggerAutoSave(debounce: true);
@@ -1050,7 +1207,8 @@ public partial class SettingsViewModel : ViewModelBase
         if (!IsDisabledHotkey(CaptureImageHotkey)) activeHotkeys.Add(("截图复制", CaptureImageHotkey));
         if (!IsDisabledHotkey(AnnotateHotkey)) activeHotkeys.Add(("截图标注", AnnotateHotkey));
         if (!IsDisabledHotkey(TranslateHotkey)) activeHotkeys.Add(("选区翻译", TranslateHotkey));
-        if (!IsDisabledHotkey(OcrPopupHotkey)) activeHotkeys.Add(("OCR 弹窗", OcrPopupHotkey));
+        if (!IsDisabledHotkey(OcrPopupHotkey)) activeHotkeys.Add(("OCR 窗格", OcrPopupHotkey));
+        if (!IsDisabledHotkey(QuickNoteHotkey)) activeHotkeys.Add(("随手便笺", QuickNoteHotkey));
         if (EnableClipboard)
         {
             if (!IsDisabledHotkey(ClipboardPanelHotkey)) activeHotkeys.Add(("剪贴板面板", ClipboardPanelHotkey));
@@ -1092,7 +1250,12 @@ public partial class SettingsViewModel : ViewModelBase
         }
         if (!IsDisabledHotkey(OcrPopupHotkey) && !HotkeyGesture.TryParse(OcrPopupHotkey, out _))
         {
-            StatusMessage = "⚠️ OCR 弹窗快捷键格式无效！";
+            StatusMessage = "⚠️ OCR 窗格快捷键格式无效！";
+            return false;
+        }
+        if (!IsDisabledHotkey(QuickNoteHotkey) && !HotkeyGesture.TryParse(QuickNoteHotkey, out _))
+        {
+            StatusMessage = "⚠️ 随手便笺快捷键格式无效！";
             return false;
         }
         if (EnableClipboard)
@@ -1117,6 +1280,7 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.AnnotateHotkey = AnnotateHotkey;
         newSettings.TranslateHotkey = TranslateHotkey;
         newSettings.OcrPopupHotkey = OcrPopupHotkey;
+        newSettings.QuickNoteHotkey = QuickNoteHotkey;
         newSettings.EnableClipboard = EnableClipboard;
         newSettings.ClipboardPanelHotkey = ClipboardPanelHotkey;
         newSettings.PhrasesPanelHotkey = PhrasesPanelHotkey;
@@ -1142,6 +1306,18 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.OpenAiMonthlyLimit = OpenAiMonthlyLimit;
         newSettings.OpenAiUsedCount = OpenAiUsedCount;
 
+        newSettings.VolcengineAccessKey = VolcengineAccessKey?.Trim() ?? string.Empty;
+        newSettings.VolcengineSecretKey = VolcengineSecretKey?.Trim() ?? string.Empty;
+        newSettings.VolcengineRegion = VolcengineRegion?.Trim() ?? "cn-north-1";
+        newSettings.VolcengineMonthlyLimit = VolcengineMonthlyLimit;
+        newSettings.VolcengineUsedCount = VolcengineUsedCount;
+
+        newSettings.AliyunAccessKeyId = AliyunAccessKeyId?.Trim() ?? string.Empty;
+        newSettings.AliyunAccessKeySecret = AliyunAccessKeySecret?.Trim() ?? string.Empty;
+        newSettings.AliyunApiEndpoint = AliyunApiEndpoint?.Trim() ?? "http://mt.cn-hangzhou.aliyuncs.com/api/translate/web/general";
+        newSettings.AliyunMonthlyLimit = AliyunMonthlyLimit;
+        newSettings.AliyunUsedCount = AliyunUsedCount;
+
         newSettings.AutoCopy = AutoCopy;
         newSettings.SilentMode = SilentMode;
         newSettings.SilentStartup = SilentStartup;
@@ -1166,6 +1342,8 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.EnableIdleSleep = EnableIdleSleep;
         newSettings.IdleSleepMinutes = IdleSleepMinutes;
         newSettings.EnableLogging = EnableLogging;
+        newSettings.EnableLogAutoClean = EnableLogAutoClean;
+        newSettings.LogRetentionDays = LogRetentionDays;
 
         _isSaving = true;
         try
@@ -1203,6 +1381,76 @@ public partial class SettingsViewModel : ViewModelBase
         RequestClose?.Invoke();
     }
 
+    [RelayCommand]
+    public void ShowResetConfirmDialog()
+    {
+        ResetClearApiCredentials = false;
+        IsResetConfirmOpen = true;
+    }
+
+    [RelayCommand]
+    public void CancelResetConfirmDialog()
+    {
+        IsResetConfirmOpen = false;
+    }
+
+    [RelayCommand]
+    public void ConfirmResetDefaults()
+    {
+        IsResetConfirmOpen = false;
+        ExecuteResetDefaults(ResetClearApiCredentials);
+    }
+
+    public void ExecuteResetDefaults(bool clearApi)
+    {
+        _autoSaveCts?.Cancel();
+        _autoSaveCts?.Dispose();
+        _autoSaveCts = null;
+
+        var defaultSettings = new AppSettings();
+
+        if (!clearApi)
+        {
+            var cur = _settingsService.Current;
+            defaultSettings.BaiduAppId = cur.BaiduAppId;
+            defaultSettings.BaiduSecretKey = cur.BaiduSecretKey;
+            defaultSettings.BaiduApiKey = cur.BaiduApiKey;
+            defaultSettings.BaiduMonthlyLimit = cur.BaiduMonthlyLimit;
+            defaultSettings.BaiduUsedCount = cur.BaiduUsedCount;
+
+            defaultSettings.GoogleApiKey = cur.GoogleApiKey;
+            defaultSettings.GoogleMonthlyLimit = cur.GoogleMonthlyLimit;
+            defaultSettings.GoogleUsedCount = cur.GoogleUsedCount;
+
+            defaultSettings.OpenAiApiEndpoint = cur.OpenAiApiEndpoint;
+            defaultSettings.OpenAiApiKey = cur.OpenAiApiKey;
+            defaultSettings.OpenAiModel = cur.OpenAiModel;
+            defaultSettings.OpenAiMonthlyLimit = cur.OpenAiMonthlyLimit;
+            defaultSettings.OpenAiUsedCount = cur.OpenAiUsedCount;
+
+            defaultSettings.VolcengineAccessKey = cur.VolcengineAccessKey;
+            defaultSettings.VolcengineSecretKey = cur.VolcengineSecretKey;
+            defaultSettings.VolcengineRegion = cur.VolcengineRegion;
+            defaultSettings.VolcengineMonthlyLimit = cur.VolcengineMonthlyLimit;
+            defaultSettings.VolcengineUsedCount = cur.VolcengineUsedCount;
+
+            defaultSettings.AliyunAccessKeyId = cur.AliyunAccessKeyId;
+            defaultSettings.AliyunAccessKeySecret = cur.AliyunAccessKeySecret;
+            defaultSettings.AliyunApiEndpoint = cur.AliyunApiEndpoint;
+            defaultSettings.AliyunMonthlyLimit = cur.AliyunMonthlyLimit;
+            defaultSettings.AliyunUsedCount = cur.AliyunUsedCount;
+
+            defaultSettings.TranslationUsageMonth = cur.TranslationUsageMonth;
+        }
+
+        _settingsService.Save(defaultSettings);
+        ReloadSettings();
+
+        StatusMessage = clearApi
+            ? "✓ 已完全恢复为出厂默认设置 (含 API 清除)"
+            : "✓ 已恢复默认设置 (已保留 API 密钥)";
+    }
+
     private void ReloadSettings()
     {
         _isInitializing = true;
@@ -1214,6 +1462,7 @@ public partial class SettingsViewModel : ViewModelBase
             AnnotateHotkey = current.AnnotateHotkey;
             TranslateHotkey = current.TranslateHotkey;
             OcrPopupHotkey = current.OcrPopupHotkey;
+            QuickNoteHotkey = current.QuickNoteHotkey;
             EnableClipboard = current.EnableClipboard;
             ClipboardPanelHotkey = current.ClipboardPanelHotkey;
             PhrasesPanelHotkey = current.PhrasesPanelHotkey;
@@ -1238,6 +1487,8 @@ public partial class SettingsViewModel : ViewModelBase
             EnableIdleSleep = current.EnableIdleSleep;
             IdleSleepMinutes = current.IdleSleepMinutes;
             EnableLogging = current.EnableLogging;
+            EnableLogAutoClean = current.EnableLogAutoClean;
+            LogRetentionDays = current.LogRetentionDays > 0 ? current.LogRetentionDays : 7;
 
             TranslateProvider = current.TranslateProvider;
             SelectedTranslateSourceLang = TranslateSourceLanguages.FirstOrDefault(x => x.Code == current.TranslateSourceLang) ?? TranslateSourceLanguages[0];
@@ -1258,6 +1509,18 @@ public partial class SettingsViewModel : ViewModelBase
             OpenAiModel = current.OpenAiModel;
             OpenAiMonthlyLimit = current.OpenAiMonthlyLimit;
             OpenAiUsedCount = current.OpenAiUsedCount;
+
+            VolcengineAccessKey = current.VolcengineAccessKey;
+            VolcengineSecretKey = current.VolcengineSecretKey;
+            VolcengineRegion = current.VolcengineRegion;
+            VolcengineMonthlyLimit = current.VolcengineMonthlyLimit;
+            VolcengineUsedCount = current.VolcengineUsedCount;
+
+            AliyunAccessKeyId = current.AliyunAccessKeyId;
+            AliyunAccessKeySecret = current.AliyunAccessKeySecret;
+            AliyunApiEndpoint = current.AliyunApiEndpoint;
+            AliyunMonthlyLimit = current.AliyunMonthlyLimit;
+            AliyunUsedCount = current.AliyunUsedCount;
         }
         finally
         {
@@ -1324,6 +1587,78 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public void OpenAppDataFolder()
+    {
+        try
+        {
+            if (!Directory.Exists(AppDataDirectory))
+            {
+                Directory.CreateDirectory(AppDataDirectory);
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = AppDataDirectory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"打开软件数据目录失败: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task CopyAppDataPathAsync()
+    {
+        try
+        {
+            await WindowsClipboardService.Shared.SetTextAsync(AppDataDirectory);
+            StatusMessage = "✓ 软件数据路径已复制到剪贴板";
+        }
+        catch
+        {
+            StatusMessage = "复制路径失败";
+        }
+    }
+
+    [RelayCommand]
+    public void OpenMuClipDataFolder()
+    {
+        try
+        {
+            if (!Directory.Exists(MuClipDataDirectory))
+            {
+                Directory.CreateDirectory(MuClipDataDirectory);
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = MuClipDataDirectory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"打开小沐剪贴板数据目录失败: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public async Task CopyMuClipDataPathAsync()
+    {
+        try
+        {
+            await WindowsClipboardService.Shared.SetTextAsync(MuClipDataDirectory);
+            StatusMessage = "✓ 小沐剪贴板数据路径已复制到剪贴板";
+        }
+        catch
+        {
+            StatusMessage = "复制路径失败";
+        }
+    }
+
+    [RelayCommand]
     public void OpenLogFolder()
     {
         try
@@ -1346,6 +1681,29 @@ public partial class SettingsViewModel : ViewModelBase
         catch (Exception ex)
         {
             StatusMessage = $"打开日志目录失败: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public void CleanExpiredLogs()
+    {
+        if (_loggerService == null)
+        {
+            StatusMessage = "⚠️ 未启用日志服务，无法执行清理";
+            return;
+        }
+
+        try
+        {
+            int days = LogRetentionDays > 0 ? LogRetentionDays : 7;
+            int count = _loggerService.CleanOldLogs(days);
+            StatusMessage = count > 0
+                ? $"✓ 已成功清理 {count} 个过期日志文件（保留 {days} 天内）"
+                : $"✓ 历史日志检查完成，暂无超过 {days} 天的过期日志";
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"清理日志失败: {ex.Message}";
         }
     }
 }

@@ -186,4 +186,316 @@ $"--{boundary}--\r\n";
             Assert.False(server.IsRunning);
         }
     }
+
+    // ==========================================================
+    // 安全加固回归测试：任意文件读取 / 跨域 / 鉴权 / 体积上限 / 并发准入
+    // ==========================================================
+
+    private static ByteArrayContent PngContent(byte[] png)
+    {
+        var content = new ByteArrayContent(png);
+        content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        return content;
+    }
+
+    [Fact]
+    public async Task Ocr_PathQueryParameter_IsRejected()
+    {
+        int port = 18091;
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
+
+        using var client = new HttpClient();
+        try
+        {
+            // 原实现会直接读取该路径并返回识别结果（任意文件读取漏洞）
+            string target = Path.Combine(Path.GetTempPath(), "shawmu_not_a_real_secret.png");
+            var resp = await client.PostAsync(
+                $"http://127.0.0.1:{port}/ocr?path={Uri.EscapeDataString(target)}",
+                new ByteArrayContent([]));
+
+            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+            Assert.Contains("path", await resp.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Ocr_JsonImagePath_IsRejected()
+    {
+        int port = 18092;
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
+
+        using var client = new HttpClient();
+        try
+        {
+            string json = "{\"imagePath\":\"C:\\\\Windows\\\\win.ini\"}";
+            var resp = await client.PostAsync(
+                $"http://127.0.0.1:{port}/ocr",
+                new StringContent(json, Encoding.UTF8, "application/json"));
+
+            Assert.Equal(HttpStatusCode.BadRequest, resp.StatusCode);
+            Assert.Contains("imagePath", await resp.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Cors_ForeignOrigin_IsRejected()
+    {
+        int port = 18093;
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
+
+        using var client = new HttpClient();
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Options, $"http://127.0.0.1:{port}/ocr");
+            request.Headers.Add("Origin", "https://evil.example");
+            request.Headers.Add("Access-Control-Request-Method", "POST");
+
+            var resp = await client.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.Forbidden, resp.StatusCode);
+            Assert.False(resp.Headers.Contains("Access-Control-Allow-Origin"));
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Cors_LocalhostOrigin_IsAllowed()
+    {
+        int port = 18094;
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
+
+        using var client = new HttpClient();
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Options, $"http://127.0.0.1:{port}/ocr");
+            request.Headers.Add("Origin", "http://localhost:5173");
+            request.Headers.Add("Access-Control-Request-Method", "POST");
+
+            var resp = await client.SendAsync(request);
+
+            Assert.Equal(HttpStatusCode.NoContent, resp.StatusCode);
+            Assert.Equal("http://localhost:5173", resp.Headers.GetValues("Access-Control-Allow-Origin").Single());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Auth_RequiresBearerToken_WhenConfigured()
+    {
+        int port = 18095;
+        const string token = "shawmu-test-token-0123456789";
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100, accessToken: token);
+
+        Assert.True(server.RequiresAuth);
+
+        using var client = new HttpClient();
+        byte[] png = CreateTestPng();
+        string url = $"http://127.0.0.1:{port}/ocr";
+
+        try
+        {
+            // 1. 无令牌 → 401
+            var noToken = await client.PostAsync(url, PngContent(png));
+            Assert.Equal(HttpStatusCode.Unauthorized, noToken.StatusCode);
+            Assert.True(noToken.Headers.Contains("WWW-Authenticate"));
+
+            // 2. 错误令牌 → 401
+            using var wrongReq = new HttpRequestMessage(HttpMethod.Post, url) { Content = PngContent(png) };
+            wrongReq.Headers.Add("Authorization", "Bearer wrong-token");
+            var wrongToken = await client.SendAsync(wrongReq);
+            Assert.Equal(HttpStatusCode.Unauthorized, wrongToken.StatusCode);
+
+            // 3. 正确令牌 → 200
+            using var okReq = new HttpRequestMessage(HttpMethod.Post, url) { Content = PngContent(png) };
+            okReq.Headers.Add("Authorization", $"Bearer {token}");
+            var okResp = await client.SendAsync(okReq);
+            Assert.Equal(HttpStatusCode.OK, okResp.StatusCode);
+            Assert.Contains("\"success\":true", await okResp.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task StartAsync_RemoteWithoutToken_Throws()
+    {
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+
+        // 失败即关闭：禁止无令牌的局域网暴露
+        var ex = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => server.StartAsync(18096, allowRemote: true, maxCores: 1, cpuLimitPercent: 100));
+
+        Assert.Contains("令牌", ex.Message);
+        Assert.False(server.IsRunning);
+    }
+
+    [Fact]
+    public async Task Ocr_OversizedBody_Returns413()
+    {
+        int port = 18097;
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
+
+        using var client = new HttpClient();
+        try
+        {
+            // 21MB > 20MB 硬上限
+            byte[] oversized = new byte[21 * 1024 * 1024];
+            var resp = await client.PostAsync($"http://127.0.0.1:{port}/ocr", PngContent(oversized));
+
+            Assert.Equal(413, (int)resp.StatusCode);
+            Assert.Contains("请求体过大", await resp.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Ocr_ConcurrentRequestsBeyondGate_Returns429()
+    {
+        int port = 18098;
+        var factory = new BlockingEngineFactory();
+        using var server = new HttpOcrServer(factory, new FakeSettingsService());
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
+
+        // 闸门配额 = max(2, maxCores × 2) = 2
+        Assert.Equal(2, server.MaxConcurrentRequests);
+
+        using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(30) };
+        byte[] png = CreateTestPng();
+        string url = $"http://127.0.0.1:{port}/ocr";
+
+        try
+        {
+            var first = client.PostAsync(url, PngContent(png));
+            var second = client.PostAsync(url, PngContent(png));
+
+            // 等到至少一个请求真正进入识别阶段（说明它已占用闸门配额）
+            Assert.True(await factory.Started.WaitAsync(TimeSpan.FromSeconds(10)),
+                "前两个请求未能进入识别阶段，无法验证并发闸门");
+
+            // 第三个请求：配额已满，应立即 429 而不是排队等待
+            var third = await client.PostAsync(url, PngContent(png));
+            Assert.Equal(429, (int)third.StatusCode);
+
+            factory.Release.Set();
+            await Task.WhenAll(first, second);
+        }
+        finally
+        {
+            factory.Release.Set();
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task StartAsync_RemoteAnonymous_WorksWhenExplicitlyAllowed()
+    {
+        int port = 18099;
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+
+        // 显式允许无令牌开放局域网（分享给同网段同事的场景）
+        await server.StartAsync(
+            port,
+            allowRemote: true,
+            maxCores: 1,
+            cpuLimitPercent: 100,
+            accessToken: null,
+            allowAnonymousRemote: true);
+
+        Assert.True(server.IsRunning);
+        Assert.False(server.RequiresAuth);
+        Assert.True(server.IsAnonymousRemote);
+
+        using var client = new HttpClient();
+        byte[] png = CreateTestPng();
+
+        try
+        {
+            // 不带任何 Authorization 头也必须能正常识别
+            var resp = await client.PostAsync($"http://127.0.0.1:{port}/ocr", PngContent(png));
+            Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
+            Assert.Contains("\"success\":true", await resp.Content.ReadAsStringAsync());
+
+            // 但"按路径读文件"依然被禁止：放开的是鉴权，不是安全边界
+            var pathResp = await client.PostAsync(
+                $"http://127.0.0.1:{port}/ocr?path={Uri.EscapeDataString("C:\\Windows\\win.ini")}",
+                new ByteArrayContent([]));
+            Assert.Equal(HttpStatusCode.BadRequest, pathResp.StatusCode);
+
+            // 跨域限制同样不因无令牌模式而放宽
+            using var corsReq = new HttpRequestMessage(HttpMethod.Options, $"http://127.0.0.1:{port}/ocr");
+            corsReq.Headers.Add("Origin", "https://evil.example");
+            var corsResp = await client.SendAsync(corsReq);
+            Assert.Equal(HttpStatusCode.Forbidden, corsResp.StatusCode);
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    /// <summary>
+    /// 识别阶段阻塞的引擎工厂，用于稳定复现"并发配额耗尽"
+    /// </summary>
+    private sealed class BlockingEngineFactory : IOcrEngineFactory
+    {
+        private readonly BlockingEngine _engine = new();
+
+        public SemaphoreSlim Started => _engine.Started;
+        public ManualResetEventSlim Release => _engine.Release;
+
+        public IOcrEngine Create(string modelName) => _engine;
+        public IOcrEngine Create(string modelName, bool enableAngle, int maxSideLen) => _engine;
+        public IOcrEngine Create(AppSettings settings) => _engine;
+
+        private sealed class BlockingEngine : IOcrEngine
+        {
+            public SemaphoreSlim Started { get; } = new(0);
+            public ManualResetEventSlim Release { get; } = new(false);
+
+            public string ModelName => "BlockingModel";
+
+            public async Task<OcrResult> RecognizeAsync(OcrImage image, CancellationToken cancellationToken = default)
+            {
+                Started.Release();
+                await Task.Run(
+                    () => Release.Wait(TimeSpan.FromSeconds(20), cancellationToken),
+                    cancellationToken).ConfigureAwait(false);
+                return new OcrResult
+                {
+                    Text = "阻塞测试",
+                    Blocks = [],
+                    Elapsed = TimeSpan.Zero,
+                    IsSuccess = true
+                };
+            }
+
+            public Task WarmupAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+            public void Dispose() { }
+        }
+    }
 }

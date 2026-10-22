@@ -18,6 +18,7 @@ using ShawMuOCR.Views;
 using ShawMuOCR.Windows.Win32;
 using MuClip.Services;
 using MuClip.ViewModels;
+using ShawMuOCR.Services;
 using SkiaSharp;
 using UglyToad.PdfPig;
 
@@ -38,7 +39,13 @@ public partial class MainViewModel : ViewModelBase
     public BatchOcrViewModel BatchVm { get; }
     public HttpApiViewModel HttpApiVm { get; }
     public ClipboardViewModel? ClipboardVm { get; private set; }
+    public ThemeViewModel ThemeVm { get; }
+    public LogViewModel LogVm { get; }
+    private readonly IThemeService _themeService;
     private IMuClipService? _muClipService;
+
+    public Bitmap? CustomBackgroundBitmap => _themeService.CurrentBackgroundBitmap;
+    public bool HasCustomBackgroundImage => _themeService.HasBackgroundImage;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsOcrPage))]
@@ -49,6 +56,8 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsClipboardPage))]
     [NotifyPropertyChangedFor(nameof(IsSettingsPage))]
     [NotifyPropertyChangedFor(nameof(IsAboutPage))]
+    [NotifyPropertyChangedFor(nameof(IsThemePage))]
+    [NotifyPropertyChangedFor(nameof(IsLogPage))]
     [NotifyPropertyChangedFor(nameof(CurrentPageTitle))]
     [NotifyPropertyChangedFor(nameof(AppTitleText))]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
@@ -56,9 +65,35 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(WindowIcon))]
     private AppNavPage _currentPage = AppNavPage.Ocr;
 
+    partial void OnCurrentPageChanged(AppNavPage value)
+    {
+        if (_settingsService != null)
+        {
+            var s = _settingsService.Current.Clone();
+            if (s.LastActivePage != value.ToString())
+            {
+                s.LastActivePage = value.ToString();
+                _settingsService.Save(s);
+            }
+        }
+    }
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SidebarWidth))]
     private bool _isSidebarExpanded = true;
+
+    partial void OnIsSidebarExpandedChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            var s = _settingsService.Current.Clone();
+            if (s.IsSidebarExpanded != value)
+            {
+                s.IsSidebarExpanded = value;
+                _settingsService.Save(s);
+            }
+        }
+    }
 
     public double SidebarWidth => IsSidebarExpanded ? 190 : 56;
 
@@ -70,8 +105,11 @@ public partial class MainViewModel : ViewModelBase
     public bool IsClipboardPage => CurrentPage == AppNavPage.Clipboard;
     public bool IsSettingsPage => CurrentPage == AppNavPage.Settings;
     public bool IsAboutPage => CurrentPage == AppNavPage.About;
+    public bool IsThemePage => CurrentPage == AppNavPage.Theme;
+    public bool IsLogPage => CurrentPage == AppNavPage.Log;
 
     public bool IsClipboardEnabled => _settingsService.Current.EnableClipboard;
+    public bool IsLoggingEnabled => _settingsService.Current.EnableLogging;
 
     public string CurrentPageTitle => CurrentPage switch
     {
@@ -81,8 +119,10 @@ public partial class MainViewModel : ViewModelBase
         AppNavPage.Capture => "截屏工具",
         AppNavPage.Translate => "文本翻译",
         AppNavPage.Clipboard => "小沐剪贴板",
+        AppNavPage.Theme => "个性主题",
         AppNavPage.Settings => "系统设置",
         AppNavPage.About => "关于软件",
+        AppNavPage.Log => "日志记录",
         _ => "小沐 OCR"
     };
 
@@ -144,13 +184,27 @@ public partial class MainViewModel : ViewModelBase
     private string _statusMessage = "就绪";
 
     [ObservableProperty]
+    private object? _topBarCustomContent;
+
+    [ObservableProperty]
     private string _elapsedText = "耗时: -- ms";
 
     [ObservableProperty]
     private bool _isRecognizing;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TopmostButtonText))]
+    [NotifyPropertyChangedFor(nameof(TopmostTooltip))]
     private bool _isAlwaysOnTop;
+
+    public string TopmostButtonText => IsAlwaysOnTop ? "已置顶" : "窗口置顶";
+    public string TopmostTooltip => IsAlwaysOnTop ? "当前已置顶（点击取消置顶）" : "保持主窗口最前置顶（点击开启置顶）";
+
+    [RelayCommand]
+    public void ToggleAlwaysOnTop()
+    {
+        IsAlwaysOnTop = !IsAlwaysOnTop;
+    }
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasHotkey))]
@@ -195,7 +249,9 @@ public partial class MainViewModel : ViewModelBase
         IMuClipService? muClipService = null,
         IOcrEngineFactory? engineFactory = null,
         BatchOcrViewModel? batchVm = null,
-        HttpApiViewModel? httpApiVm = null)
+        HttpApiViewModel? httpApiVm = null,
+        IThemeService? themeService = null,
+        ThemeViewModel? themeVm = null)
     {
         _coordinator = coordinator;
         _clipboardService = clipboardService;
@@ -204,6 +260,15 @@ public partial class MainViewModel : ViewModelBase
         _settingsVmFactory = settingsVmFactory;
         _aboutVmFactory = aboutVmFactory;
         _muClipService = muClipService;
+
+        _themeService = themeService ?? new ThemeService(settingsService);
+        ThemeVm = themeVm ?? new ThemeViewModel(_themeService);
+        _themeService.ThemeVisualChanged += () =>
+        {
+            OnPropertyChanged(nameof(CustomBackgroundBitmap));
+            OnPropertyChanged(nameof(HasCustomBackgroundImage));
+        };
+        _themeService.InitializeTheme();
 
         SettingsVm = settingsVmFactory();
         AboutVm = aboutVmFactory?.Invoke();
@@ -230,6 +295,7 @@ public partial class MainViewModel : ViewModelBase
 
         var transService = translationService ?? (coordinator is ShawMuOCR.Services.OcrCoordinator oc ? oc.TranslationService : new TranslationService(settingsService));
         TranslateVm = new TranslateViewModel(transService, settingsService, clipboardService, coordinator);
+        LogVm = new LogViewModel(logger, _settingsService);
 
         _currentHotkey = _settingsService.Current.Hotkey;
         _currentCaptureImageHotkey = _settingsService.Current.CaptureImageHotkey;
@@ -237,6 +303,12 @@ public partial class MainViewModel : ViewModelBase
         _currentTranslateHotkey = _settingsService.Current.TranslateHotkey;
         _currentOcrPopupHotkey = _settingsService.Current.OcrPopupHotkey;
         _currentModel = _settingsService.Current.Model;
+        _isSidebarExpanded = _settingsService.Current.IsSidebarExpanded;
+
+        if (Enum.TryParse<AppNavPage>(_settingsService.Current.LastActivePage, true, out var savedPage))
+        {
+            _currentPage = savedPage;
+        }
 
         _coordinator.StateChanged += OnCoordinatorStateChanged;
         _coordinator.SessionCompleted += OnSessionCompleted;
@@ -329,7 +401,12 @@ public partial class MainViewModel : ViewModelBase
             CurrentOcrPopupHotkey = settings.OcrPopupHotkey;
             CurrentModel = settings.Model;
             OnPropertyChanged(nameof(IsClipboardEnabled));
+            OnPropertyChanged(nameof(IsLoggingEnabled));
             if (!settings.EnableClipboard && CurrentPage == AppNavPage.Clipboard)
+            {
+                Navigate(AppNavPage.Ocr);
+            }
+            if (!settings.EnableLogging && CurrentPage == AppNavPage.Log)
             {
                 Navigate(AppNavPage.Ocr);
             }
@@ -469,6 +546,11 @@ public partial class MainViewModel : ViewModelBase
             return;
         }
 
+        if (page == AppNavPage.Log && !IsLoggingEnabled)
+        {
+            return;
+        }
+
         if (CurrentPage == AppNavPage.Settings && page != AppNavPage.Settings)
         {
             SettingsVm.CancelRecording();
@@ -485,6 +567,10 @@ public partial class MainViewModel : ViewModelBase
         else if (page == AppNavPage.Clipboard)
         {
             ClipboardVm?.LoadItems();
+        }
+        else if (page == AppNavPage.Log)
+        {
+            LogVm?.Refresh();
         }
     }
 
@@ -514,10 +600,23 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void NavigateToTheme() => Navigate(AppNavPage.Theme);
+
+    [RelayCommand]
     private void NavigateToSettings() => Navigate(AppNavPage.Settings);
 
     [RelayCommand]
     private void NavigateToAbout() => Navigate(AppNavPage.About);
+
+    [RelayCommand]
+    private void NavigateToLog()
+    {
+        if (!IsLoggingEnabled)
+        {
+            return;
+        }
+        Navigate(AppNavPage.Log);
+    }
 
     public event Action? RequestOpenFilePicker;
 

@@ -283,4 +283,109 @@ public class SettingsAutoSaveTests
         var ex2 = Record.Exception(() => ShawMuOCR.OCR.PaddleOcrV6Engine.SetSelectedGpuIndex(-1));
         Assert.Null(ex2);
     }
+
+    [Fact]
+    public void SettingsViewModel_ResetDefaults_PreservesApi_WhenClearApiFalse()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        // 预设自定义配置与 API 密钥
+        settingsService.Current.Hotkey = "Ctrl+Shift+F9";
+        settingsService.Current.SilentMode = false;
+        settingsService.Current.AutoCopy = false;
+        settingsService.Current.BaiduAppId = "test_baidu_appid";
+        settingsService.Current.BaiduApiKey = "test_baidu_key";
+        settingsService.Current.GoogleApiKey = "test_google_key";
+        settingsService.Current.OpenAiApiKey = "sk-test-openai-key";
+        settingsService.Current.OpenAiModel = "gpt-4o";
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        // 验证弹窗状态
+        Assert.False(vm.IsResetConfirmOpen);
+        vm.ShowResetConfirmDialogCommand.Execute(null);
+        Assert.True(vm.IsResetConfirmOpen);
+        Assert.False(vm.ResetClearApiCredentials);
+
+        // 执行保留 API 恢复默认
+        vm.ConfirmResetDefaultsCommand.Execute(null);
+        Assert.False(vm.IsResetConfirmOpen);
+
+        // 基础设置恢复默认
+        Assert.Equal("Alt+Z", settingsService.Current.Hotkey);
+        Assert.True(settingsService.Current.SilentMode);
+        Assert.True(settingsService.Current.AutoCopy);
+
+        // API 密钥完好保留
+        Assert.Equal("test_baidu_appid", settingsService.Current.BaiduAppId);
+        Assert.Equal("test_baidu_key", settingsService.Current.BaiduApiKey);
+        Assert.Equal("test_google_key", settingsService.Current.GoogleApiKey);
+        Assert.Equal("sk-test-openai-key", settingsService.Current.OpenAiApiKey);
+        Assert.Equal("gpt-4o", settingsService.Current.OpenAiModel);
+
+        // ViewModel 属性也同步刷新
+        Assert.Equal("Alt+Z", vm.Hotkey);
+        Assert.True(vm.SilentMode);
+        Assert.Equal("sk-test-openai-key", vm.OpenAiApiKey);
+    }
+
+    [Fact]
+    public void SettingsViewModel_ResetDefaults_ClearsApi_WhenClearApiTrue()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        // 预设配置
+        settingsService.Current.Hotkey = "Ctrl+F8";
+        settingsService.Current.BaiduApiKey = "test_baidu_key";
+        settingsService.Current.GoogleApiKey = "test_google_key";
+        settingsService.Current.OpenAiApiKey = "sk-test-openai-key";
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        vm.ShowResetConfirmDialogCommand.Execute(null);
+        vm.ResetClearApiCredentials = true; // 勾选同时清除 API
+        vm.ConfirmResetDefaultsCommand.Execute(null);
+
+        // 基础设置恢复默认
+        Assert.Equal("Alt+Z", settingsService.Current.Hotkey);
+
+        // API 密钥被彻底清除
+        Assert.Empty(settingsService.Current.BaiduApiKey);
+        Assert.Empty(settingsService.Current.GoogleApiKey);
+        Assert.Empty(settingsService.Current.OpenAiApiKey);
+        Assert.Equal("gpt-4o-mini", settingsService.Current.OpenAiModel); // 恢复出厂模型
+
+        // ViewModel 同步清空
+        Assert.Empty(vm.BaiduApiKey);
+        Assert.Empty(vm.GoogleApiKey);
+        Assert.Empty(vm.OpenAiApiKey);
+    }
+
+    [Fact]
+    public void AnnotationSettings_CloneAndPersistence_Work()
+    {
+        var settings = new AppSettings
+        {
+            AnnotationStrokeWidth = 8f,
+            AnnotationFontSize = 52f
+        };
+
+        var clone = settings.Clone();
+        Assert.Equal(8f, clone.AnnotationStrokeWidth);
+        Assert.Equal(52f, clone.AnnotationFontSize);
+
+        clone.AnnotationStrokeWidth = 14f;
+        clone.AnnotationFontSize = 64f;
+
+        Assert.Equal(8f, settings.AnnotationStrokeWidth);
+        Assert.Equal(52f, settings.AnnotationFontSize);
+        Assert.Equal(14f, clone.AnnotationStrokeWidth);
+        Assert.Equal(64f, clone.AnnotationFontSize);
+    }
 }

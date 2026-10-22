@@ -11,6 +11,7 @@ public sealed class LineElement : IImageElement
     public float EndY { get; set; }
     public SKColor Color { get; set; } = new SKColor(229, 57, 53);
     public float StrokeWidth { get; set; } = 3f;
+    public float Rotation { get; set; } = 0f;
 
     public SKRect BoundingBox
     {
@@ -27,6 +28,13 @@ public sealed class LineElement : IImageElement
 
     public void Render(SKCanvas canvas)
     {
+        canvas.Save();
+        if (Math.Abs(Rotation) > 0.01f)
+        {
+            var box = BoundingBox;
+            canvas.RotateDegrees(Rotation, box.MidX, box.MidY);
+        }
+
         using var paint = new SKPaint
         {
             Color = Color,
@@ -37,10 +45,17 @@ public sealed class LineElement : IImageElement
         };
 
         canvas.DrawLine(StartX, StartY, EndX, EndY, paint);
+        canvas.Restore();
     }
 
     public bool HitTest(SKPoint point)
     {
+        if (Math.Abs(Rotation) > 0.01f)
+        {
+            var box = BoundingBox;
+            point = GeometryHelper.RotatePoint(point, new SKPoint(box.MidX, box.MidY), -Rotation);
+        }
+
         float tol = Math.Max(StrokeWidth + 4f, 8f);
         return DistanceToSegment(point, new SKPoint(StartX, StartY), new SKPoint(EndX, EndY)) <= tol;
     }
@@ -53,6 +68,26 @@ public sealed class LineElement : IImageElement
         EndY += dy;
     }
 
+    public void Resize(SKRect newBounds)
+    {
+        var old = BoundingBox;
+        if (old.Width <= 0.001f || old.Height <= 0.001f)
+        {
+            StartX = newBounds.Left;
+            StartY = newBounds.Top;
+            EndX = newBounds.Right;
+            EndY = newBounds.Bottom;
+            return;
+        }
+
+        float scaleX = newBounds.Width / old.Width;
+        float scaleY = newBounds.Height / old.Height;
+        StartX = newBounds.Left + (StartX - old.Left) * scaleX;
+        EndX = newBounds.Left + (EndX - old.Left) * scaleX;
+        StartY = newBounds.Top + (StartY - old.Top) * scaleY;
+        EndY = newBounds.Top + (EndY - old.Top) * scaleY;
+    }
+
     public IImageElement Clone()
     {
         return new LineElement
@@ -63,7 +98,8 @@ public sealed class LineElement : IImageElement
             EndX = EndX,
             EndY = EndY,
             Color = Color,
-            StrokeWidth = StrokeWidth
+            StrokeWidth = StrokeWidth,
+            Rotation = Rotation
         };
     }
 

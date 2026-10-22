@@ -1,0 +1,414 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MuClip.ViewModels"
+             xmlns:models="using:MuClip.Models"
+             x:Class="ShawMuOCR.Views.Clipboard.Components.ClipboardLanSyncPanel"
+             x:Name="PanelRoot"
+             x:DataType="vm:ClipboardViewModel">
+
+    <Grid ColumnDefinitions="360,*">
+        <!-- 左侧卡片：配对状态交互 + 端口映射节点添加 -->
+        <Border Grid.Column="0" Margin="0,0,10,0"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="14">
+                    <!-- 发起配对等待对方确认卡片 -->
+                    <Border IsVisible="{Binding IsWaitingForPeerPinConfirmation}"
+                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                            BorderThickness="1.5"
+                            CornerRadius="8"
+                            Padding="12,10">
+                        <StackPanel Spacing="8">
+                            <DockPanel LastChildFill="True">
+                                <TextBlock Text="⏳ 等待对方输入验证" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                                <Button DockPanel.Dock="Right" Content="取消" Padding="6,2" FontSize="10.5" Command="{Binding CancelOutgoingPairCommand}" VerticalAlignment="Center" />
+                            </DockPanel>
+                            <TextBlock Text="{Binding PendingPairDeviceName, StringFormat='目标设备: {0}'}" FontSize="11.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
+                            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" HorizontalAlignment="Center">
+                                <TextBlock Text="{Binding PendingPairPin}" FontSize="20" FontWeight="Bold" LetterSpacing="4" TextAlignment="Center" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            </Border>
+                            <TextBlock Text="请在对方设备上弹出窗口中输入上述 6 位数字以完成配对" FontSize="10.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 收到配对请求输入卡片 -->
+                    <Border IsVisible="{Binding IsIncomingPairRequestVisible}"
+                            Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                            BorderThickness="1.5"
+                            CornerRadius="8"
+                            Padding="12,10">
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="🔔" FontSize="13" VerticalAlignment="Center" />
+                                <TextBlock Text="收到新设备配对请求" FontWeight="SemiBold" FontSize="12" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="{Binding IncomingPairDeviceName, StringFormat='设备【{0}】请求与您配对'}" FontSize="11.5" FontWeight="Medium" TextTrimming="CharacterEllipsis" />
+                            <TextBlock Text="请输入对方屏幕上显示的 6 位配对码：" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBox Text="{Binding IncomingPairInputPin, Mode=TwoWay}"
+                                     MaxLength="6"
+                                     FontSize="16"
+                                     FontWeight="Bold"
+                                     TextAlignment="Center"
+                                     LetterSpacing="3"
+                                     PlaceholderText="6位数字配对码"
+                                     HorizontalAlignment="Stretch" />
+                            <TextBlock Text="{Binding IncomingPairErrorMessage}"
+                                       Foreground="#EF4444"
+                                       FontSize="10.5"
+                                       IsVisible="{Binding !!IncomingPairErrorMessage.Length}"
+                                       TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="*,*" Margin="0,3,0,0" ColumnSpacing="6">
+                                <Button Grid.Column="0" Content="拒绝" Command="{Binding RejectIncomingPairCommand}"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                                <Button Grid.Column="1" Classes="accent" Content="确认配对" Command="{Binding ConfirmIncomingPairCommand}"
+                                        HorizontalAlignment="Stretch" HorizontalContentAlignment="Center" />
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 自定义本机监听端口设置 -->
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12">
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="🔌" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="本机监听端口 (默认 42424)" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="设置局域网剪贴板同步与高速文件传输所监听的本机 TCP 端口："
+                                       FontSize="10.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
+                                <TextBox Grid.Column="0" Text="{Binding CustomSyncPortText, Mode=TwoWay}"
+                                         PlaceholderText="42424" MaxLength="5" FontSize="11" />
+                                <Button Grid.Column="1" Command="{Binding ApplyCustomSyncPortCommand}"
+                                         Margin="6,0,0,0" Padding="10,4" Classes="accent">
+                                    <TextBlock Text="应用端口" FontSize="11" />
+                                </Button>
+                            </Grid>
+                            <TextBlock Text="{Binding PortStatusMessage}"
+                                       FontSize="10.5"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       IsVisible="{Binding !!PortStatusMessage.Length}" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 端口映射/内网穿透节点配置 -->
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12">
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="🌐 手动添加节点 (内网穿透 / 端口映射)" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Text="若两台设备处于不同子网或使用了 FRP / 端口映射，可在此输入公网 IP:端口 或 域名:端口 建立连接："
+                                       FontSize="10.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                                <TextBox Grid.Column="0" Text="{Binding ManualPeerInput, Mode=TwoWay}"
+                                         PlaceholderText="192.168.1.88:42424 或 frp.mydomain.com:55555"
+                                         FontSize="11" />
+                                <Button Grid.Column="1" Command="{Binding AddManualPeerCommand}" Margin="6,0,0,0" Padding="10,4">
+                                    <TextBlock Text="添加节点" FontSize="11" />
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 软件数据目录 (数据库路径) -->
+                    <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                            BorderThickness="1"
+                            CornerRadius="6"
+                            Padding="12">
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="📁" FontSize="12" VerticalAlignment="Center" />
+                                <TextBlock Text="软件数据目录 (数据库与密钥)" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <TextBlock Text="小沐剪贴板本地数据库 (muclip.db)、信任设备凭证与常用语存储目录："
+                                       FontSize="10.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2,0,0">
+                                <TextBox Grid.Column="0" Text="{Binding DataDirectory}"
+                                         IsReadOnly="True" FontSize="11" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Command="{Binding OpenDataDirectoryCommand}"
+                                        Margin="6,0,0,0" Padding="10,4">
+                                    <TextBlock Text="打开目录" FontSize="11" />
+                                </Button>
+                                <Button Grid.Column="2" Command="{Binding CopyDataDirectoryPathCommand}"
+                                        Margin="6,0,0,0" Padding="10,4">
+                                    <TextBlock Text="复制路径" FontSize="11" />
+                                </Button>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 网络协议与加密说明卡片 -->
+                    <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="6" Padding="12,10">
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="🛡️ 局域网同步协议" FontWeight="SemiBold" FontSize="11.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <TextBlock Text="• 发现信标: UDP 组播 239.255.42.99:42110" FontSize="10.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="{Binding CustomSyncPortText, StringFormat='• 传输监听: TCP 端口 {0}'}" FontSize="10.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="• 握手安全: ECDH (Curve25519) 密钥协商" FontSize="10.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                            <TextBlock Text="• 消息加密: XChaCha20-Poly1305 认证加密" FontSize="10.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- 右侧卡片：已配对设备与附近发现设备列表 -->
+        <Border Grid.Column="1"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                Padding="14">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="16">
+                    <!-- 1. 已配对信任设备区域 -->
+                    <StackPanel Spacing="8">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="已配对信任设备" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                                <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                        CornerRadius="8" Padding="6,1" VerticalAlignment="Center"
+                                        IsVisible="{Binding HasPairedDevices}">
+                                    <TextBlock Text="{Binding PairedDevices.Count}" FontSize="10" Foreground="White" FontWeight="Bold" />
+                                </Border>
+                            </StackPanel>
+                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding OnlinePairedCount, StringFormat='{}在线 {0} 台'}"
+                                           FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                <CheckBox IsChecked="{Binding AutoDiscoveryEnabled, Mode=TwoWay}"
+                                          Content="自动扫描" FontSize="11" Padding="4,0,0,0" VerticalAlignment="Center"
+                                          ToolTip.Tip="开启后周期性向局域网广播信标；关闭后完全静默" />
+                                <Button Classes="subtle" Padding="8,4" CornerRadius="4"
+                                        Command="{Binding ScanPeersCommand}"
+                                        IsEnabled="{Binding !IsScanning}"
+                                        ToolTip.Tip="立即向局域网全网卡发送广播探测新设备">
+                                    <StackPanel Orientation="Horizontal" Spacing="4">
+                                        <TextBlock Text="🔄" FontSize="11" />
+                                        <TextBlock Text="扫描设备" FontSize="11" IsVisible="{Binding !IsScanning}" />
+                                        <TextBlock Text="扫描中..." FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" IsVisible="{Binding IsScanning}" />
+                                    </StackPanel>
+                                </Button>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- 无配对设备提示 -->
+                        <Border IsVisible="{Binding !HasPairedDevices}"
+                                Padding="14" CornerRadius="6"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+                            <TextBlock Text="暂无配对设备。请在下方「发现附近设备」中找到设备并发起配对验证。"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       FontSize="11" TextAlignment="Center" />
+                        </Border>
+
+                        <!-- 已配对设备卡片列表 -->
+                        <ItemsControl ItemsSource="{Binding PairedDevices}" IsVisible="{Binding HasPairedDevices}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:PairedDeviceInfo">
+                                    <Border Margin="0,0,0,8" Padding="12,10" CornerRadius="6"
+                                            Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                        <Grid RowDefinitions="Auto,Auto" RowSpacing="6">
+                                            <!-- 第一行：状态徽章 + 设备名与下一行的IP端点/系统 + 右侧操作按钮 -->
+                                            <DockPanel Grid.Row="0" LastChildFill="True">
+                                                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <Button Padding="8,4" CornerRadius="4" Classes="subtle"
+                                                            Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).TestSyncWithDeviceCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            IsEnabled="{Binding !IsTestingLatency}"
+                                                            ToolTip.Tip="测试与该设备的连接状态与网络延迟">
+                                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                                            <TextBlock Text="⚡ 延迟测试" FontSize="11" IsVisible="{Binding !IsTestingLatency}" />
+                                                            <TextBlock Text="⏳ 测速中..." FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" IsVisible="{Binding IsTestingLatency}" />
+                                                        </StackPanel>
+                                                    </Button>
+                                                    <Button Padding="8,4" CornerRadius="4" Classes="subtle"
+                                                            Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).UnpairDeviceCommand}"
+                                                            CommandParameter="{Binding}"
+                                                            ToolTip.Tip="解除与该设备的信任配对">
+                                                        <TextBlock Text="解除配对" Foreground="#EF4444" FontSize="11" />
+                                                    </Button>
+                                                </StackPanel>
+
+                                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                                    <Panel VerticalAlignment="Top" Margin="0,3,0,0">
+                                                        <Border Width="8" Height="8" CornerRadius="4" Background="#10B981" IsVisible="{Binding IsOnline}" />
+                                                        <Border Width="8" Height="8" CornerRadius="4" Background="#808080" IsVisible="{Binding !IsOnline}" />
+                                                    </Panel>
+                                                    <StackPanel Spacing="3">
+                                                        <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" FontSize="13"
+                                                                   TextTrimming="CharacterEllipsis" MaxWidth="260" />
+                                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                            <TextBlock Text="{Binding Endpoint}" FontSize="11"
+                                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                                    CornerRadius="3" Padding="5,1" VerticalAlignment="Center"
+                                                                    IsVisible="{Binding !!DeviceType.Length}">
+                                                                <TextBlock Text="{Binding DeviceType}" FontSize="9.5"
+                                                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                                                            </Border>
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </DockPanel>
+
+                                            <!-- 第二行：最后同步时间记录 与 延迟测试结果反馈 -->
+                                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto">
+                                                <TextBlock Grid.Column="0"
+                                                           Text="{Binding LastSyncAt, StringFormat='{}最后同步时间: {0}'}"
+                                                           FontSize="10.5"
+                                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                           VerticalAlignment="Center" />
+                                                <Border Grid.Column="1"
+                                                        CornerRadius="4" Padding="6,2"
+                                                        Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                        IsVisible="{Binding !!LatencyFeedback.Length}"
+                                                        VerticalAlignment="Center">
+                                                    <Panel>
+                                                        <!-- 成功 (绿) -->
+                                                        <TextBlock Text="{Binding LatencyFeedback}"
+                                                                   FontSize="10.5"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#10B981"
+                                                                   IsVisible="{Binding LatencySuccess}" />
+                                                        <!-- 失败 (红) -->
+                                                        <TextBlock Text="{Binding LatencyFeedback}"
+                                                                   FontSize="10.5"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="#EF4444">
+                                                            <TextBlock.IsVisible>
+                                                                <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                                                    <Binding Path="!LatencySuccess" />
+                                                                    <Binding Path="!IsTestingLatency" />
+                                                                </MultiBinding>
+                                                            </TextBlock.IsVisible>
+                                                        </TextBlock>
+                                                        <!-- 测试中 (蓝) -->
+                                                        <TextBlock Text="{Binding LatencyFeedback}"
+                                                                   FontSize="10.5"
+                                                                   FontWeight="SemiBold"
+                                                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                                                   IsVisible="{Binding IsTestingLatency}" />
+                                                    </Panel>
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 2. 发现附近未配对设备区域 -->
+                    <StackPanel Spacing="8">
+                        <DockPanel LastChildFill="True">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="发现附近未配对设备" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                                <Border Background="#20888888" CornerRadius="8" Padding="6,1" VerticalAlignment="Center"
+                                        IsVisible="{Binding HasDiscoveredPeers}">
+                                    <TextBlock Text="{Binding PeerDevices.Count}" FontSize="10" FontWeight="Bold" />
+                                </Border>
+                            </StackPanel>
+                        </DockPanel>
+
+                        <!-- 扫描状态或未发现设备 -->
+                        <Border IsVisible="{Binding !HasDiscoveredPeers}"
+                                Padding="14" CornerRadius="6"
+                                Background="{DynamicResource SubtleFillColorSecondaryBrush}">
+                            <Panel>
+                                <TextBlock Text="正在扫描局域网广播... (UDP 42110)"
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                           FontSize="11" TextAlignment="Center"
+                                           IsVisible="{Binding IsScanning}" />
+                                <TextBlock Text="暂未发现新设备（自动广播中）"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           FontSize="11" TextAlignment="Center">
+                                    <TextBlock.IsVisible>
+                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                            <Binding Path="!IsScanning" />
+                                            <Binding Path="AutoDiscoveryEnabled" />
+                                        </MultiBinding>
+                                    </TextBlock.IsVisible>
+                                </TextBlock>
+                                <TextBlock Text="自动扫描已关闭，可点击右上角「扫描设备」手动探测"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           FontSize="11" TextAlignment="Center">
+                                    <TextBlock.IsVisible>
+                                        <MultiBinding Converter="{x:Static BoolConverters.And}">
+                                            <Binding Path="!IsScanning" />
+                                            <Binding Path="!AutoDiscoveryEnabled" />
+                                        </MultiBinding>
+                                    </TextBlock.IsVisible>
+                                </TextBlock>
+                            </Panel>
+                        </Border>
+
+                        <!-- 发现新设备与映射节点卡片列表 -->
+                        <ItemsControl ItemsSource="{Binding PeerDevices}" IsVisible="{Binding HasDiscoveredPeers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="models:PeerDeviceInfo">
+                                    <Border Margin="0,0,0,6" Padding="10,8" CornerRadius="6"
+                                            Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                            BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                            BorderThickness="1">
+                                        <DockPanel LastChildFill="True">
+                                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <Button Classes="accent" Padding="10,4" CornerRadius="4"
+                                                        Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).PairWithPeerCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        VerticalAlignment="Center"
+                                                        ToolTip.Tip="向对方发送配对请求">
+                                                    <TextBlock Text="🔗 发起配对" FontSize="11" />
+                                                </Button>
+                                                <Button Classes="subtle" Padding="8,4" CornerRadius="4"
+                                                        Command="{Binding #PanelRoot.((vm:ClipboardViewModel)DataContext).RemoveManualPeerCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        IsVisible="{Binding IsManual}"
+                                                        VerticalAlignment="Center"
+                                                        ToolTip.Tip="移除该映射节点">
+                                                    <TextBlock Text="删除" Foreground="#EF4444" FontSize="11" />
+                                                </Button>
+                                            </StackPanel>
+
+                                            <StackPanel VerticalAlignment="Center" Spacing="3">
+                                                <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                    <TextBlock Text="{Binding DeviceName}" FontWeight="SemiBold" FontSize="12"
+                                                               TextTrimming="CharacterEllipsis" MaxWidth="180" VerticalAlignment="Center" />
+                                                    <Border Background="#20007ACC" CornerRadius="3" Padding="4,1"
+                                                            IsVisible="{Binding IsManual}" VerticalAlignment="Center">
+                                                        <TextBlock Text="映射节点" FontSize="9" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                                                    </Border>
+                                                    <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                            CornerRadius="3" Padding="5,1" VerticalAlignment="Center"
+                                                            IsVisible="{Binding !!DeviceType.Length}">
+                                                        <TextBlock Text="{Binding DeviceType}" FontSize="9.5"
+                                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding Endpoint}" FontSize="10.5"
+                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                           TextTrimming="CharacterEllipsis" MaxWidth="220" />
+                                            </StackPanel>
+                                        </DockPanel>
+                                    </Border>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+</UserControl>

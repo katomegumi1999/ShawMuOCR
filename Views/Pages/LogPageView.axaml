@@ -1,0 +1,130 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.LogPageView"
+             x:DataType="vm:LogViewModel">
+
+    <Grid RowDefinitions="Auto,*" Margin="0,0,0,4">
+
+        <!-- 1. 顶部控制与筛选卡片 -->
+        <Border Grid.Row="0" Margin="0,0,0,10" Padding="16,12"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <StackPanel Spacing="10">
+                <!-- 第一行：状态标题与操作按钮 -->
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <TextBlock Text="📋" FontSize="16" VerticalAlignment="Center" />
+                        <TextBlock Text="本地运行日志服务" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding StatusMessage}" FontSize="11"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                        </Border>
+                    </StackPanel>
+
+                    <!-- 操作按钮组 -->
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Button Command="{Binding RefreshCommand}" Padding="10,5" ToolTip.Tip="重新加载最新日志内容">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="🔄" FontSize="11" />
+                                <TextBlock Text="刷新" FontSize="11" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding CopyAllLogsCommand}" Padding="10,5" ToolTip.Tip="复制当前筛选出的日志文本至剪贴板">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="📋" FontSize="11" />
+                                <TextBlock Text="复制" FontSize="11" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding ClearLogsCommand}" Padding="10,5" ToolTip.Tip="清空今日日志文件">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="🗑" FontSize="11" Foreground="#EF4444" />
+                                <TextBlock Text="清空" FontSize="11" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding CleanExpiredLogsCommand}" Padding="10,5" ToolTip.Tip="根据系统设置的保留天数立即清理过期的历史日志文件">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="🧹" FontSize="11" />
+                                <TextBlock Text="清理历史" FontSize="11" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding OpenLogFolderCommand}" Padding="10,5" ToolTip.Tip="在资源管理器中打开日志文件夹">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="📁" FontSize="11" />
+                                <TextBlock Text="打开目录" FontSize="11" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Command="{Binding OpenLogFileCommand}" Padding="10,5" ToolTip.Tip="使用系统文本编辑器打开当前日志文件">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <TextBlock Text="📄" FontSize="11" />
+                                <TextBlock Text="打开文件" FontSize="11" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+                </Grid>
+
+                <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
+
+                <!-- 第二行：筛选栏（日志级别 + 关键词搜索 + 行数统计） -->
+                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="级别:" FontSize="12" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <ComboBox ItemsSource="{Binding AvailableLevels}"
+                                  SelectedItem="{Binding SelectedLevel}"
+                                  Width="95"
+                                  Padding="8,4"
+                                  FontSize="11.5"
+                                  VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBox Grid.Column="1"
+                             Text="{Binding FilterKeyword, Mode=TwoWay}"
+                             PlaceholderText="输入关键词搜索日志 (例如: Exception, OCR, API, GPU)..."
+                             FontSize="12"
+                             Margin="12,0"
+                             Padding="8,5"
+                             VerticalAlignment="Center" />
+
+                    <Border Grid.Column="2" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                            CornerRadius="4" Padding="8,4" VerticalAlignment="Center">
+                        <TextBlock FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}">
+                            <Run Text="显示: " />
+                            <Run Text="{Binding FilteredCount}" FontWeight="SemiBold" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            <Run Text=" / 共: " />
+                            <Run Text="{Binding TotalCount}" FontWeight="SemiBold" />
+                            <Run Text=" 行" />
+                        </TextBlock>
+                    </Border>
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 2. 日志内容展示容器 -->
+        <Border Grid.Row="1"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8"
+                ClipToBounds="True">
+            <TextBox Text="{Binding DisplayedLogText}"
+                     IsReadOnly="True"
+                     AcceptsReturn="True"
+                     TextWrapping="NoWrap"
+                     FontFamily="Consolas, Cascadia Code, Courier New, monospace"
+                     FontSize="12"
+                     Padding="12,10"
+                     BorderThickness="0"
+                     Background="Transparent"
+                     ScrollViewer.HorizontalScrollBarVisibility="Auto"
+                     ScrollViewer.VerticalScrollBarVisibility="Auto" />
+        </Border>
+    </Grid>
+</UserControl>

@@ -20,7 +20,8 @@
 ShawMuOCR.slnx
 ├── 🖥️ ShawMuOCR                    # 主程序应用层 (WinExe, Avalonia 12, MVVM)
 │   ├── ViewModels/                 # 页面 ViewModel (Main, Settings, Translate, BatchOcr, HttpApi 等)
-│   ├── Views/                      # 窗口与视图控件 (MainWindow, SettingsWindow, ScreenshotEditor 等)
+│   ├── Views/                      # 窗口与视图控件 (MainWindow, ScreenshotEditor, TranslateFloatingWindow 等)
+│   │   └── Clipboard/              # 统一收归的剪贴板视图 (ClipboardView, QuickPanelWindow, Components)
 │   ├── Assets/                     # 图标、Logo、矢量资源与样式字典
 │   └── Libs/x64/muclip_core.dll    # 统一托管的 64 位原生动态库
 │
@@ -36,14 +37,14 @@ ShawMuOCR.slnx
 │   ├── ScreenCapture/              # GDI+ / Win32 原生多显示器 DPI 自适应捕获
 │   └── Clipboard/                  # Win32 原生剪贴板直通通道
 │
-├── 📋 src/MuClip                   # 跨设备剪贴板历史与 P2P 安全流同步子系统
+├── 📋 src/MuClip                   # 剪贴板与 P2P 安全流同步子系统 (纯 Core 中间层类库)
 │   ├── Interop/                    # Rust 原生 FFI 绑定 (MuClipNative, MuClipSync, BinarySpanReader)
-│   ├── Services/                   # 剪贴板监听、历史缓存、局域网单流加密配对与分片文件传输
-│   ├── ViewModels/ & Views/        # 独立剪贴板管理器视图与全局快捷浮动面板 (Win+~)
-│   └── Models/                     # 剪贴板条目、配对设备模型
+│   ├── Services/                   # 剪贴板细粒度契约 (IClipboard*Service) 与分部服务 (MuClipService.*.cs)
+│   ├── ViewModels/                 # 剪贴板与局域网传输状态调度 ViewModel
+│   └── Models/                     # 剪贴板条目、配对设备模型、分片文件传输模型
 │
 └── 🧪 tests/ShawMuOCR.Tests         # 自动化测试套件
-    └── 174 项涵盖 OCR 推理、GPU/CPU 引擎、翻译额度拦截、截图标注、MuClip 握手配对等全绿测试
+    └── 247 项涵盖 OCR 推理、GPU/CPU 引擎、翻译额度拦截、截图标注、MuClip 握手配对等全绿测试
 ```
 
 ---
@@ -56,3 +57,5 @@ ShawMuOCR.slnx
    核心 OCR 推理引擎采用纯托管 SIMD 优化版或 Vulkan 计算着色器，杜绝外部庞大 C++ 运行时依赖，全面兼容 Native AOT 提前编译。
 3. **安全隐私第一**：
    本地文字识别与剪贴板历史 100% 离线；跨设备通信与文件传输基于 XChaCha20-Poly1305 与 Diffie-Hellman 单流单次随机密钥协商，零隐私泄露隐患。
+4. **单文件规模红线与高内聚组件化 (Modular & Componentized)**：
+   严禁单文件无节制堆砌（建议不超过 800 行）。大型服务必须按领域拆分分部类并下沉细粒度契约接口；庞大 UI 视图抽离为独立二级组件（`Views/Components/`），保证架构可读性、高扩展性与并发维护安全。

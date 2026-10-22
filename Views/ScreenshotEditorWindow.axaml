@@ -1,29 +1,73 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         x:Class="ShawMuOCR.Views.ScreenshotEditorWindow"
-        Title="截图标注编辑器"
-        WindowDecorations="None"
+        Title="截图标注"
+        Icon="/Assets/logo.ico"
         Topmost="True"
-        ShowInTaskbar="False"
-        Background="Transparent"
-        TransparencyLevelHint="Transparent"
-        CanResize="False"
-        SizeToContent="WidthAndHeight"
-        WindowStartupLocation="CenterScreen">
+        ShowInTaskbar="True"
+        CanResize="True"
+        MinWidth="960"
+        MinHeight="500"
+        Background="#181818"
+        WindowDecorations="None"
+        WindowStartupLocation="Manual">
+
+    <Window.Resources>
+        <ResourceDictionary>
+            <!-- 截图标注面板独立暗黑配色体系：彻底切断全局个性主题向本窗体的渗透 -->
+            <SolidColorBrush x:Key="EditorPanelBackground" Color="#1E1E1E" />
+            <SolidColorBrush x:Key="EditorCardBackground" Color="#252526" />
+            <SolidColorBrush x:Key="EditorControlBackground" Color="#2A2A2A" />
+            <SolidColorBrush x:Key="EditorBorderBrush" Color="#383838" />
+            <SolidColorBrush x:Key="EditorDividerBrush" Color="#333333" />
+            <SolidColorBrush x:Key="EditorTextPrimary" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="EditorTextSecondary" Color="#CCCCCC" />
+            <SolidColorBrush x:Key="EditorTextTertiary" Color="#888888" />
+
+            <!-- 全量覆盖 Fluent 主题键，彻底阻断全局个性主题 (半透明、按钮透明度、字体颜色等) 渗透 -->
+            <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#252526" />
+            <SolidColorBrush x:Key="CardBackgroundFillColorSecondaryBrush" Color="#1E1E1E" />
+            <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#2A2A2A" />
+            <SolidColorBrush x:Key="ControlFillColorSecondaryBrush" Color="#333333" />
+            <SolidColorBrush x:Key="ControlFillColorTertiaryBrush" Color="#3E3E3E" />
+            <SolidColorBrush x:Key="ControlFillColorDisabledBrush" Color="#202020" />
+            <SolidColorBrush x:Key="DividerStrokeColorDefaultBrush" Color="#333333" />
+
+            <SolidColorBrush x:Key="ButtonBackground" Color="#2A2A2A" />
+            <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#3A3A3A" />
+            <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#444444" />
+            <SolidColorBrush x:Key="ButtonBackgroundDisabled" Color="#202020" />
+            <SolidColorBrush x:Key="ButtonForeground" Color="#D4D4D4" />
+            <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="ButtonForegroundDisabled" Color="#666666" />
+            <SolidColorBrush x:Key="ButtonBorderBrush" Color="#383838" />
+
+            <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#CCCCCC" />
+            <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#888888" />
+            <SolidColorBrush x:Key="TextControlForeground" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextControlCaretBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#FFFFFF" />
+
+            <SolidColorBrush x:Key="FlyoutPresenterBackground" Color="#252526" />
+        </ResourceDictionary>
+    </Window.Resources>
 
     <Border Name="WindowBorder"
             Background="#181818"
             BorderBrush="#383838"
             BorderThickness="1"
-            CornerRadius="8"
-            BoxShadow="0 10 36 #88000000"
-            ClipToBounds="True"
             Padding="0">
         <Grid RowDefinitions="Auto,*,Auto">
             <!-- 顶栏微小拖拽把手与标题 -->
             <Border Grid.Row="0"
                     Background="#1E1E1E"
-                    Height="28"
+                    Height="32"
                     BorderBrush="#2C2C2C"
                     BorderThickness="0,0,0,1"
                     PointerPressed="OnTitleBarPointerPressed">
@@ -34,202 +78,635 @@
                         <TextBlock Name="DimensionText" Foreground="#777777" FontSize="11" VerticalAlignment="Center" />
                     </StackPanel>
 
-                    <Button Grid.Column="2"
-                            Classes="HeaderCloseBtn"
-                            Width="28"
-                            Height="28"
-                            Background="Transparent"
-                            Foreground="#999999"
-                            Content="✕"
-                            FontSize="11"
-                            Padding="0"
-                            HorizontalContentAlignment="Center"
-                            VerticalContentAlignment="Center"
-                            Click="OnCloseClick"
-                            ToolTip.Tip="关闭 (Esc)" />
+                    <!-- 中间：二次裁切确定/取消操作栏 (顶栏居中，绝不遮挡画布任何角落) -->
+                    <StackPanel Name="TopCropActionBar" Grid.Column="1" Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" VerticalAlignment="Center" IsVisible="False">
+                        <Border Background="#333333" CornerRadius="3" Padding="6,2">
+                            <TextBlock Name="TopCropDimensionText" Foreground="#FFFFFF" FontSize="11" VerticalAlignment="Center" Text="0 × 0" />
+                        </Border>
+                        <Button Name="TopCropOkBtn" Classes="HeaderCropBtn HeaderCropOk" Content="✓ 确定裁切 (Enter)" Click="OnTopCropOkClick" />
+                        <Button Name="TopCropCancelBtn" Classes="HeaderCropBtn" Content="✕ 取消 (Esc)" Click="OnTopCropCancelClick" />
+                    </StackPanel>
+
+                    <!-- 右侧：恢复全屏快照按钮 与 窗体控制按钮 (最小化、最大化、关闭) -->
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,4,0">
+                        <Button Name="RestoreFullSnapshotBtn"
+                                Classes="HeaderCropBtn"
+                                Content="⛶ 恢复全屏快照"
+                                Margin="0,0,6,0"
+                                Padding="8,2"
+                                Height="22"
+                                FontSize="11"
+                                Click="OnRestoreFullSnapshotClick"
+                                ToolTip.Tip="恢复至截屏时的全屏快照，自动保留并定位所有已有标注 (支持 Ctrl+Z 撤销)" />
+
+                        <Button Name="HeaderMinBtn"
+                                Classes="HeaderControlBtn"
+                                Content="🗕"
+                                FontSize="11"
+                                Click="OnHeaderMinimizeClick"
+                                ToolTip.Tip="最小化" />
+
+                        <Button Name="HeaderMaxBtn"
+                                Classes="HeaderControlBtn"
+                                Content="🗖"
+                                FontSize="11"
+                                Click="OnHeaderMaximizeClick"
+                                ToolTip.Tip="最大化" />
+
+                        <Button Name="HeaderCloseBtn"
+                                Classes="HeaderControlBtn HeaderCloseBtn"
+                                Content="✕"
+                                FontSize="12"
+                                Click="OnHeaderCloseClick"
+                                ToolTip.Tip="关闭 (Esc)" />
+                    </StackPanel>
                 </Grid>
             </Border>
 
             <!-- 中间主编辑画布区 -->
-            <Border Grid.Row="1"
+            <Border Name="EditorCanvasHostBorder"
+                    Grid.Row="1"
                     Margin="10,10,10,6"
                     Background="#121212"
                     BorderBrush="#2A2A2A"
                     BorderThickness="1"
                     CornerRadius="4"
-                    ClipToBounds="True">
-                <Panel Name="CanvasContainer" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    ClipToBounds="True"
+                    PointerWheelChanged="OnCanvasPointerWheelChanged"
+                    PointerPressed="OnHostBorderPointerPressed"
+                    PointerMoved="OnHostBorderPointerMoved"
+                    PointerReleased="OnHostBorderPointerReleased">
+                <Panel Name="CanvasContainer" HorizontalAlignment="Center" VerticalAlignment="Center" ClipToBounds="False">
                     <!-- 底层渲染图像 -->
                     <Image Name="BaseImageControl"
                            Stretch="Uniform"
-                           RenderOptions.BitmapInterpolationMode="HighQuality" />
+                           RenderOptions.BitmapInterpolationMode="MediumQuality" />
 
                     <!-- 动态交互绘制与选取层 -->
                     <Canvas Name="DrawingOverlayCanvas"
                             Background="Transparent"
+                            ClipToBounds="False"
                             PointerPressed="OnCanvasPointerPressed"
                             PointerMoved="OnCanvasPointerMoved"
-                            PointerReleased="OnCanvasPointerReleased" />
+                            PointerReleased="OnCanvasPointerReleased">
+                        <!-- 橡皮擦动态光标指示圈 (随粗细调节动态变化) -->
+                        <Border Name="EraserIndicatorBorder"
+                                IsVisible="False"
+                                BorderBrush="#CC0078D4"
+                                BorderThickness="1.5"
+                                Background="#250078D4"
+                                CornerRadius="999"
+                                IsHitTestVisible="False" />
 
-                    <!-- 内联文字输入框 -->
-                    <TextBox Name="InlineTextBox"
-                             IsVisible="False"
-                             AcceptsReturn="True"
-                             FontSize="18"
-                             FontWeight="Bold"
-                             Foreground="#E53935"
-                             Background="#DD222222"
-                             BorderBrush="#E53935"
-                             BorderThickness="1.5"
-                             CornerRadius="4"
-                             Padding="6,4"
-                             MinWidth="80"
-                             LostFocus="OnInlineTextBoxLostFocus"
-                             KeyDown="OnInlineTextBoxKeyDown" />
+                        <!-- 内联透明自扩增文字输入框 (置于 Canvas 内部以使 Canvas.Left/Top 绝对定位生效) -->
+                        <TextBox Name="InlineTextBox"
+                                 IsVisible="False"
+                                 AcceptsReturn="True"
+                                 TextWrapping="NoWrap"
+                                 Background="#35000000"
+                                 BorderBrush="#CC40A9FF"
+                                 BorderThickness="1"
+                                 CornerRadius="3"
+                                 Padding="3,2"
+                                 MinWidth="40"
+                                 MinHeight="26"
+                                 ZIndex="999"
+                                 FontFamily="Microsoft YaHei, Segoe UI, sans-serif"
+                                 InputMethod.IsInputMethodEnabled="True"
+                                 LostFocus="OnInlineTextBoxLostFocus"
+                                 KeyDown="OnInlineTextBoxKeyDown"
+                                 TextChanged="OnInlineTextBoxTextChanged" />
+                    </Canvas>
                 </Panel>
             </Border>
 
-            <!-- 底部悬浮现代化多功能工具栏 -->
+            <!-- 底部悬浮现代化多功能工具栏 (两行布局，沉稳纯黑经典风格) -->
             <Border Grid.Row="2"
-                    Background="#222222"
+                    Background="#1E1E1E"
                     BorderBrush="#333333"
                     BorderThickness="1"
-                    CornerRadius="6"
-                    Padding="6,5"
-                    Margin="10,0,10,10"
+                    CornerRadius="8"
+                    BoxShadow="0 8 28 0 #70000000"
+                    Padding="10,4"
+                    Margin="10,0,10,6"
                     HorizontalAlignment="Center">
-                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                    <!-- 撤销 & 重做 -->
-                    <Button Name="UndoBtn"
-                            Classes="ToolBtn"
-                            Content="↶"
-                            ToolTip.Tip="撤销 (Ctrl+Z)"
-                            Click="OnUndoClick" />
-                    <Button Name="RedoBtn"
-                            Classes="ToolBtn"
-                            Content="↷"
-                            ToolTip.Tip="重做 (Ctrl+Y)"
-                            Click="OnRedoClick" />
+                <StackPanel Orientation="Vertical" Spacing="3" HorizontalAlignment="Center">
+                    <!-- 第 1 行: 撤销/还原 + 标注图元工具 + 导出与操作动作 -->
+                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                        <!-- 撤销 -->
+                        <Button Name="UndoBtn"
+                                Classes="ToolBtn"
+                                Content="↶"
+                                FontFamily="Segoe UI Symbol, Segoe UI Emoji, Microsoft YaHei, sans-serif"
+                                ToolTip.Tip="撤销 (Ctrl+Z)"
+                                Click="OnUndoClick" />
 
-                    <Separator Classes="ToolSep" />
+                        <!-- 还原 / 一键清空所有元素按钮 (带确认提示 Flyout) -->
+                        <Button Name="ResetAllBtn"
+                                Classes="ToolBtn"
+                                Content="↺"
+                                FontFamily="Segoe UI Symbol, Segoe UI Emoji, Microsoft YaHei, sans-serif"
+                                ToolTip.Tip="还原 / 清空所有标注">
+                            <Button.Flyout>
+                                <Flyout Placement="Top">
+                                    <Border Background="#252526" BorderBrush="#3E3E42" BorderThickness="1" CornerRadius="8" Padding="14,12" BoxShadow="0 4 16 0 #50000000">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="确定要清空所有已添加的标注吗？" Foreground="#EEEEEE" FontSize="12" />
+                                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                                                <Button Name="CancelResetBtn" Content="取消" FontSize="11" Padding="12,5" Background="#333333" Foreground="#CCCCCC" CornerRadius="4" Click="OnCancelResetClick" />
+                                                <Button Name="ConfirmResetBtn" Classes="DangerBtn" Content="确定清空" FontSize="11" Padding="12,5" CornerRadius="4" Click="OnConfirmResetClick" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
 
-                    <!-- 图元工具切换 -->
-                    <RadioButton Name="ToolSelectBtn"
-                                 Classes="ToolRadio"
-                                 Content="✋"
-                                 GroupName="ToolGroup"
-                                 ToolTip.Tip="选择与移动 (V)"
-                                 IsCheckedChanged="OnToolChanged" />
-                    <RadioButton Name="ToolTextBtn"
-                                 Classes="ToolRadio"
-                                 Content="T"
-                                 GroupName="ToolGroup"
-                                 ToolTip.Tip="添加文字 (T)"
-                                 IsCheckedChanged="OnToolChanged" />
-                    <RadioButton Name="ToolLineBtn"
-                                 Classes="ToolRadio"
-                                 Content="╱"
-                                 GroupName="ToolGroup"
-                                 ToolTip.Tip="直线标注 (L)"
-                                 IsCheckedChanged="OnToolChanged" />
-                    <RadioButton Name="ToolArrowBtn"
-                                 Classes="ToolRadio"
-                                 Content="→"
-                                 GroupName="ToolGroup"
-                                 ToolTip.Tip="箭头标注 (A)"
-                                 IsCheckedChanged="OnToolChanged" />
-                    <RadioButton Name="ToolRectBtn"
-                                 Classes="ToolRadio"
-                                 Content="□"
-                                 GroupName="ToolGroup"
-                                 ToolTip.Tip="矩形框选 (R)"
-                                 IsChecked="True"
-                                 IsCheckedChanged="OnToolChanged" />
+                        <Separator Classes="ToolSep" />
 
-                    <Separator Classes="ToolSep" />
+                        <!-- 图元工具切换 -->
+                        <ToggleButton Name="ToolTextBtn"
+                                      Classes="ToolToggle"
+                                      Content="T"
+                                      ToolTip.Tip="文字标注 (T)"
+                                      Click="OnToolToggleClick" />
+                        <ToggleButton Name="ToolLineBtn"
+                                      Classes="ToolToggle"
+                                      Content="╱"
+                                      ToolTip.Tip="直线标注 (L)"
+                                      Click="OnToolToggleClick" />
+                        <ToggleButton Name="ToolArrowBtn"
+                                      Classes="ToolToggle"
+                                      Content="→"
+                                      ToolTip.Tip="箭头标注 (A)"
+                                      Click="OnToolToggleClick" />
+                        <ToggleButton Name="ToolRectBtn"
+                                      Classes="ToolToggle"
+                                      Content="□"
+                                      ToolTip.Tip="矩形框选 (R) - 按住 Shift 绘制正方形"
+                                      Click="OnToolToggleClick" />
+                        <ToggleButton Name="ToolEllipseBtn"
+                                      Classes="ToolToggle"
+                                      Content="○"
+                                      ToolTip.Tip="圆形/椭圆 (O) - 按住 Shift 绘制正圆"
+                                      Click="OnToolToggleClick" />
+                        <ToggleButton Name="ToolPenBtn"
+                                      Classes="ToolToggle"
+                                      Content="✏"
+                                      ToolTip.Tip="画笔涂鸦 (P)"
+                                      Click="OnToolToggleClick" />
+                        <ToggleButton Name="ToolMosaicBtn"
+                                      Classes="ToolToggle"
+                                      ToolTip.Tip="马赛克遮蔽 (M)"
+                                      Click="OnToolToggleClick">
+                            <Viewbox Width="15" Height="15" Stretch="Uniform">
+                                <Canvas Width="24" Height="24">
+                                    <!-- 现代 3x3 经典马赛克方块矩阵 (带微圆角与高级像素明暗层次) -->
+                                    <!-- 第 1 列 (x=3) -->
+                                    <Rectangle Canvas.Left="3" Canvas.Top="3" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#90A4AE" />
+                                    <Rectangle Canvas.Left="3" Canvas.Top="9.4" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#ECEFF1" />
+                                    <Rectangle Canvas.Left="3" Canvas.Top="15.8" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#546E7A" />
+                                    <!-- 第 2 列 (x=9.4) -->
+                                    <Rectangle Canvas.Left="9.4" Canvas.Top="3" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#CFD8DC" />
+                                    <Rectangle Canvas.Left="9.4" Canvas.Top="9.4" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#37474F" />
+                                    <Rectangle Canvas.Left="9.4" Canvas.Top="15.8" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#B0BEC5" />
+                                    <!-- 第 3 列 (x=15.8) -->
+                                    <Rectangle Canvas.Left="15.8" Canvas.Top="3" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#455A64" />
+                                    <Rectangle Canvas.Left="15.8" Canvas.Top="9.4" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#78909C" />
+                                    <Rectangle Canvas.Left="15.8" Canvas.Top="15.8" Width="5.2" Height="5.2" RadiusX="1" RadiusY="1" Fill="#ECEFF1" />
+                                </Canvas>
+                            </Viewbox>
+                        </ToggleButton>
+                        <ToggleButton Name="ToolEraserBtn"
+                                      Classes="ToolToggle"
+                                      ToolTip.Tip="橡皮擦 (E) - 擦除图元画笔 (按住鼠标滑动擦除)"
+                                      Click="OnToolToggleClick">
+                            <Viewbox Width="15" Height="15" Stretch="Uniform">
+                                <Canvas Width="24" Height="24">
+                                    <!-- 底部擦拭基准线与碎屑 -->
+                                    <Path Data="M 2,21.5 L 22,21.5"
+                                          Stroke="#9E9E9E" StrokeThickness="1.8" StrokeLineCap="Round" />
+                                    <Path Data="M 17,18.5 L 20,18.5"
+                                          Stroke="#BDBDBD" StrokeThickness="1.5" StrokeLineCap="Round" />
 
-                    <!-- 调色板 (红、绿、蓝、黄) -->
-                    <RadioButton Name="ColorRedBtn"
-                                 Classes="ColorRadio"
-                                 Background="#E53935"
-                                 GroupName="ColorGroup"
-                                 IsChecked="True"
-                                 ToolTip.Tip="红色"
-                                 IsCheckedChanged="OnColorChanged" />
-                    <RadioButton Name="ColorGreenBtn"
-                                 Classes="ColorRadio"
-                                 Background="#43A047"
-                                 GroupName="ColorGroup"
-                                 ToolTip.Tip="绿色"
-                                 IsCheckedChanged="OnColorChanged" />
-                    <RadioButton Name="ColorBlueBtn"
-                                 Classes="ColorRadio"
-                                 Background="#1E88E5"
-                                 GroupName="ColorGroup"
-                                 ToolTip.Tip="蓝色"
-                                 IsCheckedChanged="OnColorChanged" />
-                    <RadioButton Name="ColorYellowBtn"
-                                 Classes="ColorRadio"
-                                 Background="#FDD835"
-                                 GroupName="ColorGroup"
-                                 ToolTip.Tip="黄色"
-                                 IsCheckedChanged="OnColorChanged" />
+                                    <!-- 擦拭端 (象牙白擦拭头) -->
+                                    <Path Fill="#ECEFF1" Stroke="#37474F" StrokeThickness="1.0" StrokeJoin="Round"
+                                          Data="M 3.5,17.5 L 8.5,12.5 L 12.5,16.5 L 7.5,21.5 Z" />
 
-                    <Separator Classes="ToolSep" />
+                                    <!-- 中部高光分割腰线 -->
+                                    <Path Fill="#FFFFFF" Stroke="#B0BEC5" StrokeThickness="0.6" StrokeJoin="Round"
+                                          Data="M 8.5,12.5 L 10,11 L 14,15 L 12.5,16.5 Z" />
 
-                    <!-- 动作按钮 -->
-                    <Button Name="OcrBtn"
-                            Classes="ActionBtn"
-                            Content="🔤 OCR"
-                            ToolTip.Tip="直接 OCR 识别并复制文字"
-                            Click="OnOcrClick" />
+                                    <!-- 握持端 (珊瑚粉红圆角握持块) -->
+                                    <Path Fill="#FF6B8B" Stroke="#C2185B" StrokeThickness="1.0" StrokeJoin="Round"
+                                          Data="M 10,11 L 16.5,4.5 C 17.5,3.5 19.5,3.5 20.5,4.5 L 21.5,5.5 C 22.5,6.5 22.5,8.5 21.5,9.5 L 14,15 Z" />
+                                </Canvas>
+                            </Viewbox>
+                        </ToggleButton>
+                        <ToggleButton Name="ToolCropBtn"
+                                      Classes="ToolToggle"
+                                      Content="✂"
+                                      ToolTip.Tip="继续裁切图片 (C / X)"
+                                      Click="OnToolToggleClick" />
 
-                    <Button Name="TranslateBtn"
-                            Classes="ActionBtn"
-                            Content="🌐 翻译"
-                            ToolTip.Tip="直接提取文字并打开随动翻译浮窗"
-                            Click="OnTranslateClick" />
+                        <!-- 添加水印按钮 (带配置弹窗 Flyout) -->
+                        <Button Name="WatermarkBtn"
+                                Classes="ToolBtn"
+                                Content="💧"
+                                FontFamily="Segoe UI Emoji, Apple Color Emoji, Segoe UI Symbol, sans-serif"
+                                ToolTip.Tip="添加水印 (防伪/版权)">
+                            <Button.Flyout>
+                                <Flyout Placement="Top">
+                                    <Border Background="#252526"
+                                            BorderBrush="#3E3E42"
+                                            BorderThickness="1"
+                                            CornerRadius="8"
+                                            Padding="14,12"
+                                            BoxShadow="0 6 20 0 #50000000"
+                                            MinWidth="290">
+                                        <StackPanel Spacing="10">
+                                            <TextBlock Text="💧 添加防伪/版权水印"
+                                                       FontWeight="Bold"
+                                                       FontSize="13"
+                                                       Foreground="#FFFFFF" />
 
-                    <Button Name="QuickSaveBtn"
-                            Classes="ActionBtn"
-                            Content="⚡ 快存"
-                            ToolTip.Tip="直接自动保存到上次路径 (Ctrl+Shift+S)"
-                            Click="OnQuickSaveClick" />
+                                            <TextBox Name="WatermarkTextBox"
+                                                     Classes="DarkInput"
+                                                     PlaceholderText="输入水印内容 (如：内部资料 / 仅供审阅)"
+                                                     Text="内部资料 严禁外传"
+                                                     FontSize="12"
+                                                     Padding="8,5"
+                                                     CornerRadius="4"
+                                                     KeyDown="OnWatermarkTextBoxKeyDown" />
 
-                    <Button Name="SaveBtn"
-                            Classes="ActionBtn"
-                            Content="💾 另存为"
-                            ToolTip.Tip="保存图片设置与自定义位置 (Ctrl+S)"
-                            Click="OnSaveClick" />
+                                            <Grid ColumnDefinitions="*,*">
+                                                <RadioButton Name="WatermarkTileRadio"
+                                                             Grid.Column="0"
+                                                             Content="密集平铺"
+                                                             IsChecked="True"
+                                                             Foreground="#CCCCCC"
+                                                             FontSize="12" />
+                                                <RadioButton Name="WatermarkSingleRadio"
+                                                             Grid.Column="1"
+                                                             Content="单条居中"
+                                                             Foreground="#CCCCCC"
+                                                             FontSize="12" />
+                                            </Grid>
 
-                    <Button Name="CopyBtn"
-                            Classes="ActionBtn PrimaryActionBtn"
-                            Content="📋 复制"
-                            ToolTip.Tip="复制带标注图片至剪贴板 (Ctrl+C)"
-                            Click="OnCopyClick" />
+                                            <!-- 水印大小调节 -->
+                                            <Grid ColumnDefinitions="46,*,34,Auto" VerticalAlignment="Center">
+                                                <TextBlock Text="大小:" FontSize="11" Foreground="#AAAAAA" VerticalAlignment="Center" />
+                                                <Slider Name="WatermarkFontSizeSlider" Grid.Column="1"
+                                                        Minimum="12" Maximum="140" Value="36"
+                                                        SmallChange="2" LargeChange="10"
+                                                        Margin="4,0"
+                                                        ValueChanged="OnWatermarkFontSizeSliderValueChanged" />
+                                                <TextBlock Name="WatermarkFontSizeText" Grid.Column="2"
+                                                           Text="自动"
+                                                           FontSize="11" Foreground="#CCCCCC"
+                                                           VerticalAlignment="Center" HorizontalAlignment="Center" />
+                                                <CheckBox Name="WatermarkAutoFontSizeCheck" Grid.Column="3"
+                                                          Content="自动" IsChecked="True" FontSize="11" Foreground="#CCCCCC"
+                                                          ToolTip.Tip="勾选后自动根据图片尺寸按比例计算字号"
+                                                          IsCheckedChanged="OnWatermarkAutoFontSizeCheckedChanged" />
+                                            </Grid>
 
-                    <Button Name="PinBtn"
-                            Classes="ActionBtn"
-                            Content="📌 置顶"
-                            ToolTip.Tip="无边框置顶贴在桌面上"
-                            Click="OnPinClick" />
+                                            <!-- 密集度调节 (平铺模式下生效) -->
+                                            <Grid ColumnDefinitions="46,*,42" VerticalAlignment="Center"
+                                                  IsEnabled="{Binding #WatermarkTileRadio.IsChecked}">
+                                                <TextBlock Text="密集度:" FontSize="11" Foreground="#AAAAAA" VerticalAlignment="Center" />
+                                                <Slider Name="WatermarkDensitySlider" Grid.Column="1"
+                                                        Minimum="0.4" Maximum="2.5" Value="1.0"
+                                                        SmallChange="0.1" LargeChange="0.2"
+                                                        Margin="4,0" />
+                                                <TextBlock Text="{Binding #WatermarkDensitySlider.Value, StringFormat='{}{0:0.1}x'}"
+                                                           FontSize="11" Foreground="#CCCCCC" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                            </Grid>
 
-                    <Button Name="CloseBtn"
-                            Classes="ActionBtn"
-                            Content="✕"
-                            ToolTip.Tip="关闭 (Esc)"
-                            Click="OnCloseClick" />
+                                            <!-- 透明度调节 -->
+                                            <Grid ColumnDefinitions="46,*,42" VerticalAlignment="Center">
+                                                <TextBlock Text="透明度:" FontSize="11" Foreground="#AAAAAA" VerticalAlignment="Center" />
+                                                <Slider Name="WatermarkOpacitySlider" Grid.Column="1"
+                                                        Minimum="10" Maximum="80" Value="25"
+                                                        Margin="4,0"
+                                                        SmallChange="5" LargeChange="10" />
+                                                <TextBlock Grid.Column="2"
+                                                           Text="{Binding #WatermarkOpacitySlider.Value, StringFormat='{}{0:0}%'}"
+                                                           FontSize="11" Foreground="#CCCCCC" VerticalAlignment="Center" HorizontalAlignment="Right" />
+                                            </Grid>
+
+                                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right" Margin="0,4,0,0">
+                                                <Button Content="取消"
+                                                        FontSize="11"
+                                                        Padding="12,5"
+                                                        Background="#333333"
+                                                        Foreground="#CCCCCC"
+                                                        CornerRadius="4"
+                                                        Click="OnCancelWatermarkClick" />
+                                                <Button Classes="PrimaryActionBtn"
+                                                        Content="生成水印"
+                                                        FontSize="11"
+                                                        Padding="12,5"
+                                                        CornerRadius="4"
+                                                        Click="OnConfirmWatermarkClick" />
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </Border>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+
+                        <Separator Classes="ToolSep" />
+
+                        <!-- 动作按钮 -->
+                        <Button Name="OcrBtn"
+                                Classes="ActionBtn"
+                                Content="🔤 OCR"
+                                ToolTip.Tip="直接 OCR 识别并复制文字"
+                                Click="OnOcrClick" />
+
+                        <Button Name="TranslateBtn"
+                                Classes="ActionBtn"
+                                Content="🌐 翻译"
+                                ToolTip.Tip="直接提取文字并打开随动翻译浮窗"
+                                Click="OnTranslateClick" />
+
+                        <Button Name="QuickSaveBtn"
+                                Classes="ActionBtn"
+                                Content="⚡ 快存"
+                                ToolTip.Tip="直接自动保存到上次路径 (Ctrl+Shift+S)"
+                                Click="OnQuickSaveClick" />
+
+                        <Button Name="SaveBtn"
+                                Classes="ActionBtn"
+                                Content="💾 另存为"
+                                ToolTip.Tip="保存图片设置与自定义位置 (Ctrl+S)"
+                                Click="OnSaveClick" />
+
+                        <Button Name="CopyBtn"
+                                Classes="ActionBtn PrimaryActionBtn"
+                                Content="📋 复制"
+                                ToolTip.Tip="复制带标注图片至剪贴板 (Ctrl+C)"
+                                Click="OnCopyClick" />
+
+                        <Button Name="PinBtn"
+                                Classes="ActionBtn"
+                                Content="📌 置顶"
+                                ToolTip.Tip="无边框置顶贴在桌面上"
+                                Click="OnPinClick" />
+
+                        <Button Name="CloseBtn"
+                                Classes="ActionBtn"
+                                Content="✕"
+                                ToolTip.Tip="关闭 (Esc)"
+                                Click="OnCloseClick" />
+                    </StackPanel>
+
+                    <!-- 第 2 行: 粗细调节、颜色选择、文字大小输入框 (适用于所有文字、线条、形状、画笔、马赛克、橡皮擦) -->
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" HorizontalAlignment="Center">
+                        <!-- 粗细调节 (预设圆点 + 延长横轴滑动条 130px) -->
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="粗细" FontSize="11" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,2,0" />
+                            <RadioButton Name="StrokeThinBtn" Classes="StrokeRadio" GroupName="StrokeGroup" ToolTip.Tip="细 (2px)" Click="OnStrokeRadioClick" Tag="2">
+                                <Border Width="3" Height="3" CornerRadius="1.5" Background="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </RadioButton>
+                            <RadioButton Name="StrokeMediumBtn" Classes="StrokeRadio" GroupName="StrokeGroup" IsChecked="True" ToolTip.Tip="中 (4px)" Click="OnStrokeRadioClick" Tag="4">
+                                <Border Width="6" Height="6" CornerRadius="3" Background="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </RadioButton>
+                            <RadioButton Name="StrokeThickBtn" Classes="StrokeRadio" GroupName="StrokeGroup" ToolTip.Tip="粗 (8px)" Click="OnStrokeRadioClick" Tag="8">
+                                <Border Width="9" Height="9" CornerRadius="4.5" Background="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </RadioButton>
+                            <RadioButton Name="StrokeExtraBtn" Classes="StrokeRadio" GroupName="StrokeGroup" ToolTip.Tip="特粗 (14px)" Click="OnStrokeRadioClick" Tag="14">
+                                <Border Width="12" Height="12" CornerRadius="6" Background="#888888" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            </RadioButton>
+                            <Slider Name="StrokeSlider"
+                                    Minimum="1"
+                                    Maximum="32"
+                                    Value="4"
+                                    Width="130"
+                                    Height="20"
+                                    VerticalAlignment="Center"
+                                    Margin="4,0,4,0"
+                                    ToolTip.Tip="连续滑动调节粗细 (1~32px)"
+                                    ValueChanged="OnStrokeSliderValueChanged">
+                                <Slider.Resources>
+                                    <x:Double x:Key="SliderHorizontalThumbWidth">10</x:Double>
+                                    <x:Double x:Key="SliderHorizontalThumbHeight">10</x:Double>
+                                    <CornerRadius x:Key="SliderThumbCornerRadius">5</CornerRadius>
+                                    <x:Double x:Key="SliderHorizontalHeight">20</x:Double>
+                                    <GridLength x:Key="SliderPreContentMargin">*</GridLength>
+                                    <GridLength x:Key="SliderPostContentMargin">*</GridLength>
+                                    <x:Double x:Key="SliderTrackThemeHeight">3</x:Double>
+                                </Slider.Resources>
+                            </Slider>
+                            <TextBlock Name="StrokeValueLabel"
+                                       Text="4px"
+                                       FontSize="11"
+                                       Foreground="#DDDDDD"
+                                       VerticalAlignment="Center"
+                                       Width="28" />
+                        </StackPanel>
+
+                        <Separator Classes="ToolSep" />
+
+                        <!-- 调色板: 黑色、白色、红色、绿色、蓝色、黄色 + 彩色调色盘 -->
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="颜色" FontSize="11" Foreground="#AAAAAA" VerticalAlignment="Center" Margin="0,0,2,0" />
+                            <RadioButton Name="ColorBlackBtn" Classes="ColorRadio" Background="#000000" GroupName="ColorGroup" ToolTip.Tip="黑色" Click="OnColorPresetClick" Tag="#000000" />
+                            <RadioButton Name="ColorWhiteBtn" Classes="ColorRadio" Background="#FFFFFF" GroupName="ColorGroup" ToolTip.Tip="白色" Click="OnColorPresetClick" Tag="#FFFFFF" />
+                            <RadioButton Name="ColorRedBtn" Classes="ColorRadio" Background="#E53935" GroupName="ColorGroup" IsChecked="True" ToolTip.Tip="红色" Click="OnColorPresetClick" Tag="#E53935" />
+                            <RadioButton Name="ColorGreenBtn" Classes="ColorRadio" Background="#43A047" GroupName="ColorGroup" ToolTip.Tip="绿色" Click="OnColorPresetClick" Tag="#43A047" />
+                            <RadioButton Name="ColorBlueBtn" Classes="ColorRadio" Background="#1E88E5" GroupName="ColorGroup" ToolTip.Tip="蓝色" Click="OnColorPresetClick" Tag="#1E88E5" />
+                            <RadioButton Name="ColorYellowBtn" Classes="ColorRadio" Background="#FDD835" GroupName="ColorGroup" ToolTip.Tip="黄色" Click="OnColorPresetClick" Tag="#FDD835" />
+
+                            <!-- 彩色调色盘按钮 -->
+                            <Button Name="CustomColorBtn" Classes="ToolBtn" Width="22" Height="22" Padding="0" CornerRadius="11" ToolTip.Tip="呼出彩色调色盘">
+                                <Button.Flyout>
+                                    <Flyout Placement="TopEdgeAlignedLeft" FlyoutPresenterClasses="PaletteFlyoutPresenter">
+                                        <ThemeVariantScope RequestedThemeVariant="Light">
+                                            <Border Background="#FFFFFF"
+                                                    BorderBrush="#D5D5D8"
+                                                    BorderThickness="1"
+                                                    CornerRadius="8"
+                                                    Padding="10"
+                                                    BoxShadow="0 6 24 0 #35000000">
+                                                <Border.Resources>
+                                                    <ResourceDictionary>
+                                                        <SolidColorBrush x:Key="TextFillColorPrimaryBrush" Color="#202020" />
+                                                        <SolidColorBrush x:Key="TextFillColorSecondaryBrush" Color="#666666" />
+                                                        <SolidColorBrush x:Key="TextFillColorTertiaryBrush" Color="#999999" />
+                                                        <SolidColorBrush x:Key="TextControlForeground" Color="#202020" />
+                                                        <SolidColorBrush x:Key="TextControlForegroundPointerOver" Color="#202020" />
+                                                        <SolidColorBrush x:Key="TextControlForegroundFocused" Color="#202020" />
+                                                        <SolidColorBrush x:Key="TextControlCaretBrush" Color="#202020" />
+                                                        <SolidColorBrush x:Key="ButtonForeground" Color="#202020" />
+                                                        <SolidColorBrush x:Key="ButtonForegroundPointerOver" Color="#202020" />
+                                                        <SolidColorBrush x:Key="ButtonForegroundPressed" Color="#202020" />
+                                                        <SolidColorBrush x:Key="ButtonBackground" Color="#F4F4F6" />
+                                                        <SolidColorBrush x:Key="ButtonBackgroundPointerOver" Color="#E8E8EC" />
+                                                        <SolidColorBrush x:Key="ButtonBackgroundPressed" Color="#DCDCE0" />
+                                                        <SolidColorBrush x:Key="ButtonBorderBrush" Color="#D0D0D4" />
+                                                        <SolidColorBrush x:Key="CardBackgroundFillColorDefaultBrush" Color="#FFFFFF" />
+                                                        <SolidColorBrush x:Key="ControlFillColorDefaultBrush" Color="#F8F8FA" />
+                                                    </ResourceDictionary>
+                                                </Border.Resources>
+                                                <ColorView Name="PaletteColorView"
+                                                           IsAlphaEnabled="True"
+                                                           Width="300"
+                                                           ColorChanged="OnPaletteColorChanged" />
+                                            </Border>
+                                        </ThemeVariantScope>
+                                    </Flyout>
+                                </Button.Flyout>
+                                <Border Width="18" Height="18" CornerRadius="9" BorderThickness="1.5" BorderBrush="#888888">
+                                    <Border.Background>
+                                        <ConicGradientBrush Angle="0">
+                                            <GradientStop Color="#FF0000" Offset="0" />
+                                            <GradientStop Color="#FFFF00" Offset="0.17" />
+                                            <GradientStop Color="#00FF00" Offset="0.33" />
+                                            <GradientStop Color="#00FFFF" Offset="0.5" />
+                                            <GradientStop Color="#0000FF" Offset="0.67" />
+                                            <GradientStop Color="#FF00FF" Offset="0.83" />
+                                            <GradientStop Color="#FF0000" Offset="1" />
+                                        </ConicGradientBrush>
+                                    </Border.Background>
+                                </Border>
+                            </Button>
+                        </StackPanel>
+
+                        <Separator Classes="ToolSep" />
+
+                        <!-- 文字大小输入框 (默认字号 40，留空时使用默认 40) -->
+                        <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                            <TextBlock Text="字号" FontSize="11" Foreground="#AAAAAA" VerticalAlignment="Center" />
+                            <TextBox Name="FontSizeTextBox"
+                                     Classes="DarkInput"
+                                     Width="74"
+                                     MinHeight="0"
+                                     Height="22"
+                                     FontSize="11"
+                                     Padding="4,2"
+                                     PlaceholderText="默认 (40)"
+                                     Text=""
+                                     VerticalContentAlignment="Center"
+                                     HorizontalContentAlignment="Center"
+                                     ToolTip.Tip="输入自定义文字大小，留空时使用默认大小 (40)"
+                                     TextChanged="OnFontSizeTextChanged">
+                                <TextBox.Resources>
+                                    <SolidColorBrush x:Key="TextControlPlaceholderForeground" Color="#FFFFFF" />
+                                    <SolidColorBrush x:Key="TextControlPlaceholderForegroundPointerOver" Color="#FFFFFF" />
+                                    <SolidColorBrush x:Key="TextControlPlaceholderForegroundFocused" Color="#FFFFFF" />
+                                </TextBox.Resources>
+                            </TextBox>
+                        </StackPanel>
+                    </StackPanel>
                 </StackPanel>
             </Border>
         </Grid>
     </Border>
 
     <Window.Styles>
+        <!-- 弹窗容器统一暗色实心无穿透样式，不受全局个性主题半透明影响 -->
+        <Style Selector="FlyoutPresenter">
+            <Setter Property="Background" Value="#252526" />
+            <Setter Property="BorderBrush" Value="#3E3E42" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
+        </Style>
+
+        <!-- 弹窗内部普通按钮样式隔离 -->
+        <Style Selector="FlyoutPresenter Button:not(.DangerBtn):not(.PrimaryActionBtn)">
+            <Setter Property="Background" Value="#333333" />
+            <Setter Property="Foreground" Value="#CCCCCC" />
+            <Setter Property="BorderBrush" Value="#444444" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="FlyoutPresenter Button:not(.DangerBtn):not(.PrimaryActionBtn):pointerover">
+            <Setter Property="Background" Value="#444444" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="FlyoutPresenter Button:not(.DangerBtn):not(.PrimaryActionBtn) TextBlock:not(.emoji)">
+            <Setter Property="Foreground" Value="#CCCCCC" />
+        </Style>
+
+        <!-- 弹窗内部单选框文字颜色隔离 -->
+        <Style Selector="FlyoutPresenter RadioButton">
+            <Setter Property="Foreground" Value="#CCCCCC" />
+        </Style>
+
+        <!-- 弹窗内部 TextBlock 默认文字颜色隔离 -->
+        <Style Selector="FlyoutPresenter TextBlock:not(.emoji)">
+            <Setter Property="Foreground" Value="#CCCCCC" />
+        </Style>
+
+        <!-- 暗色实心输入框样式，屏蔽全局透明穿透 -->
+        <Style Selector="TextBox.DarkInput">
+            <Setter Property="Background" Value="#242424" />
+            <Setter Property="BorderBrush" Value="#444444" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="CaretBrush" Value="#FFFFFF" />
+            <Setter Property="MinHeight" Value="0" />
+        </Style>
+        <Style Selector="TextBox.DarkInput /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#242424" />
+            <Setter Property="BorderBrush" Value="#444444" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="TextBox.DarkInput:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#242424" />
+            <Setter Property="BorderBrush" Value="#0078D4" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+
+        <!-- 暗色输入框占位符文字样式 -->
+        <Style Selector="TextBox.DarkInput /template/ TextBlock#PART_Watermark">
+            <Setter Property="Foreground" Value="#999999" />
+        </Style>
+
+        <!-- 默认 (40) 字号输入框 PlaceholderText 纯白显眼样式 -->
+        <Style Selector="TextBox#FontSizeTextBox">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Height" Value="22" />
+            <Setter Property="Padding" Value="4,2" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="TextBox#FontSizeTextBox /template/ TextBlock#PART_Watermark">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Opacity" Value="1.0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="TextBox#FontSizeTextBox /template/ TextBlock#PART_PlaceholderText">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Opacity" Value="1.0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <!-- 画布内联文字输入框样式 -->
+        <Style Selector="TextBox#InlineTextBox">
+            <Setter Property="Background" Value="#35000000" />
+            <Setter Property="BorderBrush" Value="#CC40A9FF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="TextBox#InlineTextBox /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#35000000" />
+            <Setter Property="BorderBrush" Value="#CC40A9FF" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="TextBox#InlineTextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#45000000" />
+            <Setter Property="BorderBrush" Value="#FF40A9FF" />
+            <Setter Property="BorderThickness" Value="1.5" />
+        </Style>
+
         <Style Selector="Separator.ToolSep">
             <Setter Property="Width" Value="1" />
-            <Setter Property="Height" Value="18" />
+            <Setter Property="Height" Value="16" />
             <Setter Property="Background" Value="#333333" />
-            <Setter Property="Margin" Value="3,0" />
+            <Setter Property="Margin" Value="2,0" />
         </Style>
 
         <Style Selector="Button.ToolBtn">
@@ -237,6 +714,8 @@
             <Setter Property="Height" Value="30" />
             <Setter Property="Background" Value="#2A2A2A" />
             <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#383838" />
             <Setter Property="FontSize" Value="14" />
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Padding" Value="0" />
@@ -251,11 +730,13 @@
             <Setter Property="Opacity" Value="0.35" />
         </Style>
 
-        <Style Selector="RadioButton.ToolRadio">
+        <Style Selector="ToggleButton.ToolToggle">
             <Setter Property="Width" Value="30" />
             <Setter Property="Height" Value="30" />
             <Setter Property="Background" Value="#2A2A2A" />
             <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#383838" />
             <Setter Property="FontSize" Value="14" />
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Padding" Value="0" />
@@ -265,7 +746,7 @@
                             Background="{TemplateBinding Background}"
                             CornerRadius="{TemplateBinding CornerRadius}"
                             BorderThickness="1"
-                            BorderBrush="Transparent">
+                            BorderBrush="{TemplateBinding BorderBrush}">
                         <ContentPresenter Content="{TemplateBinding Content}"
                                           HorizontalAlignment="Center"
                                           VerticalAlignment="Center" />
@@ -273,18 +754,89 @@
                 </ControlTemplate>
             </Setter>
         </Style>
-        <Style Selector="RadioButton.ToolRadio:hover">
-            <Setter Property="Background" Value="#383838" />
+        <Style Selector="ToggleButton.ToolToggle:hover">
+            <Setter Property="Background" Value="#3A3A3A" />
             <Setter Property="Foreground" Value="White" />
         </Style>
-        <Style Selector="RadioButton.ToolRadio:checked /template/ Border#Border">
-            <Setter Property="Background" Value="#0E639C" />
+        <Style Selector="ToggleButton.ToolToggle:checked /template/ Border#Border">
+            <Setter Property="Background" Value="#0078D4" />
             <Setter Property="BorderBrush" Value="#40A9FF" />
         </Style>
-        <Style Selector="RadioButton.ToolRadio:checked">
+        <Style Selector="ToggleButton.ToolToggle:checked">
             <Setter Property="Foreground" Value="White" />
         </Style>
 
+        <!-- 粗细选择单选钮 (20x20 精致紧凑圆钮) -->
+        <Style Selector="RadioButton.StrokeRadio">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Margin" Value="1,0" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="StrokeBox"
+                            Width="20"
+                            Height="20"
+                            Background="#2A2A2A"
+                            CornerRadius="4"
+                            BorderThickness="1"
+                            BorderBrush="#383838">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center" />
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="RadioButton.StrokeRadio:hover /template/ Border#StrokeBox">
+            <Setter Property="Background" Value="#383838" />
+        </Style>
+        <Style Selector="RadioButton.StrokeRadio:checked /template/ Border#StrokeBox">
+            <Setter Property="Background" Value="#0078D4" />
+            <Setter Property="BorderBrush" Value="#40A9FF" />
+        </Style>
+        <Style Selector="RadioButton.StrokeRadio:checked /template/ Border#StrokeBox Border">
+            <Setter Property="Background" Value="White" />
+        </Style>
+
+        <!-- 粗细滑动条紧凑精美样式：固定滑块大小 (10px)，无 hover/pressed 膨胀抖动，垂直精确居中 -->
+        <Style Selector="Slider#StrokeSlider">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider#StrokeSlider /template/ Grid#SliderContainer">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider#StrokeSlider /template/ Grid#HorizontalTemplate">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider#StrokeSlider /template/ Track#PART_Track">
+            <Setter Property="MinHeight" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider#StrokeSlider /template/ Border#TrackBackground">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider#StrokeSlider /template/ Border#PART_SelectionRange">
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider#StrokeSlider /template/ Thumb#thumb">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="Height" Value="10" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Slider#StrokeSlider /template/ Thumb#thumb /template/ Border">
+            <Setter Property="CornerRadius" Value="5" />
+        </Style>
+
+        <!-- 颜色选择单选钮 -->
         <Style Selector="RadioButton.ColorRadio">
             <Setter Property="Width" Value="18" />
             <Setter Property="Height" Value="18" />
@@ -297,19 +849,22 @@
                             Height="18"
                             Background="{TemplateBinding Background}"
                             CornerRadius="9"
-                            BorderThickness="2"
-                            BorderBrush="Transparent" />
+                            BorderThickness="1.5"
+                            BorderBrush="#555555" />
                 </ControlTemplate>
             </Setter>
         </Style>
         <Style Selector="RadioButton.ColorRadio:checked /template/ Border#ColorDot">
             <Setter Property="BorderBrush" Value="White" />
+            <Setter Property="BorderThickness" Value="2.5" />
         </Style>
 
         <Style Selector="Button.ActionBtn">
             <Setter Property="Height" Value="30" />
             <Setter Property="Background" Value="#2A2A2A" />
             <Setter Property="Foreground" Value="#D4D4D4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="#383838" />
             <Setter Property="FontSize" Value="12" />
             <Setter Property="CornerRadius" Value="4" />
             <Setter Property="Padding" Value="8,0" />
@@ -322,17 +877,79 @@
         </Style>
 
         <Style Selector="Button.PrimaryActionBtn">
-            <Setter Property="Background" Value="#0E639C" />
+            <Setter Property="Background" Value="#0078D4" />
             <Setter Property="Foreground" Value="White" />
+            <Setter Property="BorderThickness" Value="0" />
             <Setter Property="FontWeight" Value="SemiBold" />
         </Style>
         <Style Selector="Button.PrimaryActionBtn:hover">
-            <Setter Property="Background" Value="#1177BB" />
+            <Setter Property="Background" Value="#106EBE" />
         </Style>
 
-        <Style Selector="Button.HeaderCloseBtn:hover">
+        <Style Selector="Button.DangerBtn">
+            <Setter Property="Background" Value="#D32F2F" />
+            <Setter Property="Foreground" Value="White" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.DangerBtn:hover">
+            <Setter Property="Background" Value="#F44336" />
+        </Style>
+
+        <!-- 顶栏窗口控制按钮样式 (最小化、最大化、关闭) -->
+        <Style Selector="Button.HeaderControlBtn">
+            <Setter Property="Width" Value="32" />
+            <Setter Property="Height" Value="32" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="#AAAAAA" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="CornerRadius" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.HeaderControlBtn:hover">
+            <Setter Property="Background" Value="#333333" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.HeaderControlBtn:pressed">
+            <Setter Property="Background" Value="#444444" />
+        </Style>
+        <Style Selector="Button.HeaderControlBtn.HeaderCloseBtn:hover">
             <Setter Property="Background" Value="#E81123" />
             <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.HeaderControlBtn.HeaderCloseBtn:pressed">
+            <Setter Property="Background" Value="#C4101F" />
+        </Style>
+
+        <!-- 顶栏二次裁切确定/取消按钮样式 -->
+        <Style Selector="Button.HeaderCropBtn">
+            <Setter Property="Height" Value="22" />
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="8,1" />
+            <Setter Property="CornerRadius" Value="3" />
+            <Setter Property="Background" Value="#333333" />
+            <Setter Property="Foreground" Value="#E0E0E0" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Button.HeaderCropBtn:hover">
+            <Setter Property="Background" Value="#444444" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.HeaderCropOk">
+            <Setter Property="Background" Value="#107C41" />
+            <Setter Property="Foreground" Value="White" />
+        </Style>
+        <Style Selector="Button.HeaderCropOk:hover">
+            <Setter Property="Background" Value="#0F6E39" />
+        </Style>
+
+        <!-- 彩色调色盘 FlyoutPresenter 纯净透明承载样式 -->
+        <Style Selector="FlyoutPresenter.PaletteFlyoutPresenter">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="CornerRadius" Value="8" />
         </Style>
     </Window.Styles>
 </Window>

@@ -1,0 +1,97 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ShawMuOCR.Android.ViewModels"
+             xmlns:views="using:ShawMuOCR.Android.Views"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="700"
+             x:Class="ShawMuOCR.Android.Views.MainView"
+             x:DataType="vm:MainViewModel">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 移动端顶部标题栏 -->
+        <Border Grid.Row="0" Padding="16,12" Background="{DynamicResource SystemChromeLowColor}">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="🔍" FontSize="18" VerticalAlignment="Center" />
+                    <TextBlock Text="小沐 OCR" FontWeight="Bold" FontSize="18" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <!-- ARM64 优化徽标 -->
+                <Border Grid.Column="1"
+                        Background="{DynamicResource SystemAccentColorLight2}"
+                        CornerRadius="4"
+                        Padding="6,2"
+                        VerticalAlignment="Center">
+                    <TextBlock Text="ARM64 · Small 内置" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource SystemAccentColor}" />
+                </Border>
+            </Grid>
+        </Border>
+
+        <!-- 主内容展示区 -->
+        <ContentControl Grid.Row="1" Content="{Binding CurrentPage}">
+            <ContentControl.DataTemplates>
+                <DataTemplate DataType="{x:Type vm:FileOcrViewModel}">
+                    <views:FileOcrView />
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:CameraOcrViewModel}">
+                    <views:CameraOcrView />
+                </DataTemplate>
+                <DataTemplate DataType="{x:Type vm:SettingsViewModel}">
+                    <views:SettingsView />
+                </DataTemplate>
+            </ContentControl.DataTemplates>
+        </ContentControl>
+
+        <!-- 底部三大功能导航栏 (Bottom Navigation Bar) -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource SystemChromeLowColor}"
+                BorderBrush="{DynamicResource SystemChromeMediumColor}"
+                BorderThickness="0,1,0,0"
+                Padding="6,4">
+            <Grid ColumnDefinitions="*,*,*">
+                <!-- 页面 1：文件识别 -->
+                <Button Grid.Column="0"
+                        Command="{Binding NavigateToCommand}"
+                        CommandParameter="0"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Background="Transparent"
+                        Padding="4,8">
+                    <StackPanel Spacing="2" HorizontalAlignment="Center">
+                        <TextBlock Text="📁" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Text="文件识别" FontSize="12" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Button>
+
+                <!-- 页面 2：拍照识别 -->
+                <Button Grid.Column="1"
+                        Command="{Binding NavigateToCommand}"
+                        CommandParameter="1"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Background="Transparent"
+                        Padding="4,8">
+                    <StackPanel Spacing="2" HorizontalAlignment="Center">
+                        <TextBlock Text="📷" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Text="拍照识别" FontSize="12" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Button>
+
+                <!-- 页面 3：系统设置 -->
+                <Button Grid.Column="2"
+                        Command="{Binding NavigateToCommand}"
+                        CommandParameter="2"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Background="Transparent"
+                        Padding="4,8">
+                    <StackPanel Spacing="2" HorizontalAlignment="Center">
+                        <TextBlock Text="⚙️" FontSize="18" HorizontalAlignment="Center" />
+                        <TextBlock Text="系统设置" FontSize="12" HorizontalAlignment="Center" FontWeight="SemiBold" />
+                    </StackPanel>
+                </Button>
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

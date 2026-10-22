@@ -12,12 +12,23 @@ public sealed class MuClipCore : IDisposable
 
     public IntPtr Handle => _handle;
 
-    public unsafe MuClipCore(string dbPath)
+    public unsafe MuClipCore(string dbPath, string? encryptionKey = null)
     {
         byte[] pathBytes = Encoding.UTF8.GetBytes(dbPath + "\0");
         fixed (byte* p = pathBytes)
         {
-            _handle = MuClipNative.CoreNew(p);
+            if (string.IsNullOrEmpty(encryptionKey))
+            {
+                _handle = MuClipNative.CoreNew(p);
+            }
+            else
+            {
+                byte[] keyBytes = Encoding.UTF8.GetBytes(encryptionKey + "\0");
+                fixed (byte* pKey = keyBytes)
+                {
+                    _handle = MuClipNative.CoreNewWithKey(p, pKey);
+                }
+            }
         }
 
         if (_handle == IntPtr.Zero)
@@ -227,6 +238,20 @@ public sealed class MuClipCore : IDisposable
     }
 
     /// <summary>
+    /// 批量按传入的 ID 顺序更新 sort_order (0, 1, 2...)
+    /// </summary>
+    public unsafe bool ReorderPhrases(IReadOnlyList<long> orderedIds)
+    {
+        ThrowIfDisposed();
+        if (orderedIds == null || orderedIds.Count == 0) return false;
+        long[] idArray = orderedIds.ToArray();
+        fixed (long* p = idArray)
+        {
+            return MuClipNative.CoreReorderPhrases(_handle, p, (nuint)idArray.Length) == 0;
+        }
+    }
+
+    /// <summary>
     /// 设置持久化配置项（SQLite secure_config 表）
     /// </summary>
     public unsafe bool SetConfig(string key, string value)
@@ -260,6 +285,130 @@ public sealed class MuClipCore : IDisposable
             {
                 MuClipNative.FreeString(ptr);
             }
+        }
+    }
+
+    /// <summary>
+    /// 添加或更新时段规则（写入 SQLite phrase_rules 表）
+    /// </summary>
+    public unsafe string? AddPhraseRule(PhraseConditionalRule rule)
+    {
+        ThrowIfDisposed();
+        if (rule == null) return null;
+        string json = System.Text.Json.JsonSerializer.Serialize(rule, PhraseRuleJsonContext.Default.PhraseConditionalRule);
+        byte[] bytes = Encoding.UTF8.GetBytes(json + "\0");
+        fixed (byte* p = bytes)
+        {
+            IntPtr ptr = MuClipNative.CoreAddPhraseRule(_handle, p);
+            if (ptr == IntPtr.Zero) return null;
+            try
+            {
+                return System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr);
+            }
+            finally
+            {
+                MuClipNative.FreeString(ptr);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 删除时段规则（从 SQLite phrase_rules 表删除）
+    /// </summary>
+    public unsafe bool DeletePhraseRule(string ruleId)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrEmpty(ruleId)) return false;
+        byte[] bytes = Encoding.UTF8.GetBytes(ruleId + "\0");
+        fixed (byte* p = bytes)
+        {
+            return MuClipNative.CoreDeletePhraseRule(_handle, p) == 0;
+        }
+    }
+
+    /// <summary>
+    /// 查询指定常用语的时段规则列表（phrase_id <= 0 查询全部）
+    /// </summary>
+    public unsafe List<PhraseConditionalRule> QueryPhraseRules(long phraseId = 0)
+    {
+        ThrowIfDisposed();
+        IntPtr ptr = MuClipNative.CoreQueryPhraseRules(_handle, phraseId);
+        if (ptr == IntPtr.Zero) return new List<PhraseConditionalRule>();
+        try
+        {
+            string? json = System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr);
+            if (string.IsNullOrWhiteSpace(json)) return new List<PhraseConditionalRule>();
+            return System.Text.Json.JsonSerializer.Deserialize(json, PhraseRuleJsonContext.Default.ListPhraseConditionalRule) ?? new List<PhraseConditionalRule>();
+        }
+        catch
+        {
+            return new List<PhraseConditionalRule>();
+        }
+        finally
+        {
+            MuClipNative.FreeString(ptr);
+        }
+    }
+
+    /// <summary>
+    /// 保存或更新规则模板（写入 SQLite phrase_rule_templates 表）
+    /// </summary>
+    public unsafe string? SaveRuleTemplate(PhraseRuleTemplate template)
+    {
+        ThrowIfDisposed();
+        if (template == null) return null;
+        string json = System.Text.Json.JsonSerializer.Serialize(template, PhraseRuleJsonContext.Default.PhraseRuleTemplate);
+        byte[] bytes = Encoding.UTF8.GetBytes(json + "\0");
+        fixed (byte* p = bytes)
+        {
+            IntPtr ptr = MuClipNative.CoreSaveTemplate(_handle, p);
+            if (ptr == IntPtr.Zero) return null;
+            try
+            {
+                return System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr);
+            }
+            finally
+            {
+                MuClipNative.FreeString(ptr);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 删除规则模板（从 SQLite phrase_rule_templates 表删除）
+    /// </summary>
+    public unsafe bool DeleteRuleTemplate(string templateId)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrEmpty(templateId)) return false;
+        byte[] bytes = Encoding.UTF8.GetBytes(templateId + "\0");
+        fixed (byte* p = bytes)
+        {
+            return MuClipNative.CoreDeleteTemplate(_handle, p) == 0;
+        }
+    }
+
+    /// <summary>
+    /// 查询所有规则模板列表
+    /// </summary>
+    public unsafe List<PhraseRuleTemplate> QueryRuleTemplates()
+    {
+        ThrowIfDisposed();
+        IntPtr ptr = MuClipNative.CoreQueryTemplates(_handle);
+        if (ptr == IntPtr.Zero) return new List<PhraseRuleTemplate>();
+        try
+        {
+            string? json = System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr);
+            if (string.IsNullOrWhiteSpace(json)) return new List<PhraseRuleTemplate>();
+            return System.Text.Json.JsonSerializer.Deserialize(json, PhraseRuleJsonContext.Default.ListPhraseRuleTemplate) ?? new List<PhraseRuleTemplate>();
+        }
+        catch
+        {
+            return new List<PhraseRuleTemplate>();
+        }
+        finally
+        {
+            MuClipNative.FreeString(ptr);
         }
     }
 

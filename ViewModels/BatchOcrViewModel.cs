@@ -69,10 +69,58 @@ public partial class BatchOcrViewModel : ViewModelBase
     private string _customOutputDir = string.Empty;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConcurrencyLabel))]
+    [NotifyPropertyChangedFor(nameof(ConcurrencyValueText))]
     private int _maxCores = Math.Max(1, Environment.ProcessorCount / 2);
 
     [ObservableProperty]
+    private bool _isConcurrencyWarningOpen;
+
+    [ObservableProperty]
+    private int _pendingMaxCores = 1;
+
+    public string ConcurrencyWarningTitle => "⚠️ GPU 并发流上限提升提示";
+    public string CancelConcurrencyButtonText => "保持 1 路 (推荐)";
+    public string ConfirmConcurrencyButtonText => $"确定提升至 {PendingMaxCores} 路";
+
+    public string ConcurrencyWarningMessage =>
+        $"您正在尝试将 GPU 并发流上限设置为 {PendingMaxCores} 路。\n\n" +
+        "• 深度学习推理（PaddleOCR）在单张 GPU 显卡中开启多路并发流时，显存（VRAM）占用量将成倍增长。\n" +
+        "• 若显存不足或算力争抢，可能导致显存溢出 (CUDA Out of Memory)、显卡高负荷发热降频甚至显卡驱动重置崩溃。\n" +
+        "• 对于绝大多数消费级显卡，保持 1 路并发已具备极佳的推理吞吐，建议仅在配备高端大显存显卡且需要大批量并发加速时再行提升。\n\n" +
+        $"确定要继续提升至 {PendingMaxCores} 路并发吗？";
+
+    private bool _concurrencyWarningConfirmed;
+    private bool _isAdjustingCoresInternally;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(UsageLimitValueText))]
     private int _cpuLimitPercent = 50;
+
+    [ObservableProperty]
+    private string _schedulerTitle = "⚡ CPU 调度与性能控制";
+
+    [ObservableProperty]
+    private string _schedulerSummaryText = $"本机共 {Environment.ProcessorCount} 逻辑核 (默认 {Math.Max(1, Environment.ProcessorCount / 2)} 核 / 上限 {Environment.ProcessorCount} 核)";
+
+    [ObservableProperty]
+    private string _deviceBadgeText = "⚡ CPU 调度";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ConcurrencyLabel))]
+    [NotifyPropertyChangedFor(nameof(ConcurrencyValueText))]
+    [NotifyPropertyChangedFor(nameof(UsageLimitLabel))]
+    [NotifyPropertyChangedFor(nameof(ConcurrencyWarningTitle))]
+    [NotifyPropertyChangedFor(nameof(CancelConcurrencyButtonText))]
+    [NotifyPropertyChangedFor(nameof(ConfirmConcurrencyButtonText))]
+    [NotifyPropertyChangedFor(nameof(ConcurrencyWarningMessage))]
+    [NotifyPropertyChangedFor(nameof(MaxProcessorCount))]
+    private bool _isGpuAccelerated;
+
+    public string ConcurrencyLabel => IsGpuAccelerated ? "GPU 并发流上限:" : "多核并行上限:";
+    public string ConcurrencyValueText => IsGpuAccelerated ? $"{MaxCores} 路并发" : $"{MaxCores} 核";
+    public string UsageLimitLabel => IsGpuAccelerated ? "GPU 算力占空比上限:" : "CPU 利用率上限:";
+    public string UsageLimitValueText => $"{CpuLimitPercent}%";
 
     [ObservableProperty]
     private int _imageRotationIndex = 0;
@@ -86,7 +134,7 @@ public partial class BatchOcrViewModel : ViewModelBase
         _ => ImageRotationMode.Auto
     };
 
-    public int MaxProcessorCount => Environment.ProcessorCount;
+    public int MaxProcessorCount => IsGpuAccelerated ? 8 : Math.Max(1, Environment.ProcessorCount);
 
     partial void OnExportTxtChanged(bool value) => SaveSettings();
     partial void OnExportXlsxChanged(bool value) => SaveSettings();
@@ -98,11 +146,86 @@ public partial class BatchOcrViewModel : ViewModelBase
     partial void OnUseOriginalFolderChanged(bool value) => SaveSettings();
     partial void OnCustomOutputDirChanged(string value) => SaveSettings();
 
-    partial void OnMaxCoresChanged(int value)
+    partial void OnMaxCoresChanged(int oldValue, int newValue)
     {
+        if (_isLoadingSettings || _isAdjustingCoresInternally) return;
+
+        // 仅在 GPU 模式且并发流大于 1 且未确认时弹出警告拦截；CPU 模式下不弹窗，直接生效
+        if (IsGpuAccelerated && newValue > 1 && !_concurrencyWarningConfirmed)
+        {
+            PendingMaxCores = newValue;
+            OnPropertyChanged(nameof(ConcurrencyWarningTitle));
+            OnPropertyChanged(nameof(ConcurrencyWarningMessage));
+            OnPropertyChanged(nameof(CancelConcurrencyButtonText));
+            OnPropertyChanged(nameof(ConfirmConcurrencyButtonText));
+            IsConcurrencyWarningOpen = true;
+            return;
+        }
+
+        if (IsGpuAccelerated && newValue <= 1)
+        {
+            _concurrencyWarningConfirmed = false;
+        }
+
         if (IsProcessing)
         {
-            _processor.UpdateCpuSettings(value, CpuLimitPercent);
+            _processor.UpdateCpuSettings(newValue, CpuLimitPercent);
+        }
+        SaveSettings();
+    }
+
+    [RelayCommand]
+    public void ConfirmConcurrencyWarning()
+    {
+        IsConcurrencyWarningOpen = false;
+        _concurrencyWarningConfirmed = true;
+
+        _isAdjustingCoresInternally = true;
+        MaxCores = PendingMaxCores;
+        _isAdjustingCoresInternally = false;
+        OnPropertyChanged(nameof(MaxCores));
+        OnPropertyChanged(nameof(ConcurrencyValueText));
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            _isAdjustingCoresInternally = true;
+            MaxCores = PendingMaxCores;
+            _isAdjustingCoresInternally = false;
+            OnPropertyChanged(nameof(MaxCores));
+            OnPropertyChanged(nameof(ConcurrencyValueText));
+        }, DispatcherPriority.Render);
+
+        if (IsProcessing)
+        {
+            _processor.UpdateCpuSettings(MaxCores, CpuLimitPercent);
+        }
+        SaveSettings();
+    }
+
+    [RelayCommand]
+    public void CancelConcurrencyWarning()
+    {
+        IsConcurrencyWarningOpen = false;
+        _concurrencyWarningConfirmed = false;
+
+        _isAdjustingCoresInternally = true;
+        MaxCores = 1;
+        _isAdjustingCoresInternally = false;
+        OnPropertyChanged(nameof(MaxCores));
+        OnPropertyChanged(nameof(ConcurrencyValueText));
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            _isAdjustingCoresInternally = true;
+            MaxCores = 1;
+            _isAdjustingCoresInternally = false;
+            OnPropertyChanged(nameof(MaxCores));
+            OnPropertyChanged(nameof(ConcurrencyValueText));
+        }, DispatcherPriority.Render);
+
+        if (IsProcessing)
+        {
+            _processor.UpdateCpuSettings(1, CpuLimitPercent);
         }
         SaveSettings();
     }
@@ -130,7 +253,14 @@ public partial class BatchOcrViewModel : ViewModelBase
         s.BatchSuffixText = SuffixText;
         s.BatchUseOriginalFolder = UseOriginalFolder;
         s.BatchCustomOutputDir = CustomOutputDir;
-        s.BatchMaxCores = MaxCores;
+        if (IsGpuAccelerated)
+        {
+            s.BatchGpuStreams = MaxCores;
+        }
+        else
+        {
+            s.BatchMaxCores = MaxCores;
+        }
         s.BatchCpuLimitPercent = CpuLimitPercent;
         _settingsService.Save(s);
     }
@@ -209,12 +339,101 @@ public partial class BatchOcrViewModel : ViewModelBase
             ? Path.Combine(defaultDocDir, "ShawMuOCR_Export")
             : s.BatchCustomOutputDir;
 
-        MaxCores = Math.Clamp(s.BatchMaxCores, 1, Environment.ProcessorCount);
+        UpdateSchedulerDeviceState(s);
+        if (IsGpuAccelerated)
+        {
+            MaxCores = Math.Clamp(s.BatchGpuStreams, 1, 8);
+            if (MaxCores > 1)
+            {
+                _concurrencyWarningConfirmed = true;
+            }
+        }
+        else
+        {
+            MaxCores = Math.Clamp(s.BatchMaxCores, 1, Environment.ProcessorCount);
+            _concurrencyWarningConfirmed = false;
+        }
         CpuLimitPercent = Math.Clamp(s.BatchCpuLimitPercent, 10, 100);
         _isLoadingSettings = false;
 
+        _settingsService.SettingsChanged += OnSettingsChanged;
         Items.CollectionChanged += (_, _) => UpdateCounters();
         AddLog("就绪：支持批量导入图片/PDF或拖拽文件夹，加入队列后默认自动勾选");
+    }
+
+    private void OnSettingsChanged(AppSettings newSettings)
+    {
+        Dispatcher.UIThread.Post(() => UpdateSchedulerDeviceState(newSettings));
+    }
+
+    private void UpdateSchedulerDeviceState(AppSettings s)
+    {
+        string backend = (s.OcrBackend ?? "Auto").Trim();
+        bool isGpu = false;
+        string? gpuDeviceName = null;
+        if (backend.Equals("GPU", StringComparison.OrdinalIgnoreCase))
+        {
+            isGpu = true;
+            try
+            {
+                var probe = ShawMuOCR.OCR.PaddleOcrV6Engine.ProbeBackendInfo();
+                gpuDeviceName = probe.GpuDeviceName;
+            }
+            catch { }
+        }
+        else if (backend.Equals("Auto", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var probe = ShawMuOCR.OCR.PaddleOcrV6Engine.ProbeBackendInfo();
+                isGpu = probe.AutoSelectsGpu;
+                gpuDeviceName = probe.GpuDeviceName;
+            }
+            catch { }
+        }
+
+        bool oldIsGpu = IsGpuAccelerated;
+        IsGpuAccelerated = isGpu;
+        if (isGpu)
+        {
+            DeviceBadgeText = "🚀 GPU 硬件加速 (Vulkan)";
+            SchedulerTitle = "🚀 GPU 推理调度与并发控制";
+            SchedulerSummaryText = !string.IsNullOrWhiteSpace(gpuDeviceName)
+                ? $"设备: {gpuDeviceName} (默认 1 路并发 / 上限 8 路)"
+                : "当前跟随系统设置：启用纯 C# Vulkan GPU 加速调度 (默认 1 路并发 / 上限 8 路)";
+            if (!IsProcessing && CpuUsageText == "CPU: 0%")
+            {
+                CpuUsageText = "GPU: 就绪";
+            }
+        }
+        else
+        {
+            DeviceBadgeText = "⚡ CPU 多核调度 (AVX2)";
+            SchedulerTitle = "⚡ CPU 调度与性能控制";
+            SchedulerSummaryText = $"本机共 {Environment.ProcessorCount} 逻辑核 (默认 {Math.Max(1, Environment.ProcessorCount / 2)} 核 / 上限 {Environment.ProcessorCount} 核)";
+            if (!IsProcessing && CpuUsageText == "GPU: 就绪")
+            {
+                CpuUsageText = "CPU: 0%";
+            }
+        }
+
+        if (oldIsGpu != isGpu && !_isLoadingSettings)
+        {
+            _isAdjustingCoresInternally = true;
+            if (isGpu)
+            {
+                MaxCores = Math.Clamp(s.BatchGpuStreams, 1, 8);
+                _concurrencyWarningConfirmed = MaxCores > 1;
+            }
+            else
+            {
+                MaxCores = Math.Clamp(s.BatchMaxCores, 1, Environment.ProcessorCount);
+                _concurrencyWarningConfirmed = false;
+            }
+            _isAdjustingCoresInternally = false;
+            OnPropertyChanged(nameof(MaxCores));
+            OnPropertyChanged(nameof(ConcurrencyValueText));
+        }
     }
 
     public void AddLog(string message)
@@ -372,8 +591,12 @@ public partial class BatchOcrViewModel : ViewModelBase
         }
 
         UpdateCounters();
-        StatusMessage = $"正在批量转换 (并发数: {MaxCores}, CPU限流: {CpuLimitPercent}%)...";
-        AddLog($"🚀 开始批量转换: 共 {targetItems.Count} 项 | 并发: {MaxCores}核 | CPU限流: {CpuLimitPercent}%");
+        StatusMessage = IsGpuAccelerated
+            ? $"正在批量转换 (GPU并发: {MaxCores}路, 占空比限流: {CpuLimitPercent}%)..."
+            : $"正在批量转换 (CPU并发: {MaxCores}核, CPU限流: {CpuLimitPercent}%)...";
+        AddLog(IsGpuAccelerated
+            ? $"🚀 开始批量转换: 共 {targetItems.Count} 项 | GPU并发: {MaxCores}路 | 占空比限流: {CpuLimitPercent}%"
+            : $"🚀 开始批量转换: 共 {targetItems.Count} 项 | CPU并发: {MaxCores}核 | CPU限流: {CpuLimitPercent}%");
         StartCpuMonitoring();
 
         var totalSw = Stopwatch.StartNew();
@@ -619,12 +842,14 @@ public partial class BatchOcrViewModel : ViewModelBase
                 if (wallTimeDeltaMs > 0)
                 {
                     double cpuPercent = Math.Clamp((procTimeDeltaMs / wallTimeDeltaMs) * 100.0, 0, 100);
-                    CpuUsageText = $"CPU: {cpuPercent:F0}%";
+                    CpuUsageText = IsGpuAccelerated
+                        ? $"GPU 推理 · CPU: {cpuPercent:F0}%"
+                        : $"CPU: {cpuPercent:F0}%";
                 }
             }
             catch
             {
-                CpuUsageText = "CPU: --";
+                CpuUsageText = IsGpuAccelerated ? "GPU: 运行中" : "CPU: --";
             }
         };
         _cpuMonitorTimer.Start();
@@ -634,7 +859,7 @@ public partial class BatchOcrViewModel : ViewModelBase
     {
         _cpuMonitorTimer?.Stop();
         _cpuMonitorTimer = null;
-        CpuUsageText = "CPU: 0%";
+        CpuUsageText = IsGpuAccelerated ? "GPU: 就绪" : "CPU: 0%";
     }
 
     #endregion

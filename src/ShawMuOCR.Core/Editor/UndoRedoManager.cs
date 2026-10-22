@@ -1,3 +1,5 @@
+using SkiaSharp;
+
 namespace ShawMuOCR.Core.Editor;
 
 public interface IEditorCommand
@@ -86,6 +88,86 @@ public sealed class MoveElementCommand : IEditorCommand
     public void Undo()
     {
         _element.MoveBy(-_dx, -_dy);
+    }
+}
+
+public sealed class TransformElementCommand : IEditorCommand
+{
+    private readonly IImageElement _element;
+    private readonly IImageElement _before;
+    private readonly IImageElement _after;
+
+    public TransformElementCommand(IImageElement element, IImageElement before, IImageElement after)
+    {
+        _element = element;
+        _before = before;
+        _after = after;
+    }
+
+    public void Execute()
+    {
+        _element.Rotation = _after.Rotation;
+        _element.Resize(_after.BoundingBox);
+    }
+
+    public void Undo()
+    {
+        _element.Rotation = _before.Rotation;
+        _element.Resize(_before.BoundingBox);
+    }
+}
+
+public sealed class ClearAllElementsCommand : IEditorCommand
+{
+    private readonly IList<IImageElement> _list;
+    private readonly List<IImageElement> _snapshot;
+
+    public ClearAllElementsCommand(IList<IImageElement> list)
+    {
+        _list = list;
+        _snapshot = new List<IImageElement>(list);
+    }
+
+    public void Execute()
+    {
+        _list.Clear();
+    }
+
+    public void Undo()
+    {
+        _list.Clear();
+        foreach (var item in _snapshot)
+        {
+            _list.Add(item);
+        }
+    }
+}
+
+public sealed class CropDocumentCommand : IEditorCommand
+{
+    private readonly ImageDocument _doc;
+    private readonly ShawMuOCR.Core.OCR.OcrImage _oldImage;
+    private readonly ShawMuOCR.Core.OCR.OcrImage _newImage;
+    private readonly List<IImageElement> _oldElements;
+    private readonly List<IImageElement> _newElements;
+
+    public CropDocumentCommand(ImageDocument doc, ShawMuOCR.Core.OCR.OcrImage newImage, List<IImageElement> newElements)
+    {
+        _doc = doc;
+        _oldImage = doc.OriginalImage;
+        _newImage = newImage;
+        _oldElements = new List<IImageElement>(doc.Elements);
+        _newElements = newElements;
+    }
+
+    public void Execute()
+    {
+        _doc.SetImageAndElements(_newImage, _newElements);
+    }
+
+    public void Undo()
+    {
+        _doc.SetImageAndElements(_oldImage, _oldElements);
     }
 }
 

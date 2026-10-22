@@ -1,7 +1,9 @@
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading;
 
 namespace ShawMuOCR.Services.Http;
 
@@ -17,7 +19,19 @@ public static class HttpMultipartParser
         public Dictionary<string, string> FormFields { get; } = new(StringComparer.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// 默认请求体上限（64MB），仅用于兼容旧调用点。
+    /// </summary>
+    private const long DefaultMaxBytes = 64L * 1024 * 1024;
+
     public static ParseResult? Parse(Stream stream, string? contentType)
+        => Parse(stream, contentType, DefaultMaxBytes, CancellationToken.None);
+
+    /// <summary>
+    /// 解析 Multipart 请求体，并对读取总量设置硬上限，防止超大请求耗尽内存。
+    /// </summary>
+    /// <exception cref="PayloadTooLargeException">累计读取量超过 <paramref name="maxBytes"/> 时抛出</exception>
+    public static ParseResult? Parse(Stream stream, string? contentType, long maxBytes, CancellationToken cancellationToken = default)
     {
         if (stream == null || string.IsNullOrWhiteSpace(contentType))
         {
@@ -31,12 +45,35 @@ public static class HttpMultipartParser
         }
 
         byte[] boundaryBytes = Encoding.ASCII.GetBytes("--" + boundary);
-        using var ms = new MemoryStream();
-        stream.CopyTo(ms);
-        byte[] buffer = ms.ToArray();
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(81_920);
+        byte[] rawBytes;
+        using (var ms = new MemoryStream())
+        {
+            try
+            {
+                long total = 0;
+                int read;
+                while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    total += read;
+                    if (total > maxBytes)
+                    {
+                        throw new PayloadTooLargeException(maxBytes, total);
+                    }
+                    ms.Write(buffer, 0, read);
+                }
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            rawBytes = ms.ToArray();
+        }
 
         var result = new ParseResult();
-        ReadOnlySpan<byte> data = buffer;
+        ReadOnlySpan<byte> data = rawBytes;
 
         int searchIndex = 0;
         while (searchIndex < data.Length)

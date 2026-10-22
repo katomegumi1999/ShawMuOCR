@@ -135,6 +135,32 @@ public class ModelMemoryDiagnosticsTests
     }
 
     [Fact]
+    public async Task AboutViewModel_CopyWebsiteUrl_CopiesToClipboard()
+    {
+        var settingsService = new FakeSettingsService();
+        var diag = new ModelMemoryDiagnosticsService(settingsService);
+        var clipboard = new FakeClipboardService();
+        using var vm = new AboutViewModel(diag, clipboard);
+
+        await vm.CopyWebsiteUrlAsync();
+        Assert.Equal("https://www.23771139.xyz/ShawMuOCR/", clipboard.CopiedText);
+        Assert.Contains("已复制", vm.StatusMessage);
+    }
+
+    [Fact]
+    public async Task AboutViewModel_CopyBilibiliUrl_CopiesToClipboard()
+    {
+        var settingsService = new FakeSettingsService();
+        var diag = new ModelMemoryDiagnosticsService(settingsService);
+        var clipboard = new FakeClipboardService();
+        using var vm = new AboutViewModel(diag, clipboard);
+
+        await vm.CopyBilibiliUrlAsync();
+        Assert.Equal("https://space.bilibili.com/192158726", clipboard.CopiedText);
+        Assert.Contains("已复制", vm.StatusMessage);
+    }
+
+    [Fact]
     public void AppSettings_AngleDetectionAndMaxSideLen_DefaultsAndClone()
     {
         var settings = new AppSettings();

@@ -20,7 +20,7 @@
   <a href="https://learn.microsoft.com/dotnet/core/deploying/native-aot/"><img src="https://img.shields.io/badge/Publish-Native%20AOT%20Ready-success" alt="Native AOT" /></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg" alt="License: MIT" /></a>
   <a href="https://www.microsoft.com/windows"><img src="https://img.shields.io/badge/Platform-Windows%2010%20%2F%2011%20(x64)-0078D6?logo=windows&logoColor=white" alt="Windows" /></a>
-  <a href="tests/ShawMuOCR.Tests"><img src="https://img.shields.io/badge/Tests-174%20Passing-brightgreen" alt="174 Tests Passing" /></a>
+  <a href="tests/ShawMuOCR.Tests"><img src="https://img.shields.io/badge/Tests-247%20Passing-brightgreen" alt="247 Tests Passing" /></a>
 </p>
 
 ---
@@ -68,7 +68,7 @@
 
 ### 4. 🚀 批量 OCR 转换与 HTTP API 服务
 - **批量 OCR 转换 (Batch OCR)**：支持多文件、多文件夹批量导入图片与多页 PDF，支持排队并行处理，导出 TXT/JSON/Markdown 或一键复制；
-- **局域网 HTTP API 服务 (Http Api Server)**：内置轻量 HTTP 服务器，支持标准 RESTful POST 请求，便于外部脚本、自动化流程或第三方软件联动调用。
+- **局域网 HTTP API 服务 (Http Api Server)**：内置轻量 HTTP 服务器，支持标准 RESTful POST 请求，便于外部脚本、自动化流程或第三方软件联动调用；局域网模式强制 Bearer 令牌鉴权，单请求体 20MB 上限、并发超限快速 429，且不接受服务端本地文件路径。
 
 ### 5. 📋 跨设备剪贴板同步与协同 (MuClip)
 - **纯 Rust 高性能底层驱动** (`Libs/x64/muclip_core.dll`)；
@@ -91,7 +91,7 @@
 | **截图复制** | `Alt + X` | 唤起全屏框选，直接将选中截图复制入剪贴板 |
 | **截图标注** | `Alt + C` | 唤起截图标注编辑器，涂鸦批注、保存或钉在桌面 |
 | **选区翻译** | `Alt + T` | 框选屏幕段落，唤起随动浮窗就地进行双语翻译 |
-| **OCR 弹窗** | `Alt + D` | 框选屏幕区域，识别结果在悬浮窗中展示，不自动复制 |
+| **OCR 窗格** | `Alt + D` | 框选屏幕区域，识别结果在悬浮窗格中展示，不自动复制 |
 | **常用语快速面板** | `Ctrl + ~` | 唤起 MuClip 常用语面板，单击或按键即刻粘贴 |
 
 > 💡 **提示**：所有快捷键均可在【系统设置】中自由修改或清空禁用（输入 `Backspace` 清空）。
@@ -133,7 +133,7 @@ ShawMuOCR
 │   └── agents.md            # AI 协同开发与代码维护指南 (必读)
 │
 └── tests/ShawMuOCR.Tests (自动化单元测试套件)
-    └── 174 项涵盖 OCR 推理、GPU/CPU 引擎、翻译拦截、截图标注图层、自动保存与 MuClip 握手等全绿测试
+    └── 247 项涵盖 OCR 推理、GPU/CPU 引擎、翻译拦截、截图标注图层、自动保存与 MuClip 握手等全绿测试
 ```
 
 ---
@@ -160,7 +160,7 @@ dotnet run -c Release
 
 ### 3. 执行自动化单元测试
 ```bash
-# 执行全量 174 项单元测试（含推理速度基准与网络配对测试）
+# 执行全量 247 项单元测试（含推理速度基准与网络配对测试）
 dotnet test
 ```
 
@@ -193,7 +193,7 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
 ## 🤝 贡献与开发者文档
 
 - 开发者与 AI 协作规范请参阅：**[docs/agents.md](docs/agents.md)**
-- 欢迎提交 Issue 与 Pull Request！请确保提交前执行 `dotnet test` 并保证 174 项测试全部通过。
+- 欢迎提交 Issue 与 Pull Request！请确保提交前执行 `dotnet test` 并保证 247 项测试全部通过。
 
 ---
 

@@ -21,6 +21,12 @@ public partial class MuClipPhraseItem : ObservableObject
     [ObservableProperty]
     private bool _isCopied;
 
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ItemOpacity))]
+    private bool _isDragging;
+
+    public double ItemOpacity => IsDragging ? 0.45 : 1.0;
+
     public static MuClipPhraseItem FromRecord(PhraseRecord rec)
     {
         string ctype = !string.IsNullOrWhiteSpace(rec.ContentType) ? rec.ContentType : "plain_text";

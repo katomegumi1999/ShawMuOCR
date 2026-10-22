@@ -30,6 +30,10 @@ internal static unsafe partial class MuClipNative
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial IntPtr CoreNew(byte* dbPath);
 
+    [LibraryImport(DllName, EntryPoint = "muclip_core_new_with_key")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreNewWithKey(byte* dbPath, byte* keyHex);
+
     [LibraryImport(DllName, EntryPoint = "muclip_core_new_in_memory")]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial IntPtr CoreNewInMemory();
@@ -102,6 +106,10 @@ internal static unsafe partial class MuClipNative
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial int CoreUpdatePhraseUsed(IntPtr handle, long id);
 
+    [LibraryImport(DllName, EntryPoint = "muclip_core_reorder_phrases")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial int CoreReorderPhrases(IntPtr handle, long* ids, nuint count);
+
     [LibraryImport(DllName, EntryPoint = "muclip_core_set_config")]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial int CoreSetConfig(IntPtr handle, byte* key, byte* val);
@@ -109,6 +117,30 @@ internal static unsafe partial class MuClipNative
     [LibraryImport(DllName, EntryPoint = "muclip_core_get_config")]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial IntPtr CoreGetConfig(IntPtr handle, byte* key);
+
+    [LibraryImport(DllName, EntryPoint = "muclip_core_add_phrase_rule")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreAddPhraseRule(IntPtr handle, byte* ruleJson);
+
+    [LibraryImport(DllName, EntryPoint = "muclip_core_delete_phrase_rule")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial int CoreDeletePhraseRule(IntPtr handle, byte* id);
+
+    [LibraryImport(DllName, EntryPoint = "muclip_core_query_phrase_rules")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreQueryPhraseRules(IntPtr handle, long phraseId);
+
+    [LibraryImport(DllName, EntryPoint = "muclip_core_save_template")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreSaveTemplate(IntPtr handle, byte* templateJson);
+
+    [LibraryImport(DllName, EntryPoint = "muclip_core_delete_template")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial int CoreDeleteTemplate(IntPtr handle, byte* id);
+
+    [LibraryImport(DllName, EntryPoint = "muclip_core_query_templates")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreQueryTemplates(IntPtr handle);
 
     // -------------------------------------------------------------------------
     // MuClip P2P Sync Engine

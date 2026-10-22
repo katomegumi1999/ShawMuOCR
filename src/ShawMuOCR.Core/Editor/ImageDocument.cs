@@ -8,13 +8,53 @@ public sealed class ImageDocument : IDisposable
 {
     private bool _disposed;
 
-    public OcrImage OriginalImage { get; }
+    public OcrImage OriginalImage { get; private set; }
     public List<IImageElement> Elements { get; } = new();
     public UndoRedoManager UndoRedo { get; } = new();
 
     public ImageDocument(OcrImage originalImage)
     {
         OriginalImage = originalImage ?? throw new ArgumentNullException(nameof(originalImage));
+    }
+
+    public void SetImageAndElements(OcrImage image, List<IImageElement> elements)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        OriginalImage = image;
+        Elements.Clear();
+        Elements.AddRange(elements);
+    }
+
+    public void Crop(SKRectI cropRect)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        int x = Math.Clamp(cropRect.Left, 0, OriginalImage.Width - 1);
+        int y = Math.Clamp(cropRect.Top, 0, OriginalImage.Height - 1);
+        int w = Math.Clamp(cropRect.Width, 1, OriginalImage.Width - x);
+        int h = Math.Clamp(cropRect.Height, 1, OriginalImage.Height - y);
+
+        var newBitmap = new SKBitmap(w, h, OriginalImage.Bitmap.ColorType, OriginalImage.Bitmap.AlphaType);
+        using (var canvas = new SKCanvas(newBitmap))
+        {
+            canvas.DrawBitmap(OriginalImage.Bitmap, new SKRect(x, y, x + w, y + h), new SKRect(0, 0, w, h), SKSamplingOptions.Default);
+        }
+        var newImage = new OcrImage(newBitmap);
+
+        // 调整既有图元相对位置
+        var newElements = new List<IImageElement>();
+        var cropBoundary = new SKRect(0, 0, w, h);
+        foreach (var elem in Elements)
+        {
+            var cloned = elem.Clone();
+            cloned.MoveBy(-x, -y);
+            if (cloned.BoundingBox.IntersectsWith(cropBoundary))
+            {
+                newElements.Add(cloned);
+            }
+        }
+
+        UndoRedo.Execute(new CropDocumentCommand(this, newImage, newElements));
     }
 
     public void AddElement(IImageElement element)
@@ -35,14 +75,59 @@ public sealed class ImageDocument : IDisposable
         UndoRedo.Execute(new MoveElementCommand(element, dx, dy));
     }
 
-    public IImageElement? HitTest(SKPoint point)
+    public void TransformElement(IImageElement element, IImageElement before, IImageElement after)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        UndoRedo.Execute(new TransformElementCommand(element, before, after));
+    }
+
+    public void ClearElements()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (Elements.Count > 0)
+        {
+            UndoRedo.Execute(new ClearAllElementsCommand(Elements));
+        }
+    }
+
+    public IImageElement? HitTest(SKPoint point, float radius = 0f)
     {
         // 从最上层（最后绘制的图元）向下倒序探测
         for (int i = Elements.Count - 1; i >= 0; i--)
         {
-            if (Elements[i].HitTest(point))
+            var elem = Elements[i];
+            if (elem.HitTest(point))
             {
-                return Elements[i];
+                return elem;
+            }
+
+            if (radius > 0f)
+            {
+                // 若指定了擦除半径，在半径圆形范围内多点采样碰撞探测
+                float r = radius;
+                float diag = r * 0.7071f;
+                SKPoint[] samples = [
+                    new(point.X + r, point.Y),
+                    new(point.X - r, point.Y),
+                    new(point.X, point.Y + r),
+                    new(point.X, point.Y - r),
+                    new(point.X + diag, point.Y + diag),
+                    new(point.X - diag, point.Y - diag),
+                    new(point.X + diag, point.Y - diag),
+                    new(point.X - diag, point.Y + diag),
+                    new(point.X + r * 0.5f, point.Y),
+                    new(point.X - r * 0.5f, point.Y),
+                    new(point.X, point.Y + r * 0.5f),
+                    new(point.X, point.Y - r * 0.5f)
+                ];
+
+                foreach (var sample in samples)
+                {
+                    if (elem.HitTest(sample))
+                    {
+                        return elem;
+                    }
+                }
             }
         }
         return null;
@@ -51,22 +136,22 @@ public sealed class ImageDocument : IDisposable
     /// <summary>
     /// 将原始图片与所有编辑图元合成渲染输出为全新的 OcrImage（100% 原始尺寸）
     /// </summary>
-    public OcrImage RenderToBitmap() => RenderToBitmap(OriginalImage.Width, OriginalImage.Height);
+    public OcrImage RenderToBitmap(IImageElement? extraPreviewElement = null, IImageElement? skipElement = null) => RenderToBitmap(OriginalImage.Width, OriginalImage.Height, extraPreviewElement, skipElement);
 
     /// <summary>
     /// 按指定缩放比例渲染输出图片
     /// </summary>
-    public OcrImage RenderToBitmap(float scale)
+    public OcrImage RenderToBitmap(float scale, IImageElement? extraPreviewElement = null, IImageElement? skipElement = null)
     {
         int targetW = Math.Max(1, (int)Math.Round(OriginalImage.Width * scale));
         int targetH = Math.Max(1, (int)Math.Round(OriginalImage.Height * scale));
-        return RenderToBitmap(targetW, targetH);
+        return RenderToBitmap(targetW, targetH, extraPreviewElement, skipElement);
     }
 
     /// <summary>
     /// 按指定目标宽高渲染输出图片（矢量图元按比例无损重绘）
     /// </summary>
-    public OcrImage RenderToBitmap(int targetWidth, int targetHeight)
+    public OcrImage RenderToBitmap(int targetWidth, int targetHeight, IImageElement? extraPreviewElement = null, IImageElement? skipElement = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -89,11 +174,19 @@ public sealed class ImageDocument : IDisposable
             // 1. 绘制底层原图，启用线性过滤保持缩放平滑
             canvas.DrawBitmap(OriginalImage.Bitmap, 0, 0, new SKSamplingOptions(SKFilterMode.Linear, SKMipmapMode.Linear));
 
-            // 2. 依次叠加渲染矢量图元
+            // 2. 在独立透明图层上合成矢量图元与擦除画笔 (Clear 混合模式可实时擦除要素并透出原图)
+            using var layerPaint = new SKPaint();
+            canvas.SaveLayer(layerPaint);
+
             foreach (var element in Elements)
             {
+                if (skipElement != null && ReferenceEquals(element, skipElement)) continue;
                 element.Render(canvas);
             }
+
+            extraPreviewElement?.Render(canvas);
+
+            canvas.Restore();
         }
 
         return new OcrImage(targetBitmap);

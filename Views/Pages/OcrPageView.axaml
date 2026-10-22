@@ -19,7 +19,7 @@
                     <!-- 状态 -->
                     <DockPanel Grid.Column="0" LastChildFill="True" Margin="0,0,12,0" VerticalAlignment="Center">
                         <TextBlock DockPanel.Dock="Left" Text="状态: " Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="12" VerticalAlignment="Center" />
-                        <TextBlock Text="{Binding StatusMessage}" FontWeight="Medium" FontSize="12"
+                        <TextBlock Text="{Binding StatusMessage}" FontSize="12"
                                    TextTrimming="CharacterEllipsis"
                                    ToolTip.Tip="{Binding StatusMessage}"
                                    VerticalAlignment="Center" />
@@ -42,13 +42,12 @@
 
                 <!-- 右侧快捷与文件操作按钮 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <!-- 核心操作 1: 截屏识别 -->
+                    <!-- 核心操作 1: 截屏识别 (无 emoji) -->
                     <Button Command="{Binding StartCaptureCommand}"
                             Classes="accent"
                             Padding="12,6"
                             ToolTip.Tip="框选屏幕任意区域进行文字识别">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="✂" FontSize="14" VerticalAlignment="Center" />
                             <TextBlock Text="截屏识别" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
                             <Border Background="#25FFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
                                     IsVisible="{Binding HasHotkey}">
@@ -57,26 +56,37 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 核心操作 2: 打开图片/PDF文件 -->
-                    <Button Command="{Binding OpenFileCommand}"
+                    <!-- 核心操作 2: OCR 窗格 (新增) -->
+                    <Button Command="{Binding StartOcrPopupCommand}"
                             Padding="12,6"
-                            ToolTip.Tip="打开本地图片或 PDF 文档进行文字识别">
+                            ToolTip.Tip="框选屏幕后在独立随动窗格中展示识别结果 (不自动复制)">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="📁" FontSize="13" VerticalAlignment="Center" />
-                            <TextBlock Text="打开图片/PDF" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="OCR 窗格" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <Border Background="#20888888" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding HasOcrPopupHotkey}">
+                                <TextBlock Text="{Binding CurrentOcrPopupHotkey}" FontSize="10" Opacity="0.85" />
+                            </Border>
                         </StackPanel>
                     </Button>
 
-                    <!-- 辅助操作 -->
+                    <!-- 核心操作 3: 打开文件 (改名并移除 emoji) -->
+                    <Button Command="{Binding OpenFileCommand}"
+                            Padding="12,6"
+                            ToolTip.Tip="打开本地图片或 PDF 文档进行文字识别">
+                        <TextBlock Text="打开文件" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                    </Button>
+
+                    <!-- 辅助操作: 复制全文 (移除 emoji) -->
+                    <Button Content="复制全文"
+                            Command="{Binding CopyTextCommand}"
+                            Padding="10,6"
+                            ToolTip.Tip="复制识别出的所有文字到剪贴板" />
+
+                    <!-- 辅助操作: 清空 -->
                     <Button Content="清空"
                             Command="{Binding ClearCommand}"
                             Padding="10,6"
                             ToolTip.Tip="清空预览图与识别文本" />
-
-                    <Button Content="📋 复制全文"
-                            Command="{Binding CopyTextCommand}"
-                            Padding="10,6"
-                            ToolTip.Tip="复制识别出的所有文字到剪贴板" />
                 </StackPanel>
             </Grid>
         </Border>
@@ -113,7 +123,7 @@
                                         VerticalAlignment="Center"
                                         ToolTip.Tip="将当前识别的截图另存为图片文件 (自动记忆上次保存路径与预估体积)" />
                             </StackPanel>
-                            <TextBlock DockPanel.Dock="Left" Text="图像/文档预览 (支持拖拽图片或 PDF 至此)" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Left" Text="图像/文档预览 (支持拖拽图片或 PDF 至此)" FontSize="12" VerticalAlignment="Center" />
                         </DockPanel>
                     </Border>
 
@@ -152,15 +162,102 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- 真实图片/PDF 预览 -->
-                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
-                                      VerticalScrollBarVisibility="Auto"
-                                      IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}">
-                            <Image Source="{Binding PreviewImage}"
-                                   Stretch="Uniform"
-                                   RenderOptions.BitmapInterpolationMode="HighQuality"
-                                   Margin="8" />
-                        </ScrollViewer>
+                        <!-- 真实图片/PDF 交互式无级平移与滚轮缩放视口 (移除固定横纵滚动条) -->
+                        <Panel x:Name="ImageViewportPanel"
+                               Background="Transparent"
+                               ClipToBounds="True"
+                               Cursor="Hand"
+                               IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               PointerWheelChanged="OnImageViewportPointerWheelChanged"
+                               PointerPressed="OnImageViewportPointerPressed"
+                               PointerMoved="OnImageViewportPointerMoved"
+                               PointerReleased="OnImageViewportPointerReleased">
+                            <!-- 图片渲染容器 (由 TransformGroup 驱动无级精准缩放与位置平移，保留原始分辨率绝不裁切) -->
+                            <Canvas x:Name="ImageContainerCanvas"
+                                    ClipToBounds="False"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center">
+                                <Canvas.RenderTransform>
+                                    <TransformGroup>
+                                        <ScaleTransform ScaleX="1" ScaleY="1" />
+                                        <TranslateTransform X="0" Y="0" />
+                                    </TransformGroup>
+                                </Canvas.RenderTransform>
+                                <Image x:Name="PreviewImageControl"
+                                       Source="{Binding PreviewImage}"
+                                       Stretch="Fill"
+                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            </Canvas>
+
+                            <!-- 底部悬浮快捷控制与缩放胶囊 (极简半透明、不挡画面) -->
+                            <Border HorizontalAlignment="Right"
+                                    VerticalAlignment="Bottom"
+                                    Margin="12"
+                                    Background="#CC1E1E1E"
+                                    BorderBrush="#35FFFFFF"
+                                    BorderThickness="1"
+                                    CornerRadius="18"
+                                    Padding="6,3"
+                                    BoxShadow="0 4 12 0 #40000000">
+                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                    <!-- 缩小 -->
+                                    <Button Classes="subtle"
+                                            Padding="6,3"
+                                            CornerRadius="12"
+                                            ToolTip.Tip="缩小 (也可直接向下滚动滚轮)"
+                                            Click="OnZoomOutClick">
+                                        <TextBlock Text="➖" FontSize="11" Foreground="#CCCCCC" />
+                                    </Button>
+
+                                    <!-- 缩放比例文字 (点击可重置为 100%) -->
+                                    <Button Classes="subtle"
+                                            Padding="6,3"
+                                            CornerRadius="4"
+                                            ToolTip.Tip="点击重置为 100% 原始尺寸"
+                                            Click="OnResetActualSizeClick">
+                                        <TextBlock x:Name="ZoomPercentTextBlock"
+                                                   Text="100%"
+                                                   FontSize="11"
+                                                   FontWeight="SemiBold"
+                                                   Foreground="White"
+                                                   VerticalAlignment="Center" />
+                                    </Button>
+
+                                    <!-- 放大 -->
+                                    <Button Classes="subtle"
+                                            Padding="6,3"
+                                            CornerRadius="12"
+                                            ToolTip.Tip="放大 (也可直接向上滚动滚轮)"
+                                            Click="OnZoomInClick">
+                                        <TextBlock Text="➕" FontSize="11" Foreground="#CCCCCC" />
+                                    </Button>
+
+                                    <Rectangle Width="1" Height="14" Fill="#30FFFFFF" Margin="2,0" VerticalAlignment="Center" />
+
+                                    <!-- 适应视图 -->
+                                    <Button Classes="subtle"
+                                            Padding="8,3"
+                                            CornerRadius="12"
+                                            ToolTip.Tip="适应窗口居中 (双击图片也可快速切换)"
+                                            Click="OnResetFitClick">
+                                        <TextBlock Text="⛶ 适应" FontSize="11" Foreground="#40A9FF" FontWeight="Medium" />
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- 左下角交互提示 (优雅小字，不打扰视觉) -->
+                            <Border HorizontalAlignment="Left"
+                                    VerticalAlignment="Bottom"
+                                    Margin="12"
+                                    Background="#801E1E1E"
+                                    CornerRadius="4"
+                                    Padding="8,3"
+                                    IsHitTestVisible="False">
+                                <TextBlock Text="🖱️ 滚轮缩放 • 按住拖拽平移 • 双击适应全图"
+                                           FontSize="10.5"
+                                           Foreground="#AAAAAA" />
+                            </Border>
+                        </Panel>
                     </Grid>
                 </Grid>
             </Border>
@@ -179,7 +276,7 @@
                     <Border Grid.Row="0" Padding="12,8"
                             Background="{DynamicResource SubtleFillColorSecondaryBrush}">
                         <DockPanel LastChildFill="True">
-                            <TextBlock DockPanel.Dock="Left" Text="识别文本 (可直接编辑修改)" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Left" Text="识别文本 (可直接编辑修改)" FontSize="12" VerticalAlignment="Center" />
                             <TextBlock DockPanel.Dock="Right"
                                        Text="{Binding CharCount, StringFormat='共 {0} 字符'}"
                                        FontSize="11"

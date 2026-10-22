@@ -9,8 +9,10 @@ public sealed class TextElement : IImageElement
     public float Y { get; set; }
     public string Text { get; set; } = string.Empty;
     public SKColor Color { get; set; } = new SKColor(229, 57, 53);
-    public float FontSize { get; set; } = 22f;
+    public float FontSize { get; set; } = 40f;
+    public float StrokeWidth { get; set; } = 4f;
     public bool IsBold { get; set; } = true;
+    public float Rotation { get; set; } = 0f;
 
     public SKRect BoundingBox
     {
@@ -21,11 +23,16 @@ public sealed class TextElement : IImageElement
                 return new SKRect(X - 4f, Y - 4f, X + 20f, Y + 24f);
             }
 
+            var weight = StrokeWidth <= 2.5f ? SKFontStyleWeight.Normal :
+                         (StrokeWidth <= 5f ? SKFontStyleWeight.SemiBold :
+                         (StrokeWidth <= 10f ? SKFontStyleWeight.Bold : SKFontStyleWeight.ExtraBold));
+            if (!IsBold) weight = SKFontStyleWeight.Normal;
+
             using var typeface = SKTypeface.FromFamilyName(
                 "Microsoft YaHei",
-                IsBold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
+                weight,
                 SKFontStyleWidth.Normal,
-                SKFontStyleSlant.Upright);
+                SKFontStyleSlant.Upright) ?? SKTypeface.Default;
             using var font = new SKFont(typeface, FontSize);
 
             var lines = Text.Split('\n');
@@ -38,8 +45,9 @@ public sealed class TextElement : IImageElement
                 if (w > maxW) maxW = w;
             }
 
+            float strokeExtra = StrokeWidth > 2f ? (StrokeWidth - 2f) * 0.3f : 0f;
             float totalH = lines.Length * lineH;
-            return new SKRect(X - 6f, Y - 4f, X + maxW + 12f, Y + totalH + 6f);
+            return new SKRect(X - 4f - strokeExtra, Y - 2f - strokeExtra, X + maxW + 8f + strokeExtra, Y + totalH + 4f + strokeExtra);
         }
     }
 
@@ -47,29 +55,38 @@ public sealed class TextElement : IImageElement
     {
         if (string.IsNullOrEmpty(Text)) return;
 
+        canvas.Save();
+        var box = BoundingBox;
+        if (Math.Abs(Rotation) > 0.01f)
+        {
+            canvas.RotateDegrees(Rotation, box.MidX, box.MidY);
+        }
+
+        var weight = StrokeWidth <= 2.5f ? SKFontStyleWeight.Normal :
+                     (StrokeWidth <= 5f ? SKFontStyleWeight.SemiBold :
+                     (StrokeWidth <= 10f ? SKFontStyleWeight.Bold : SKFontStyleWeight.ExtraBold));
+        if (!IsBold) weight = SKFontStyleWeight.Normal;
+
         using var typeface = SKTypeface.FromFamilyName(
             "Microsoft YaHei",
-            IsBold ? SKFontStyleWeight.Bold : SKFontStyleWeight.Normal,
+            weight,
             SKFontStyleWidth.Normal,
-            SKFontStyleSlant.Upright);
+            SKFontStyleSlant.Upright) ?? SKTypeface.Default;
         using var font = new SKFont(typeface, FontSize);
 
         var lines = Text.Split('\n');
         float lineH = FontSize * 1.25f;
         float curY = Y;
 
-        using var strokePaint = new SKPaint
-        {
-            Color = new SKColor(0, 0, 0, 180),
-            Style = SKPaintStyle.Stroke,
-            StrokeWidth = 2.5f,
-            IsAntialias = true
-        };
+        float strokeExtra = StrokeWidth > 2f ? (StrokeWidth - 2f) * 0.3f : 0f;
 
         using var fillPaint = new SKPaint
         {
             Color = Color,
-            Style = SKPaintStyle.Fill,
+            Style = strokeExtra > 0 ? SKPaintStyle.StrokeAndFill : SKPaintStyle.Fill,
+            StrokeWidth = strokeExtra,
+            StrokeJoin = SKStrokeJoin.Round,
+            StrokeCap = SKStrokeCap.Round,
             IsAntialias = true
         };
 
@@ -77,25 +94,37 @@ public sealed class TextElement : IImageElement
         {
             // Y 轴基线对齐：向下一个字符高度偏移行距
             float baselineY = curY + FontSize;
-
-            // 1. 细微黑边外发光，确保在黑白底色上都绝对清晰
-            canvas.DrawText(line, X, baselineY, SKTextAlign.Left, font, strokePaint);
-            // 2. 主体文字填充
             canvas.DrawText(line, X, baselineY, SKTextAlign.Left, font, fillPaint);
-
             curY += lineH;
         }
+
+        canvas.Restore();
     }
 
     public bool HitTest(SKPoint point)
     {
-        return BoundingBox.Contains(point);
+        var box = BoundingBox;
+        if (Math.Abs(Rotation) > 0.01f)
+        {
+            point = GeometryHelper.RotatePoint(point, new SKPoint(box.MidX, box.MidY), -Rotation);
+        }
+        return box.Contains(point);
     }
 
     public void MoveBy(float dx, float dy)
     {
         X += dx;
         Y += dy;
+    }
+
+    public void Resize(SKRect newBounds)
+    {
+        var old = BoundingBox;
+        if (old.Width <= 0.001f || old.Height <= 0.001f) return;
+        float scale = Math.Max(newBounds.Width / old.Width, newBounds.Height / old.Height);
+        FontSize = Math.Max(5f, FontSize * scale);
+        X = newBounds.Left;
+        Y = newBounds.Top;
     }
 
     public IImageElement Clone()
@@ -108,7 +137,9 @@ public sealed class TextElement : IImageElement
             Text = Text,
             Color = Color,
             FontSize = FontSize,
-            IsBold = IsBold
+            StrokeWidth = StrokeWidth,
+            IsBold = IsBold,
+            Rotation = Rotation
         };
     }
 }

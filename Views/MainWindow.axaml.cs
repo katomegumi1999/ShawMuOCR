@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using Avalonia.Controls;
@@ -6,12 +7,16 @@ using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
 using ShawMuOCR.Core.Hotkey;
 using ShawMuOCR.ViewModels;
+using ShawMuOCR.Views.Pages;
+using ShawMuOCR.Views.Clipboard;
 
 namespace ShawMuOCR.Views;
 
 public partial class MainWindow : Window
 {
     private bool _isExplicitExit;
+    private readonly MainViewModel? _viewModel;
+    private readonly HashSet<AppNavPage> _loadedPages = new();
 
     public MainWindow()
     {
@@ -20,7 +25,16 @@ public partial class MainWindow : Window
 
     public MainWindow(MainViewModel viewModel) : this()
     {
+        _viewModel = viewModel;
         DataContext = viewModel;
+
+        _viewModel.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(MainViewModel.CurrentPage))
+            {
+                EnsurePageLoaded(_viewModel.CurrentPage);
+            }
+        };
 
         Closing += OnClosing;
 
@@ -30,6 +44,73 @@ public partial class MainWindow : Window
         // 全窗口文件/文件夹拖拽支持：使用 Bubble + handledEventsToo 穿透所有子控件（包括 TextBox、侧边栏、标题栏、状态栏等）
         AddHandler(DragDrop.DragOverEvent, OnWindowDragOver, RoutingStrategies.Bubble, handledEventsToo: true);
         AddHandler(DragDrop.DropEvent, OnWindowDrop, RoutingStrategies.Bubble, handledEventsToo: true);
+    }
+
+    /// <summary>
+    /// 按需动态渲染指定子页面，仅在首次切换到该页面时实例化 View 并装配 DataContext，彻底消除启动阻塞
+    /// </summary>
+    public void EnsurePageLoaded(AppNavPage page)
+    {
+        if (_loadedPages.Contains(page) || _viewModel == null) return;
+        _loadedPages.Add(page);
+
+        switch (page)
+        {
+            case AppNavPage.Ocr:
+                if (OcrPageHost != null && OcrPageHost.Children.Count == 0)
+                    OcrPageHost.Children.Add(new OcrPageView { DataContext = _viewModel });
+                break;
+            case AppNavPage.Batch:
+                if (BatchPageHost != null && BatchPageHost.Children.Count == 0)
+                    BatchPageHost.Children.Add(new BatchOcrPageView { DataContext = _viewModel.BatchVm });
+                break;
+            case AppNavPage.HttpApi:
+                if (HttpApiPageHost != null && HttpApiPageHost.Children.Count == 0)
+                    HttpApiPageHost.Children.Add(new HttpApiPageView { DataContext = _viewModel.HttpApiVm });
+                break;
+            case AppNavPage.Capture:
+                if (CapturePageHost != null && CapturePageHost.Children.Count == 0)
+                    CapturePageHost.Children.Add(new CapturePageView { DataContext = _viewModel });
+                break;
+            case AppNavPage.Translate:
+                if (TranslatePageHost != null && TranslatePageHost.Children.Count == 0)
+                    TranslatePageHost.Children.Add(new TranslatePageView { DataContext = _viewModel.TranslateVm });
+                break;
+            case AppNavPage.Clipboard:
+                if (ClipboardPageHost != null && ClipboardPageHost.Children.Count == 0)
+                    ClipboardPageHost.Children.Add(new ClipboardView { DataContext = _viewModel.ClipboardVm });
+                break;
+            case AppNavPage.Theme:
+                if (ThemePageHost != null && ThemePageHost.Children.Count == 0)
+                    ThemePageHost.Children.Add(new ThemePageView { DataContext = _viewModel.ThemeVm });
+                break;
+            case AppNavPage.Settings:
+                if (SettingsPageHost != null && SettingsPageHost.Children.Count == 0)
+                    SettingsPageHost.Children.Add(new SettingsPageView { DataContext = _viewModel.SettingsVm });
+                break;
+            case AppNavPage.About:
+                if (AboutPageHost != null && AboutPageHost.Children.Count == 0)
+                    AboutPageHost.Children.Add(new AboutPageView { DataContext = _viewModel.AboutVm });
+                break;
+            case AppNavPage.Log:
+                if (LogPageHost != null && LogPageHost.Children.Count == 0)
+                    LogPageHost.Children.Add(new LogPageView { DataContext = _viewModel.LogVm });
+                break;
+        }
+    }
+
+    /// <summary>
+    /// 在主窗口完成首帧秒显后，于后台空闲帧平滑逐步预加载其余未呈现的页面，保证后续切换均为 0ms 瞬间响应
+    /// </summary>
+    public void PreloadRemainingPages()
+    {
+        foreach (var page in Enum.GetValues<AppNavPage>())
+        {
+            if (!_loadedPages.Contains(page))
+            {
+                EnsurePageLoaded(page);
+            }
+        }
     }
 
     private void OnWindowDragOver(object? sender, DragEventArgs e)
@@ -69,6 +150,30 @@ public partial class MainWindow : Window
         }
 
         if (directories.Count == 0 && files.Count == 0) return;
+
+        // 0. 如果当前在剪贴板页面（或文件传输界面）：将文件加入文件传输任务队列，绝不跳转至 OCR
+        if (vm.IsClipboardPage)
+        {
+            if (vm.ClipboardVm != null)
+            {
+                var allFiles = new List<string>(files);
+                foreach (var dir in directories)
+                {
+                    try
+                    {
+                        allFiles.AddRange(Directory.GetFiles(dir, "*", SearchOption.AllDirectories));
+                    }
+                    catch { }
+                }
+
+                if (allFiles.Count > 0)
+                {
+                    vm.ClipboardVm.OpenFileTransferView();
+                    vm.ClipboardVm.AddFilesToTransferQueue(allFiles);
+                }
+            }
+            return;
+        }
 
         // 1. 如果当前在批量转换页，或者拖入了文件夹/多个文件：直接加入批量转换队列（若不在批量页且拖入多个/文件夹则自动切到批量页）
         if (vm.CurrentPage == AppNavPage.Batch || directories.Count > 0 || files.Count > 1)
@@ -159,7 +264,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        // OCR 弹窗快捷键
+        // OCR 窗格快捷键
         if (HotkeyGesture.TryParse(vm.CurrentOcrPopupHotkey, out var ocrPopupGesture) &&
             mod == ocrPopupGesture.Modifiers && vk == ocrPopupGesture.VirtualKey)
         {
@@ -201,6 +306,10 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingOcrPopupHotkey)
             {
                 settingsVm.ClearOcrPopupHotkeyCommand.Execute(null);
+            }
+            else if (settingsVm.IsRecordingQuickNoteHotkey)
+            {
+                settingsVm.ClearQuickNoteHotkeyCommand.Execute(null);
             }
             else if (settingsVm.IsRecordingClipboardPanelHotkey)
             {
@@ -252,6 +361,10 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingOcrPopupHotkey)
             {
                 settingsVm.OnOcrPopupHotkeyRecorded(gesture);
+            }
+            else if (settingsVm.IsRecordingQuickNoteHotkey)
+            {
+                settingsVm.OnQuickNoteHotkeyRecorded(gesture);
             }
             else if (settingsVm.IsRecordingClipboardPanelHotkey)
             {

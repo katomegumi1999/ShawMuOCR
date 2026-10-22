@@ -365,6 +365,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         try
         {
+            // 在进入框选截屏的同时在后台异步预热标注窗口。用户框选通常耗时数百毫秒至数秒，此时间足以完成离屏预热就绪
+            Dispatcher.UIThread.Post(() => ScreenshotEditorWindow.Prewarm(_logger, "截图标注"), DispatcherPriority.Background);
+
             // 立即销毁未消失的气泡通知，避免二次截屏时被截入画面或阻挡框选视线
             ToastNotificationWindow.Dismiss();
 
@@ -375,18 +378,20 @@ public sealed class OcrCoordinator : IOcrCoordinator
             // 2. 唤起全屏选择遮罩交互，同时捕获裁剪图像与物理选区坐标
             var selection = await _selectionService.SelectRegionExAsync(fullScreenshot, virtualBounds);
 
-            fullScreenshot.Dispose();
-
             if (selection == null)
             {
+                fullScreenshot.Dispose();
                 SetState(OcrState.Idle, "截屏已取消");
                 return;
             }
 
             SetState(OcrState.Idle, "截图标注已打开");
 
-            // 3. 在 UI 线程打开截图标注编辑器（同时支持直接 OCR 与一键翻译）
-            await Dispatcher.UIThread.InvokeAsync(() =>
+            // 计算选区在全屏快照上的精确物理像素相对偏移量
+            var cropOffset = new ScreenPoint(selection.ScreenBounds.X - virtualBounds.X, selection.ScreenBounds.Y - virtualBounds.Y);
+
+            // 3. 在 UI 线程打开截图标注编辑器（将 fullScreenshot 的完整生命周期所有权交由编辑器闭环管理）
+            void ShowEditor()
             {
                 var editor = new ScreenshotEditorWindow(
                     selection.Image,
@@ -395,9 +400,21 @@ public sealed class OcrCoordinator : IOcrCoordinator
                     async (img, bounds) => await PushTranslationPipelineAsync(img, bounds),
                     _settingsService,
                     _logger,
-                    selection.ScreenBounds);
+                    selection.ScreenBounds,
+                    fullScreenshot: fullScreenshot,
+                    cropOffset: cropOffset);
                 editor.Show();
-            });
+                editor.Activate();
+            }
+
+            if (Dispatcher.UIThread.CheckAccess())
+            {
+                ShowEditor();
+            }
+            else
+            {
+                await Dispatcher.UIThread.InvokeAsync(ShowEditor, DispatcherPriority.Send);
+            }
         }
         catch (Exception ex)
         {
@@ -444,7 +461,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
             SetState(OcrState.Idle, "选区翻译已就绪");
 
             // 3. 执行数据流水线推送：浮窗 UI 保留不销毁重建，仅重新推送数据并重置位置
-            await PushTranslationPipelineAsync(selection.Image, selection.ScreenBounds);
+            await PushTranslationPipelineAsync(selection.Image, selection.ScreenBounds, selection.StartPoint);
 
             GC.Collect(2, GCCollectionMode.Optimized, false, false);
         }
@@ -483,20 +500,20 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
             if (selection == null)
             {
-                SetState(OcrState.Idle, "OCR 弹窗已取消");
+                SetState(OcrState.Idle, "OCR 窗格已取消");
                 return;
             }
 
-            SetState(OcrState.Idle, "OCR 弹窗已就绪");
+            SetState(OcrState.Idle, "OCR 窗格已就绪");
 
-            await PushOcrPopupPipelineAsync(selection.Image, selection.ScreenBounds);
+            await PushOcrPopupPipelineAsync(selection.Image, selection.ScreenBounds, selection.StartPoint);
 
             GC.Collect(2, GCCollectionMode.Optimized, false, false);
         }
         catch (Exception ex)
         {
-            _logger?.Error("OCR 弹窗流程失败", ex);
-            SetState(OcrState.Failed, $"OCR 弹窗错误: {ex.Message}");
+            _logger?.Error("OCR 窗格流程失败", ex);
+            SetState(OcrState.Failed, $"OCR 窗格错误: {ex.Message}");
         }
     }
 
@@ -624,6 +641,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
                 _translationService);
 
             _activeTranslateWindow.RetryRequested += OnTranslateWindowRetryRequested;
+            _activeTranslateWindow.NewSessionRequested += OnTranslateWindowNewSessionRequested;
             _activeTranslateWindow.Closed += (_, _) =>
             {
                 _activeTranslateWindow = null;
@@ -633,7 +651,12 @@ public sealed class OcrCoordinator : IOcrCoordinator
         return _activeTranslateWindow;
     }
 
-    private async Task PushTranslationPipelineAsync(OcrImage image, ScreenRect bounds)
+    private void OnTranslateWindowNewSessionRequested()
+    {
+        _ = StartTranslateSelectionAsync();
+    }
+
+    private async Task PushTranslationPipelineAsync(OcrImage image, ScreenRect bounds, ScreenPoint? startPoint = null)
     {
         CancelTranslatePipeline();
         _translateCts = new CancellationTokenSource();
@@ -648,7 +671,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
             win = EnsureTranslateWindow();
             if (isNewWindow)
             {
-                win.InitializePosition(bounds);
+                win.InitializePosition(bounds, startPoint);
                 win.Show();
             }
             else
@@ -749,7 +772,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         var win = _activeTranslateWindow;
         var s = _settingsService.Current;
-        win.ShowLoading($"正在请求 {s.TranslateProvider} 翻译...");
+        string providerName = TranslationProviders.GetDisplayName(s.TranslateProvider);
+        win.ShowLoading($"正在请求 {providerName} 翻译...");
 
         Task.Run(async () =>
         {
@@ -808,7 +832,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
     #endregion
 
-    #region OCR 弹窗数据流水线管理
+    #region OCR 窗格数据流水线管理
 
     private TranslateFloatingWindow EnsureOcrPopupWindow()
     {
@@ -834,7 +858,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
         _ = StartOcrPopupAsync();
     }
 
-    private async Task PushOcrPopupPipelineAsync(OcrImage image, ScreenRect bounds)
+    private async Task PushOcrPopupPipelineAsync(OcrImage image, ScreenRect bounds, ScreenPoint? startPoint = null)
     {
         TranslateFloatingWindow win = null!;
         await Dispatcher.UIThread.InvokeAsync(() =>
@@ -843,7 +867,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
             win = EnsureOcrPopupWindow();
             if (isNewWindow)
             {
-                win.InitializePosition(bounds);
+                win.InitializePosition(bounds, startPoint);
                 win.Show();
             }
             else

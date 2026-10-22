@@ -164,6 +164,16 @@ public sealed class AppSettings
     public bool EnableLogging { get; set; } = false;
 
     /// <summary>
+    /// 开启日志定期自动清理
+    /// </summary>
+    public bool EnableLogAutoClean { get; set; } = true;
+
+    /// <summary>
+    /// 日志保留天数（超过该天数的日志文件自动清理删除，默认 7 天）
+    /// </summary>
+    public int LogRetentionDays { get; set; } = 7;
+
+    /// <summary>
     /// 截图标注默认保存格式（PNG, JPEG, WEBP, BMP）
     /// </summary>
     public string DefaultSaveFormat { get; set; } = "PNG";
@@ -193,9 +203,14 @@ public sealed class AppSettings
     public string TranslateHotkey { get; set; } = "Alt+T";
 
     /// <summary>
-    /// OCR 弹窗全局快捷键（默认 "Alt+D"），截屏识别后在悬浮窗中显示结果而不自动复制
+    /// OCR 窗格全局快捷键（默认 "Alt+D"），截屏识别后在悬浮窗中显示结果而不自动复制
     /// </summary>
     public string OcrPopupHotkey { get; set; } = "Alt+D";
+
+    /// <summary>
+    /// 随手便笺全局快捷键（默认 "Alt+N"），呼出自由输入浮窗
+    /// </summary>
+    public string QuickNoteHotkey { get; set; } = "Alt+N";
 
     /// <summary>
     /// 是否启用小沐剪贴板功能（默认关闭）
@@ -256,6 +271,26 @@ public sealed class AppSettings
     public int OpenAiMonthlyLimit { get; set; } = 200000; // 默认 20 万 Token
     public int OpenAiUsedCount { get; set; } = 0;
 
+    // --- 火山引擎翻译 (Volcengine TranslateText API) ---
+    public string VolcengineAccessKey { get; set; } = "";
+    public string VolcengineSecretKey { get; set; } = "";
+    public string VolcengineRegion { get; set; } = "cn-north-1";
+    public int VolcengineMonthlyLimit { get; set; } = 2000000; // 默认 200 万字符
+    public int VolcengineUsedCount { get; set; } = 0;
+
+    // --- 阿里云机器翻译 (Alibaba Cloud Machine Translation API) ---
+    public string AliyunAccessKeyId { get; set; } = "";
+    public string AliyunAccessKeySecret { get; set; } = "";
+    public string AliyunApiEndpoint { get; set; } = "http://mt.cn-hangzhou.aliyuncs.com/api/translate/web/general";
+    public int AliyunMonthlyLimit { get; set; } = 1000000; // 默认 100 万字符
+    public int AliyunUsedCount { get; set; } = 0;
+
+    // ==========================================
+    // 截图标注编辑器配置 (粗细与字号记忆)
+    // ==========================================
+    public float AnnotationStrokeWidth { get; set; } = 4f;
+    public float AnnotationFontSize { get; set; } = 40f;
+
     // ==========================================
     // 批量 OCR 转换配置
     // ==========================================
@@ -269,6 +304,7 @@ public sealed class AppSettings
     public bool BatchUseOriginalFolder { get; set; } = true;
     public string BatchCustomOutputDir { get; set; } = "";
     public int BatchMaxCores { get; set; } = Math.Max(1, Environment.ProcessorCount / 2);
+    public int BatchGpuStreams { get; set; } = 1;
     public int BatchCpuLimitPercent { get; set; } = 50;
 
     // ==========================================
@@ -276,8 +312,47 @@ public sealed class AppSettings
     // ==========================================
     public int HttpApiPort { get; set; } = 8080;
     public bool HttpApiAllowRemote { get; set; } = false;
+
+    /// <summary>
+    /// 局域网访问令牌（Bearer）。非空时 HTTP 接口强制鉴权；
+    /// 开启 <see cref="HttpApiAllowRemote"/> 时若无令牌会自动生成，服务端拒绝无令牌的远程暴露。
+    /// </summary>
+    public string HttpApiAccessToken { get; set; } = "";
+
+    /// <summary>
+    /// 显式允许局域网无令牌访问（默认关闭）。
+    /// 用于"临时分享给同网段同事"：开启后同网段任何设备都可调用本机 OCR 并占用 CPU，
+    /// 但接口不读取任何本机文件。仅当 <see cref="HttpApiAccessToken"/> 为空时才有意义。
+    /// </summary>
+    public bool HttpApiAllowAnonymousRemote { get; set; } = false;
+
     public int HttpApiMaxCores { get; set; } = Math.Max(1, Environment.ProcessorCount / 2);
+    public int HttpApiGpuStreams { get; set; } = 1;
     public int HttpApiCpuLimitPercent { get; set; } = 50;
+
+    // ==========================================
+    // UI 体验、个性主题与布局记忆
+    // ==========================================
+    public bool IsSidebarExpanded { get; set; } = true;
+    public string? ThemeBackgroundImagePath { get; set; }
+    public double ThemeBackgroundBlurRadius { get; set; } = 0.0;
+    public double ThemeComponentOpacity { get; set; } = 0.12;
+    public double ThemeButtonOpacity { get; set; } = 0.12;
+    public bool ThemeEnableAcrylic { get; set; } = true;
+    public string? ThemeBackgroundColorHex { get; set; }
+    public string? ThemeCardColorHex { get; set; }
+    public string? ThemeTextColorHex { get; set; }
+    public string? ThemeFloatingWindowBackgroundColorHex { get; set; }
+    public string? ThemeFloatingWindowTextColorHex { get; set; }
+
+    // 推理设备调度模式 ("Auto", "GPU", "CPU")
+    public string BatchSchedulerMode { get; set; } = "Auto";
+    public string HttpApiSchedulerMode { get; set; } = "Auto";
+
+    /// <summary>
+    /// 上次退出的导航子页面，下次非静默启动时优先先渲染该页面
+    /// </summary>
+    public string LastActivePage { get; set; } = "Ocr";
 
     public AppSettings Clone() => new()
     {
@@ -305,6 +380,8 @@ public sealed class AppSettings
         EnableIdleSleep = EnableIdleSleep,
         IdleSleepMinutes = IdleSleepMinutes,
         EnableLogging = EnableLogging,
+        EnableLogAutoClean = EnableLogAutoClean,
+        LogRetentionDays = LogRetentionDays,
         DefaultSaveFormat = DefaultSaveFormat,
         DefaultSaveQuality = DefaultSaveQuality,
         DefaultSaveScale = DefaultSaveScale,
@@ -312,6 +389,7 @@ public sealed class AppSettings
 
         TranslateHotkey = TranslateHotkey,
         OcrPopupHotkey = OcrPopupHotkey,
+        QuickNoteHotkey = QuickNoteHotkey,
         EnableClipboard = EnableClipboard,
         ClipboardPanelHotkey = ClipboardPanelHotkey,
         PhrasesPanelHotkey = PhrasesPanelHotkey,
@@ -337,6 +415,18 @@ public sealed class AppSettings
         OpenAiMonthlyLimit = OpenAiMonthlyLimit,
         OpenAiUsedCount = OpenAiUsedCount,
 
+        VolcengineAccessKey = VolcengineAccessKey,
+        VolcengineSecretKey = VolcengineSecretKey,
+        VolcengineRegion = VolcengineRegion,
+        VolcengineMonthlyLimit = VolcengineMonthlyLimit,
+        VolcengineUsedCount = VolcengineUsedCount,
+
+        AliyunAccessKeyId = AliyunAccessKeyId,
+        AliyunAccessKeySecret = AliyunAccessKeySecret,
+        AliyunApiEndpoint = AliyunApiEndpoint,
+        AliyunMonthlyLimit = AliyunMonthlyLimit,
+        AliyunUsedCount = AliyunUsedCount,
+
         BatchExportTxt = BatchExportTxt,
         BatchExportXlsx = BatchExportXlsx,
         BatchExportDocx = BatchExportDocx,
@@ -347,11 +437,32 @@ public sealed class AppSettings
         BatchUseOriginalFolder = BatchUseOriginalFolder,
         BatchCustomOutputDir = BatchCustomOutputDir,
         BatchMaxCores = BatchMaxCores,
+        BatchGpuStreams = BatchGpuStreams,
         BatchCpuLimitPercent = BatchCpuLimitPercent,
 
         HttpApiPort = HttpApiPort,
         HttpApiAllowRemote = HttpApiAllowRemote,
+        HttpApiAccessToken = HttpApiAccessToken,
+        HttpApiAllowAnonymousRemote = HttpApiAllowAnonymousRemote,
         HttpApiMaxCores = HttpApiMaxCores,
-        HttpApiCpuLimitPercent = HttpApiCpuLimitPercent
+        HttpApiGpuStreams = HttpApiGpuStreams,
+        HttpApiCpuLimitPercent = HttpApiCpuLimitPercent,
+
+        IsSidebarExpanded = IsSidebarExpanded,
+        ThemeBackgroundImagePath = ThemeBackgroundImagePath,
+        ThemeBackgroundBlurRadius = ThemeBackgroundBlurRadius,
+        ThemeComponentOpacity = ThemeComponentOpacity,
+        ThemeButtonOpacity = ThemeButtonOpacity,
+        ThemeEnableAcrylic = ThemeEnableAcrylic,
+        ThemeBackgroundColorHex = ThemeBackgroundColorHex,
+        ThemeCardColorHex = ThemeCardColorHex,
+        ThemeTextColorHex = ThemeTextColorHex,
+        ThemeFloatingWindowBackgroundColorHex = ThemeFloatingWindowBackgroundColorHex,
+        ThemeFloatingWindowTextColorHex = ThemeFloatingWindowTextColorHex,
+        BatchSchedulerMode = BatchSchedulerMode,
+        HttpApiSchedulerMode = HttpApiSchedulerMode,
+        AnnotationStrokeWidth = AnnotationStrokeWidth,
+        AnnotationFontSize = AnnotationFontSize,
+        LastActivePage = LastActivePage
     };
 }

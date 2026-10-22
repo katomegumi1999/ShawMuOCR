@@ -1,0 +1,581 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:ShawMuOCR.ViewModels"
+             xmlns:services="using:ShawMuOCR.Services"
+             x:Class="ShawMuOCR.Views.Pages.ThemePageView"
+             x:DataType="vm:ThemeViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+        <StackPanel Spacing="16" MaxWidth="850" HorizontalAlignment="Stretch">
+            <!-- 1. 顶部标题卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16,14">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                        <Image Source="avares://ShawMuOCR/Assets/icon-theme.png" Width="36" Height="36" VerticalAlignment="Center"
+                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                        <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="🎨 个性主题与毛玻璃特效" FontSize="16" FontWeight="SemiBold" />
+                            <TextBlock Text="自定义软件背景图片、纯色背景底色、全局字体颜色与全界面半透明毛玻璃质感"
+                                       FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <Button Grid.Column="2" Classes="subtle" Padding="10,6" Command="{Binding ResetToDefaultsCommand}"
+                            ToolTip.Tip="恢复默认半透明、背景底色与字体颜色设置" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="🔄" FontSize="12" />
+                            <TextBlock Text="恢复默认" FontSize="12" />
+                        </StackPanel>
+                    </Button>
+                </Grid>
+            </Border>
+
+            <!-- 2. 背景图片管理卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="18,16">
+                <StackPanel Spacing="12">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock Text="🖼 自定义背景图片" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Right" Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="智能压缩 · 自动清理" FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                        </Border>
+                    </DockPanel>
+
+                    <TextBlock Text="{Binding BackgroundInfoText}"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
+
+                    <!-- 操作按钮组 -->
+                    <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,4,0,0">
+                        <Button Classes="accent" Padding="14,7" Command="{Binding PickBackgroundImageCommand}"
+                                ToolTip.Tip="从本地选择一张 PNG / JPG / WebP 等格式的图片设为背景">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="📁" FontSize="13" />
+                                <TextBlock Text="选择背景图片..." FontWeight="SemiBold" FontSize="12" />
+                            </StackPanel>
+                        </Button>
+
+                        <Button Padding="12,7" Command="{Binding RemoveBackgroundImageCommand}"
+                                IsVisible="{Binding HasBackgroundImage}"
+                                ToolTip.Tip="移除自定义背景图并恢复默认纯色底色">
+                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="🗑" FontSize="13" Foreground="#EF4444" />
+                                <TextBlock Text="移除背景图片" FontSize="12" />
+                            </StackPanel>
+                        </Button>
+                    </StackPanel>
+
+                    <TextBlock Text="💡 提示：选中的图片超过尺寸或体积上限时会自动等比压缩至最佳尺寸并缓存至本地数据目录，更换或移除背景时将自动删除旧图缓存，绝不产生垃圾残留。"
+                               FontSize="11"
+                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               TextWrapping="Wrap"
+                               Margin="0,4,0,0" />
+                </StackPanel>
+            </Border>
+
+            <!-- 3. 自定义纯色背景底色卡片 (MainWindowBackdropSolidColorBrush) -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="18,16">
+                <StackPanel Spacing="14">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock Text="🎨 窗口基础底色与纯色背景 (MainWindowBackdropSolidColorBrush)" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Right" Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding BackgroundColorHex, FallbackValue='默认 #F3F4F6 (微浅灰)', TargetNullValue='默认 #F3F4F6 (微浅灰)'}"
+                                       FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                        </Border>
+                    </DockPanel>
+
+                    <TextBlock Text="为窗口底层设定纯色画布背景（默认柔和微浅灰 #F3F4F6）。当未设置背景图或需要极简视觉时，设定基础底色（如极简浅灰、科技蓝、板岩深灰等），卡片与组件的半透明度即可自然透出底色，营造通透立体的现代质感。"
+                               FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+                    <!-- 调色盘快速预设 -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="常用纯色推荐色板:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{Binding StandardPalettePresets}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="services:ColorPaletteItem">
+                                    <Button Classes="subtle" Margin="0,0,8,8" Padding="8,5"
+                                            Command="{Binding $parent[UserControl].((vm:ThemeViewModel)DataContext).SelectBackgroundColorCommand}"
+                                            CommandParameter="{Binding Hex}"
+                                            ToolTip.Tip="{Binding Tooltip}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Border Width="14" Height="14" CornerRadius="7"
+                                                    Background="{Binding DisplayColorHex}"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1" />
+                                            <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 自定义 HEX 颜色代码：Button 呼出调色盘 + Hex 输入框 + 恢复默认 -->
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <!-- 调色盘呼出按钮 -->
+                        <Button Padding="10,6"
+                                ToolTip.Tip="点击呼出可视化调色盘（包含色盘、RGB/HSV滑块与色板）"
+                                VerticalAlignment="Center">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ColorView Color="{Binding SelectedBackgroundColor, Mode=TwoWay}"
+                                               IsAlphaEnabled="False"
+                                               Width="320" />
+                                </Flyout>
+                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Border Width="16" Height="16" CornerRadius="4"
+                                        Background="{Binding BackgroundColorPreviewBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" />
+                                <TextBlock Text="🎨 调色盘" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Hex 值输入框 -->
+                        <TextBox Text="{Binding BackgroundColorHex}"
+                                 PlaceholderText="默认 #F3F4F6 (例如 #E2E8F0、#1E293B)"
+                                 FontSize="12"
+                                 Padding="8,5"
+                                 Width="230"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="直接输入或粘贴 Hex 颜色代码，调色盘与底层画布将实时同步" />
+
+                        <!-- 恢复默认按钮 -->
+                        <Button Content="恢复默认"
+                                Command="{Binding ResetBackgroundColorCommand}"
+                                IsVisible="{Binding HasCustomBackgroundColor}"
+                                Padding="10,5"
+                                FontSize="11"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="恢复默认柔和微浅灰底色 (#F3F4F6)" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 4. 背景高斯模糊与毛玻璃调节 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="18,16">
+                <StackPanel Spacing="14">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock Text="✨ 背景高斯模糊度" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <TextBlock DockPanel.Dock="Right"
+                                   Text="{Binding BlurRadius, StringFormat='{}{0:F0} px'}"
+                                   FontWeight="SemiBold" FontSize="13"
+                                   Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                   VerticalAlignment="Center" />
+                    </DockPanel>
+
+                    <TextBlock Text="对背景图片进行离线高质量高斯模糊处理，产生现代磨砂毛玻璃透光质感，完全不占用运行时 GPU 开销。"
+                               FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+                    <Slider Minimum="0" Maximum="30"
+                            Value="{Binding BlurRadius}"
+                            TickFrequency="1"
+                            IsSnapToTickEnabled="True"
+                            IsEnabled="{Binding HasBackgroundImage}" />
+
+                    <TextBlock Text="（未设置自定义背景图时滑块禁用，设置背景图后可即时调节 0 ~ 30px 高斯虚化）"
+                               FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                               IsVisible="{Binding !HasBackgroundImage}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 5. 卡片与组件自定义颜色与透明度 (独立卡片设置) -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="18,16">
+                <StackPanel Spacing="16">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock Text="🪟 卡片与组件自定义颜色与透明度" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Right" Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding CardColorHex, FallbackValue='默认 #FFFFFF (纯白)', TargetNullValue='默认 #FFFFFF (纯白)'}"
+                                       FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                        </Border>
+                    </DockPanel>
+
+                    <TextBlock Text="自定义界面卡片容器与各类交互组件的基础底色（默认纯白 #FFFFFF）及其透明度。可自由搭配纯色背景底色或自定义背景图片，营造通透细腻的界面质感，文字始终保持 100% 锐利清晰。"
+                               FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+                    <!-- 常用卡片底色推荐色板 -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="常用卡片推荐色板:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{Binding StandardPalettePresets}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="services:ColorPaletteItem">
+                                    <Button Classes="subtle" Margin="0,0,8,8" Padding="8,5"
+                                            Command="{Binding $parent[UserControl].((vm:ThemeViewModel)DataContext).SelectCardColorCommand}"
+                                            CommandParameter="{Binding Hex}"
+                                            ToolTip.Tip="{Binding Tooltip}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Border Width="14" Height="14" CornerRadius="7"
+                                                    Background="{Binding DisplayColorHex}"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1" />
+                                            <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 自定义 HEX 颜色代码：Button 呼出调色盘 + Hex 输入框 + 恢复默认 -->
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <!-- 调色盘呼出按钮 -->
+                        <Button Padding="10,6"
+                                ToolTip.Tip="点击呼出可视化调色盘（包含色盘、RGB/HSV滑块与色板）"
+                                VerticalAlignment="Center">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ColorView Color="{Binding SelectedCardColor, Mode=TwoWay}"
+                                               IsAlphaEnabled="False"
+                                               Width="320" />
+                                </Flyout>
+                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Border Width="16" Height="16" CornerRadius="4"
+                                        Background="{Binding CardColorPreviewBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" />
+                                <TextBlock Text="🎨 调色盘" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Hex 值输入框 -->
+                        <TextBox Text="{Binding CardColorHex}"
+                                 PlaceholderText="默认 #FFFFFF (例如 #F8FAFC、#1E293B)"
+                                 FontSize="12"
+                                 Padding="8,5"
+                                 Width="230"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="直接输入或粘贴 Hex 颜色代码，调色盘与界面卡片将实时同步" />
+
+                        <!-- 恢复默认按钮 -->
+                        <Button Content="恢复默认"
+                                Command="{Binding ResetCardColorCommand}"
+                                IsVisible="{Binding HasCustomCardColor}"
+                                Padding="10,5"
+                                FontSize="11"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="恢复默认纯白底色 (#FFFFFF)" />
+                    </StackPanel>
+
+                    <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
+
+                    <!-- 组件卡片区域透明度 -->
+                    <StackPanel Spacing="6">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock Text="卡片与组件区域透明度 (0% 不透明 ➔ 100% 完全透明):" FontSize="12.5" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right"
+                                       Text="{Binding ComponentOpacityPercent, StringFormat='{}{0:F0}%'}"
+                                       FontWeight="SemiBold" FontSize="12.5"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+                        <Slider Minimum="0" Maximum="100"
+                                Value="{Binding ComponentOpacityPercent}"
+                                TickFrequency="5"
+                                IsSnapToTickEnabled="True" />
+                    </StackPanel>
+
+                    <!-- 按钮透明度 -->
+                    <StackPanel Spacing="6">
+                        <DockPanel LastChildFill="True">
+                            <TextBlock Text="操作按钮透明度 (0% 不透明 ➔ 100% 完全透明):" FontSize="12.5" VerticalAlignment="Center" />
+                            <TextBlock DockPanel.Dock="Right"
+                                       Text="{Binding ButtonOpacityPercent, StringFormat='{}{0:F0}%'}"
+                                       FontWeight="SemiBold" FontSize="12.5"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       VerticalAlignment="Center" />
+                        </DockPanel>
+                        <Slider Minimum="0" Maximum="100"
+                                Value="{Binding ButtonOpacityPercent}"
+                                TickFrequency="5"
+                                IsSnapToTickEnabled="True" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 6. 全局字体颜色设置 (公共调色盘) -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="18,16">
+                <StackPanel Spacing="14">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock Text="🔤 全局字体颜色" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Right" Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding TextColorHex, FallbackValue='跟随系统默认', TargetNullValue='跟随系统默认'}"
+                                       FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                        </Border>
+                    </DockPanel>
+
+                    <TextBlock Text="自由定制主界面的全局文字与标题色彩。建议选择与当前背景对比度鲜明的色系，若设置了较深或复杂图案的背景图，推荐选择纯白或亮金以获得更出色的辨识度。"
+                               FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+                    <!-- 调色盘快速预设 -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="常用字体推荐色板:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{Binding StandardPalettePresets}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="services:ColorPaletteItem">
+                                    <Button Classes="subtle" Margin="0,0,8,8" Padding="8,5"
+                                            Command="{Binding $parent[UserControl].((vm:ThemeViewModel)DataContext).SelectTextColorCommand}"
+                                            CommandParameter="{Binding Hex}"
+                                            ToolTip.Tip="{Binding Tooltip}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Border Width="14" Height="14" CornerRadius="7"
+                                                    Background="{Binding DisplayColorHex}"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1" />
+                                            <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 自定义 HEX 颜色代码：Button 呼出调色盘 + Hex 输入框 + 恢复默认 -->
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <!-- 调色盘呼出按钮 -->
+                        <Button Padding="10,6"
+                                ToolTip.Tip="点击呼出可视化调色盘（包含色盘、RGB/HSV滑块与色板）"
+                                VerticalAlignment="Center">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ColorView Color="{Binding SelectedTextColor, Mode=TwoWay}"
+                                               IsAlphaEnabled="False"
+                                               Width="320" />
+                                </Flyout>
+                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Border Width="16" Height="16" CornerRadius="4"
+                                        Background="{Binding TextColorPreviewBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" />
+                                <TextBlock Text="🎨 调色盘" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <!-- Hex 值输入框 -->
+                        <TextBox Text="{Binding TextColorHex}"
+                                 PlaceholderText="默认跟随系统 (例如 #FFFFFF 或 #1E293B)"
+                                 FontSize="12"
+                                 Padding="8,5"
+                                 Width="230"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="直接输入或粘贴 Hex 颜色代码，调色盘与全局文字将实时同步" />
+
+                        <!-- 恢复默认按钮 -->
+                        <Button Content="恢复默认"
+                                Command="{Binding ResetTextColorCommand}"
+                                IsVisible="{Binding HasCustomTextColor}"
+                                Padding="10,5"
+                                FontSize="11"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="恢复系统默认字体颜色" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 7. 随动浮窗独立配色 (FloatingWindow) -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="18,16">
+                <StackPanel Spacing="14">
+                    <DockPanel LastChildFill="True">
+                        <TextBlock Text="🪟 随动浮窗独立配色 (FloatingWindow)" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
+                        <Border DockPanel.Dock="Right" Background="{DynamicResource AccentFillColorTertiaryBrush}"
+                                CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding FloatingWindowBackgroundColorHex, FallbackValue='跟随系统默认', TargetNullValue='跟随系统默认'}"
+                                       FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                        </Border>
+                    </DockPanel>
+
+                    <TextBlock Text="单独为选区翻译与 OCR 随动浮窗定制背景底色与文字色彩。浮窗拥有专属样式隔离通道，不受全局主题透明度影响，您可为其设定独特的极简黑曜石深色、典雅暖白或科技暗蓝质感。"
+                               FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+
+                    <!-- 浮窗背景色标题与推荐色板 -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="随动浮窗背景色推荐:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{Binding StandardPalettePresets}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="services:ColorPaletteItem">
+                                    <Button Classes="subtle" Margin="0,0,8,8" Padding="8,5"
+                                            Command="{Binding $parent[UserControl].((vm:ThemeViewModel)DataContext).SelectFloatingWindowBackgroundColorCommand}"
+                                            CommandParameter="{Binding Hex}"
+                                            ToolTip.Tip="{Binding Tooltip}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Border Width="14" Height="14" CornerRadius="7"
+                                                    Background="{Binding DisplayColorHex}"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1" />
+                                            <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 浮窗背景色调色盘 + Hex 输入框 + 恢复默认 -->
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Button Padding="10,6"
+                                ToolTip.Tip="点击呼出浮窗背景色调色盘"
+                                VerticalAlignment="Center">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ColorView Color="{Binding SelectedFloatingWindowBackgroundColor, Mode=TwoWay}"
+                                               IsAlphaEnabled="False"
+                                               Width="320" />
+                                </Flyout>
+                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Border Width="16" Height="16" CornerRadius="4"
+                                        Background="{Binding FloatingWindowBackgroundColorPreviewBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" />
+                                <TextBlock Text="🎨 背景色盘" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <TextBox Text="{Binding FloatingWindowBackgroundColorHex}"
+                                 PlaceholderText="默认跟随系统 (例如 #1E1E1E、#FFFFFF、#0F172A)"
+                                 FontSize="12"
+                                 Padding="8,5"
+                                 Width="230"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="直接输入或粘贴浮窗背景 Hex 代码" />
+
+                        <Button Content="恢复默认"
+                                Command="{Binding ResetFloatingWindowBackgroundColorCommand}"
+                                IsVisible="{Binding HasCustomFloatingWindowBackgroundColor}"
+                                Padding="10,5"
+                                FontSize="11"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="恢复随动浮窗系统默认背景色" />
+                    </StackPanel>
+
+                    <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
+
+                    <!-- 浮窗文字颜色标题与推荐色板 -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="随动浮窗文字颜色推荐:" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <ItemsControl ItemsSource="{Binding StandardPalettePresets}">
+                            <ItemsControl.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel Orientation="Horizontal" />
+                                </ItemsPanelTemplate>
+                            </ItemsControl.ItemsPanel>
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate x:DataType="services:ColorPaletteItem">
+                                    <Button Classes="subtle" Margin="0,0,8,8" Padding="8,5"
+                                            Command="{Binding $parent[UserControl].((vm:ThemeViewModel)DataContext).SelectFloatingWindowTextColorCommand}"
+                                            CommandParameter="{Binding Hex}"
+                                            ToolTip.Tip="{Binding Tooltip}">
+                                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <Border Width="14" Height="14" CornerRadius="7"
+                                                    Background="{Binding DisplayColorHex}"
+                                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                                    BorderThickness="1" />
+                                            <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                                        </StackPanel>
+                                    </Button>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+
+                    <!-- 浮窗文字颜色调色盘 + Hex 输入框 + 恢复默认 -->
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Button Padding="10,6"
+                                ToolTip.Tip="点击呼出浮窗文字色调色盘"
+                                VerticalAlignment="Center">
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ColorView Color="{Binding SelectedFloatingWindowTextColor, Mode=TwoWay}"
+                                               IsAlphaEnabled="False"
+                                               Width="320" />
+                                </Flyout>
+                            </Button.Flyout>
+                            <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <Border Width="16" Height="16" CornerRadius="4"
+                                        Background="{Binding FloatingWindowTextColorPreviewBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1" />
+                                <TextBlock Text="🎨 文字色盘" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Button>
+
+                        <TextBox Text="{Binding FloatingWindowTextColorHex}"
+                                 PlaceholderText="默认自动高对比 (例如 #EDEDED、#202020)"
+                                 FontSize="12"
+                                 Padding="8,5"
+                                 Width="230"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="直接输入或粘贴浮窗文字 Hex 代码" />
+
+                        <Button Content="恢复默认"
+                                Command="{Binding ResetFloatingWindowTextColorCommand}"
+                                IsVisible="{Binding HasCustomFloatingWindowTextColor}"
+                                Padding="10,5"
+                                FontSize="11"
+                                Margin="4,0,0,0"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="恢复随动浮窗系统默认文字颜色" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

@@ -1,6 +1,11 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
-using Avalonia.Controls.Shapes;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Media;
@@ -12,16 +17,58 @@ using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.Editor;
 using ShawMuOCR.Core.Logging;
 using ShawMuOCR.Core.OCR;
+using ShawMuOCR.Core.Services;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Windows.Clipboard;
 using ShawMuOCR.Windows.Win32;
 using SkiaSharp;
-using Point = Avalonia.Point;
 
 namespace ShawMuOCR.Views;
 
+/// <summary>
+/// 现代化全功能截图标注主窗口 (生命周期、自适应布局、DPI 计算与工具栏状态管理)
+/// </summary>
 public partial class ScreenshotEditorWindow : Window
 {
+    private enum EditorTool
+    {
+        Select,
+        Crop,
+        Text,
+        Line,
+        Arrow,
+        Rectangle,
+        Ellipse,
+        Pen,
+        Mosaic,
+        Eraser
+    }
+
+    private enum TransformMode
+    {
+        None,
+        Move,
+        ResizeNW,
+        ResizeNE,
+        ResizeSE,
+        ResizeSW,
+        Rotate
+    }
+
+    private enum CropHandle
+    {
+        None,
+        Inside,
+        TopLeft,
+        Top,
+        TopRight,
+        Right,
+        BottomRight,
+        Bottom,
+        BottomLeft,
+        Left
+    }
+
     private readonly ImageDocument _doc;
     private readonly IClipboardService _clipboardService;
     private readonly Func<OcrImage, Task>? _ocrCallback;
@@ -29,21 +76,71 @@ public partial class ScreenshotEditorWindow : Window
     private readonly ISettingsService? _settingsService;
     private readonly ILoggerService? _logger;
     private readonly ScreenRect? _selectionBounds;
-    private bool _isProcessingAction;
 
-    private EditorTool _currentTool = EditorTool.Rectangle;
-    private SKColor _currentColor = new SKColor(229, 57, 53); // 默认鲜红
+    // 工具与渲染状态
+    private EditorTool _currentTool = EditorTool.Select;
+    private SKColor _currentColor = new SKColor(229, 57, 53); // 默认红色
+    private float _currentStrokeWidth = 4f; // 默认粗细 (4px)
+    private float? _customFontSize = null; // 默认为空，留空时使用默认 40f
     private double _displayScale = 1.0;
 
-    private bool _isDrawing;
-    private Point _startPoint;
-    private Control? _previewControl;
+    private OcrImage? _fullScreenshot;
+    private ScreenPoint? _cropOffset;
+    private readonly bool _isPrewarmInstance;
+    private static bool s_isPrewarmed;
 
-    private IImageElement? _selectedElement;
-    private bool _isDraggingElement;
-    private Point _dragStartPoint;
-    private Border? _selectionHighlightBox;
-    private Point _textInsertPoint;
+    public static bool IsPrewarmed => s_isPrewarmed;
+    public static void ResetPrewarmedForTesting() => s_isPrewarmed = false;
+
+    /// <summary>
+    /// 在应用启动后后台空闲时段预热截图标注窗口，提前完成 XAML 解析、控件树实例化、Win32 HWND 生成与 Skia 渲染管线就绪，彻底消除首次截图呼出延迟。
+    /// </summary>
+    public static void Prewarm(ILoggerService? logger = null, string scene = "后台预热")
+    {
+        if (s_isPrewarmed) return;
+
+        if (Avalonia.Application.Current == null)
+        {
+            return;
+        }
+
+        if (!Dispatcher.UIThread.CheckAccess())
+        {
+            Dispatcher.UIThread.Post(() => Prewarm(logger, scene), DispatcherPriority.Background);
+            return;
+        }
+
+        if (s_isPrewarmed) return;
+        s_isPrewarmed = true;
+
+        try
+        {
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            logger?.Info($"[{scene}] 正在后台异步预热截图标注编辑器窗口 (完成 XAML 解析、控件树实例化、Win32 HWND 生成与 Skia 渲染管线就绪)...");
+
+            using var dummyBmp = new SKBitmap(32, 32);
+            using var dummyImg = new OcrImage(dummyBmp);
+            var window = new ScreenshotEditorWindow(dummyImg, isPrewarm: true);
+
+            Dispatcher.UIThread.Post(() =>
+            {
+                try
+                {
+                    window.Close();
+                    sw.Stop();
+                    logger?.Info($"[{scene}] 截图标注编辑器无感预热完成 (完成 XAML 解析、控件树与 Skia 绘图管线实例化)，耗时 {sw.ElapsedMilliseconds} ms");
+                }
+                catch (Exception ex)
+                {
+                    logger?.Warn($"[{scene}] 截图标注编辑器窗口清理异常: {ex.Message}");
+                }
+            }, DispatcherPriority.Background);
+        }
+        catch (Exception ex)
+        {
+            logger?.Warn($"[{scene}] 截图标注编辑器窗口预热异常: {ex.Message}");
+        }
+    }
 
     public ScreenshotEditorWindow() : this(new OcrImage(new SKBitmap(100, 100)))
     {
@@ -56,10 +153,14 @@ public partial class ScreenshotEditorWindow : Window
         Func<OcrImage, ScreenRect, Task>? translateCallback = null,
         ISettingsService? settingsService = null,
         ILoggerService? logger = null,
-        ScreenRect? selectionBounds = null)
+        ScreenRect? selectionBounds = null,
+        OcrImage? fullScreenshot = null,
+        ScreenPoint? cropOffset = null,
+        bool isPrewarm = false)
     {
         ArgumentNullException.ThrowIfNull(image);
 
+        _isPrewarmInstance = isPrewarm;
         _doc = new ImageDocument(image);
         _clipboardService = clipboardService ?? new WindowsClipboardService();
         _ocrCallback = ocrCallback;
@@ -67,20 +168,101 @@ public partial class ScreenshotEditorWindow : Window
         _settingsService = settingsService;
         _logger = logger;
         _selectionBounds = selectionBounds;
+        _fullScreenshot = fullScreenshot;
+        _cropOffset = cropOffset;
+
+        if (_settingsService?.Current != null)
+        {
+            var s = _settingsService.Current;
+            if (s.AnnotationStrokeWidth >= 1f && s.AnnotationStrokeWidth <= 32f)
+            {
+                _currentStrokeWidth = s.AnnotationStrokeWidth;
+            }
+            if (s.AnnotationFontSize >= 8f && s.AnnotationFontSize <= 200f)
+            {
+                _customFontSize = s.AnnotationFontSize;
+            }
+        }
 
         InitializeComponent();
 
+        InitZoomPanTransform();
+
+        if (_fullScreenshot == null && RestoreFullSnapshotBtn != null)
+        {
+            RestoreFullSnapshotBtn.IsVisible = false;
+        }
+
+        if (StrokeSlider != null)
+        {
+            StrokeSlider.Value = _currentStrokeWidth;
+            if (StrokeValueLabel != null) StrokeValueLabel.Text = $"{_currentStrokeWidth:0}px";
+        }
+        if (_customFontSize.HasValue && FontSizeTextBox != null)
+        {
+            FontSizeTextBox.Text = _customFontSize.Value.ToString("0");
+        }
+
         DimensionText.Text = $"{image.Width} × {image.Height}";
 
-        ApplyDimensions();
+        if (_isPrewarmInstance)
+        {
+            ShowInTaskbar = false;
+            Opacity = 0;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Position = new PixelPoint(-32000, -32000);
+            Width = 100;
+            Height = 100;
+        }
+        else
+        {
+            ApplyDimensions(recenter: true);
+        }
+
         RefreshDisplay();
 
-        Opened += (s, e) => ApplyDimensions();
+        PropertyChanged += (s, e) =>
+        {
+            if (e.Property == WindowStateProperty)
+            {
+                UpdateMaximizeButtonIcon();
+                ApplyDimensions(recenter: false);
+                RefreshDisplay();
+            }
+        };
+
+        Closed += (s, e) => SaveAnnotationSettings();
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel);
+    }
+
+    private Screen? GetTargetScreen()
+    {
+        try
+        {
+            if (_selectionBounds.HasValue && Screens != null)
+            {
+                var centerPt = new PixelPoint(
+                    _selectionBounds.Value.X + _selectionBounds.Value.Width / 2,
+                    _selectionBounds.Value.Y + _selectionBounds.Value.Height / 2);
+                var screen = Screens.ScreenFromPoint(centerPt);
+                if (screen != null) return screen;
+            }
+            return Screens?.Primary ?? Screens?.All.FirstOrDefault();
+        }
+        catch
+        {
+            return Screens?.Primary;
+        }
     }
 
     private double GetScreenScaling()
     {
+        var targetScreen = GetTargetScreen();
+        if (targetScreen != null && targetScreen.Scaling > 0)
+        {
+            return targetScreen.Scaling;
+        }
+
         if (DesktopScaling > 0 && Math.Abs(DesktopScaling - 1.0) > 0.001)
         {
             return DesktopScaling;
@@ -104,31 +286,46 @@ public partial class ScreenshotEditorWindow : Window
         }
         catch { }
 
-        try
-        {
-            var primary = Screens.Primary;
-            if (primary != null && primary.Scaling > 0)
-            {
-                return primary.Scaling;
-            }
-        }
-        catch { }
-
-        return DesktopScaling > 0 ? DesktopScaling : 1.0;
+        return 1.0;
     }
 
-    private void ApplyDimensions()
+    private void ApplyDimensions(bool recenter = false)
     {
+        var targetScreen = GetTargetScreen();
         double scaling = GetScreenScaling();
         if (scaling <= 0) scaling = 1.0;
 
-        double maxW = (Screens.Primary?.WorkingArea.Width ?? 1920) * 0.88 / scaling;
-        double maxH = (Screens.Primary?.WorkingArea.Height ?? 1080) * 0.82 / scaling;
+        int workX = targetScreen?.WorkingArea.X ?? 0;
+        int workY = targetScreen?.WorkingArea.Y ?? 0;
+        double workingW = targetScreen?.WorkingArea.Width ?? (1920 * scaling);
+        double workingH = targetScreen?.WorkingArea.Height ?? (1080 * scaling);
+
+        // 预留出顶栏 (32px)、工具栏与外边距 (约 150px) 以及工具栏完整最小宽度 (960px)
+        const double ChromeExtraHeight = 150.0;
+        const double ChromeExtraWidth = 32.0;
+
+        double availDipW;
+        double availDipH;
+
+        if (WindowState == WindowState.Maximized)
+        {
+            double maxWinW = Bounds.Width > 100 ? Bounds.Width : (workingW / scaling);
+            double maxWinH = Bounds.Height > 100 ? Bounds.Height : (workingH / scaling);
+            availDipW = Math.Max(100.0, maxWinW - ChromeExtraWidth);
+            availDipH = Math.Max(100.0, maxWinH - ChromeExtraHeight);
+        }
+        else
+        {
+            availDipW = Math.Max(100.0, (workingW / scaling) - ChromeExtraWidth);
+            availDipH = Math.Max(100.0, (workingH / scaling) - ChromeExtraHeight);
+        }
+
+        double maxW = availDipW * 0.94;
+        double maxH = availDipH * 0.92;
 
         double imgW = _doc.OriginalImage.Width;
         double imgH = _doc.OriginalImage.Height;
 
-        // 核心修复：1:1 物理像素在 Avalonia 逻辑 DIP 空间中的真实大小，避免高分屏放大模糊
         double dipW = imgW / scaling;
         double dipH = imgH / scaling;
 
@@ -138,52 +335,256 @@ public partial class ScreenshotEditorWindow : Window
             fitScale = Math.Min(maxW / dipW, maxH / dipH);
         }
 
-        // _displayScale 是从图像原始物理像素到 UI 画布 (DIP) 的换算系数:
-        // canvasDIP = imgPixel * _displayScale;
-        // imgPixel = canvasDIP / _displayScale;
         _displayScale = (1.0 / scaling) * fitScale;
 
-        CanvasContainer.Width = imgW * _displayScale;
-        CanvasContainer.Height = imgH * _displayScale;
+        double finalCanvasW = imgW * _displayScale;
+        double finalCanvasH = imgH * _displayScale;
 
-        BaseImageControl.Width = imgW * _displayScale;
-        BaseImageControl.Height = imgH * _displayScale;
+        CanvasContainer.Width = finalCanvasW;
+        CanvasContainer.Height = finalCanvasH;
 
-        DrawingOverlayCanvas.Width = imgW * _displayScale;
-        DrawingOverlayCanvas.Height = imgH * _displayScale;
+        BaseImageControl.Width = finalCanvasW;
+        BaseImageControl.Height = finalCanvasH;
+
+        DrawingOverlayCanvas.Width = finalCanvasW;
+        DrawingOverlayCanvas.Height = finalCanvasH;
+
+        if (WindowState != WindowState.Maximized)
+        {
+            // 确保窗口宽度保底 960px，彻底保证两行操作区的全部按钮（OCR、翻译、另存为、复制、置顶）完整可见
+            double totalDipW = Math.Clamp(Math.Max(finalCanvasW + ChromeExtraWidth, 960.0), 960.0, workingW / scaling);
+            double totalDipH = Math.Clamp(Math.Max(finalCanvasH + ChromeExtraHeight, 520.0), 500.0, workingH / scaling);
+
+            Width = totalDipW;
+            Height = totalDipH;
+
+            if (recenter)
+            {
+                int totalPxW = (int)Math.Round(totalDipW * scaling);
+                int totalPxH = (int)Math.Round(totalDipH * scaling);
+
+                int posX = workX + Math.Max(0, ((int)workingW - totalPxW) / 2);
+                int posY = workY + Math.Max(0, ((int)workingH - totalPxH) / 2);
+
+                Position = new PixelPoint(posX, posY);
+
+                try
+                {
+                    var handle = TryGetPlatformHandle();
+                    if (handle != null && handle.Handle != IntPtr.Zero)
+                    {
+                        User32.SetWindowPos(
+                            handle.Handle,
+                            IntPtr.Zero,
+                            posX,
+                            posY,
+                            totalPxW,
+                            totalPxH,
+                            User32.SWP_NOZORDER | User32.SWP_NOACTIVATE);
+                    }
+                }
+                catch { }
+            }
+        }
+
+        ResetZoomPan();
 
         UpdateSelectionHighlight();
+        if (_currentTool == EditorTool.Crop)
+        {
+            UpdateCropVisual();
+        }
     }
 
     private void RefreshDisplay()
     {
-        using var rendered = _doc.RenderToBitmap();
-        var wb = ConvertToBitmap(rendered);
-        BaseImageControl.Source = wb;
+        OcrImage rendered;
+        bool shouldDispose = false;
+
+        if (_doc.Elements.Count == 0 && _editingTextElement == null)
+        {
+            rendered = _doc.OriginalImage;
+        }
+        else
+        {
+            rendered = _doc.RenderToBitmap(skipElement: _editingTextElement);
+            shouldDispose = true;
+        }
+
+        try
+        {
+            var wb = ConvertToBitmap(rendered);
+            BaseImageControl.Source = wb;
+        }
+        finally
+        {
+            if (shouldDispose)
+            {
+                rendered.Dispose();
+            }
+        }
 
         UndoBtn.IsEnabled = _doc.UndoRedo.CanUndo;
-        RedoBtn.IsEnabled = _doc.UndoRedo.CanRedo;
+
+        if (!_isDrawing)
+        {
+            var strayShapes = DrawingOverlayCanvas.Children.OfType<Avalonia.Controls.Shapes.Shape>().ToList();
+            foreach (var s in strayShapes)
+            {
+                DrawingOverlayCanvas.Children.Remove(s);
+            }
+            _previewControl = null;
+        }
 
         UpdateSelectionHighlight();
     }
 
     private void OnTitleBarPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (e.ClickCount == 2)
+        {
+            ToggleMaximize();
+            e.Handled = true;
+            return;
+        }
+
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
             BeginMoveDrag(e);
         }
     }
 
-    private void OnToolChanged(object? sender, RoutedEventArgs e)
+    private void OnHeaderMinimizeClick(object? sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void OnHeaderMaximizeClick(object? sender, RoutedEventArgs e)
+    {
+        ToggleMaximize();
+    }
+
+    private void OnHeaderCloseClick(object? sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void ToggleMaximize()
+    {
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        UpdateMaximizeButtonIcon();
+        ReactivateWindowAndIme();
+    }
+
+    public void ReactivateWindowAndIme()
+    {
+        Activate();
+        Focus();
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var handle = TryGetPlatformHandle();
+                if (handle != null && handle.Handle != IntPtr.Zero)
+                {
+                    User32.SetForegroundWindow(handle.Handle);
+                    User32.SetActiveWindow(handle.Handle);
+                    User32.SetFocus(handle.Handle);
+
+                    IntPtr hImc = Imm32.ImmGetContext(handle.Handle);
+                    if (hImc != IntPtr.Zero)
+                    {
+                        Imm32.ImmSetOpenStatus(hImc, true);
+                        if (Imm32.ImmGetConversionStatus(hImc, out uint conversion, out uint sentence))
+                        {
+                            Imm32.ImmSetConversionStatus(hImc, conversion | Imm32.IME_CMODE_NATIVE, sentence);
+                        }
+                        Imm32.ImmReleaseContext(handle.Handle, hImc);
+                    }
+                }
+            }
+        }
+        catch { }
+    }
+
+    private void UpdateMaximizeButtonIcon()
+    {
+        if (HeaderMaxBtn != null)
+        {
+            if (WindowState == WindowState.Maximized)
+            {
+                HeaderMaxBtn.Content = "🗗";
+                ToolTip.SetTip(HeaderMaxBtn, "向下还原");
+            }
+            else
+            {
+                HeaderMaxBtn.Content = "🗖";
+                ToolTip.SetTip(HeaderMaxBtn, "最大化");
+            }
+        }
+    }
+
+    private float GetCurrentFontSize() => _customFontSize ?? 40f;
+
+    // ==========================================
+    // 工具切换 (ToggleButtons, 支持反选返回 Select 模式)
+    // ==========================================
+    private void OnToolToggleClick(object? sender, RoutedEventArgs e)
     {
         CommitInlineText();
 
-        if (ToolSelectBtn.IsChecked == true) _currentTool = EditorTool.Select;
-        else if (ToolTextBtn.IsChecked == true) _currentTool = EditorTool.Text;
-        else if (ToolLineBtn.IsChecked == true) _currentTool = EditorTool.Line;
-        else if (ToolArrowBtn.IsChecked == true) _currentTool = EditorTool.Arrow;
-        else if (ToolRectBtn.IsChecked == true) _currentTool = EditorTool.Rectangle;
+        var clickedBtn = sender as ToggleButton;
+        bool isNowChecked = clickedBtn?.IsChecked == true;
+
+        if (_currentTool == EditorTool.Crop && clickedBtn != ToolCropBtn)
+        {
+            CancelCrop();
+        }
+
+        // 取消其他所有工具按钮的选中状态
+        ToolTextBtn.IsChecked = (clickedBtn == ToolTextBtn && isNowChecked);
+        ToolLineBtn.IsChecked = (clickedBtn == ToolLineBtn && isNowChecked);
+        ToolArrowBtn.IsChecked = (clickedBtn == ToolArrowBtn && isNowChecked);
+        ToolRectBtn.IsChecked = (clickedBtn == ToolRectBtn && isNowChecked);
+        ToolEllipseBtn.IsChecked = (clickedBtn == ToolEllipseBtn && isNowChecked);
+        ToolPenBtn.IsChecked = (clickedBtn == ToolPenBtn && isNowChecked);
+        ToolMosaicBtn.IsChecked = (clickedBtn == ToolMosaicBtn && isNowChecked);
+        ToolEraserBtn.IsChecked = (clickedBtn == ToolEraserBtn && isNowChecked);
+        ToolCropBtn.IsChecked = (clickedBtn == ToolCropBtn && isNowChecked);
+
+        if (!isNowChecked)
+        {
+            if (_currentTool == EditorTool.Crop)
+            {
+                CancelCrop();
+            }
+            _currentTool = EditorTool.Select;
+        }
+        else
+        {
+            if (clickedBtn == ToolTextBtn) _currentTool = EditorTool.Text;
+            else if (clickedBtn == ToolLineBtn) _currentTool = EditorTool.Line;
+            else if (clickedBtn == ToolArrowBtn) _currentTool = EditorTool.Arrow;
+            else if (clickedBtn == ToolRectBtn) _currentTool = EditorTool.Rectangle;
+            else if (clickedBtn == ToolEllipseBtn) _currentTool = EditorTool.Ellipse;
+            else if (clickedBtn == ToolPenBtn) _currentTool = EditorTool.Pen;
+            else if (clickedBtn == ToolMosaicBtn) _currentTool = EditorTool.Mosaic;
+            else if (clickedBtn == ToolEraserBtn) _currentTool = EditorTool.Eraser;
+            else if (clickedBtn == ToolCropBtn)
+            {
+                if (_zoomFactor > 1.001)
+                {
+                    ResetZoomPan();
+                }
+                _currentTool = EditorTool.Crop;
+                StartCrop();
+            }
+        }
+
+        if (_currentTool != EditorTool.Eraser && EraserIndicatorBorder != null)
+        {
+            EraserIndicatorBorder.IsVisible = false;
+        }
 
         UpdateCursor();
 
@@ -194,591 +595,160 @@ public partial class ScreenshotEditorWindow : Window
         }
     }
 
-    private void OnColorChanged(object? sender, RoutedEventArgs e)
+    // ==========================================
+    // 粗细、颜色、文字大小控制
+    // ==========================================
+    private void OnStrokeRadioClick(object? sender, RoutedEventArgs e)
     {
-        if (ColorRedBtn.IsChecked == true) _currentColor = new SKColor(229, 57, 53);
-        else if (ColorGreenBtn.IsChecked == true) _currentColor = new SKColor(67, 160, 71);
-        else if (ColorBlueBtn.IsChecked == true) _currentColor = new SKColor(30, 136, 229);
-        else if (ColorYellowBtn.IsChecked == true) _currentColor = new SKColor(253, 216, 53);
-
-        var avaloniaColor = Color.FromRgb(_currentColor.Red, _currentColor.Green, _currentColor.Blue);
-        InlineTextBox.Foreground = new SolidColorBrush(avaloniaColor);
-        InlineTextBox.BorderBrush = new SolidColorBrush(avaloniaColor);
-    }
-
-    private void UpdateCursor()
-    {
-        DrawingOverlayCanvas.Cursor = _currentTool switch
+        if (sender is RadioButton rb && rb.Tag is string tagStr && float.TryParse(tagStr, out float stroke))
         {
-            EditorTool.Select => new Cursor(StandardCursorType.Hand),
-            EditorTool.Text => new Cursor(StandardCursorType.Ibeam),
-            _ => new Cursor(StandardCursorType.Cross)
-        };
-    }
+            _currentStrokeWidth = stroke;
 
-    private void OnCanvasPointerPressed(object? sender, PointerPressedEventArgs e)
-    {
-        var pt = e.GetPosition(DrawingOverlayCanvas);
-        var props = e.GetCurrentPoint(DrawingOverlayCanvas).Properties;
-
-        if (!props.IsLeftButtonPressed) return;
-
-        CommitInlineText();
-
-        float imgX = (float)(pt.X / _displayScale);
-        float imgY = (float)(pt.Y / _displayScale);
-
-        if (_currentTool == EditorTool.Select)
-        {
-            var hit = _doc.HitTest(new SKPoint(imgX, imgY));
-            if (hit != null)
+            if (StrokeSlider != null && Math.Abs(StrokeSlider.Value - stroke) > 0.1)
             {
-                _selectedElement = hit;
-                _isDraggingElement = true;
-                _dragStartPoint = pt;
-                UpdateSelectionHighlight();
+                StrokeSlider.Value = stroke;
             }
-            else
+            if (StrokeValueLabel != null)
             {
-                _selectedElement = null;
-                UpdateSelectionHighlight();
+                StrokeValueLabel.Text = $"{stroke:0}px";
             }
-            return;
-        }
 
-        if (_currentTool == EditorTool.Text)
-        {
-            _textInsertPoint = pt;
-            ShowInlineTextBox(pt);
-            return;
-        }
-
-        // 几何图形绘制开始 (Rectangle, Line, Arrow)
-        _isDrawing = true;
-        _startPoint = pt;
-
-        var colorBrush = new SolidColorBrush(Color.FromRgb(_currentColor.Red, _currentColor.Green, _currentColor.Blue));
-
-        if (_currentTool == EditorTool.Rectangle)
-        {
-            var rect = new Avalonia.Controls.Shapes.Rectangle
+            if (_selectedElement != null)
             {
-                Stroke = colorBrush,
-                StrokeThickness = 3,
-                RadiusX = 2,
-                RadiusY = 2
-            };
-            Canvas.SetLeft(rect, pt.X);
-            Canvas.SetTop(rect, pt.Y);
-            _previewControl = rect;
-            DrawingOverlayCanvas.Children.Add(rect);
-        }
-        else if (_currentTool is EditorTool.Line or EditorTool.Arrow)
-        {
-            var line = new Avalonia.Controls.Shapes.Line
-            {
-                Stroke = colorBrush,
-                StrokeThickness = 3,
-                StrokeLineCap = PenLineCap.Round,
-                StartPoint = pt,
-                EndPoint = pt
-            };
-            _previewControl = line;
-            DrawingOverlayCanvas.Children.Add(line);
-        }
-    }
+                if (_selectedElement is RectangleElement r) r.StrokeWidth = _currentStrokeWidth;
+                else if (_selectedElement is LineElement l) l.StrokeWidth = _currentStrokeWidth;
+                else if (_selectedElement is ArrowElement a) a.StrokeWidth = _currentStrokeWidth;
+                else if (_selectedElement is PenElement p) p.StrokeWidth = _currentStrokeWidth;
+                else if (_selectedElement is MosaicElement m) m.StrokeWidth = _currentStrokeWidth;
 
-    private void OnCanvasPointerMoved(object? sender, PointerEventArgs e)
-    {
-        var pt = e.GetPosition(DrawingOverlayCanvas);
-
-        if (_isDraggingElement && _selectedElement != null)
-        {
-            float dx = (float)((pt.X - _dragStartPoint.X) / _displayScale);
-            float dy = (float)((pt.Y - _dragStartPoint.Y) / _displayScale);
-
-            if (_selectionHighlightBox != null)
-            {
-                var box = _selectedElement.BoundingBox;
-                Canvas.SetLeft(_selectionHighlightBox, (box.Left + dx) * _displayScale - 4);
-                Canvas.SetTop(_selectionHighlightBox, (box.Top + dy) * _displayScale - 4);
-            }
-            return;
-        }
-
-        if (!_isDrawing || _previewControl == null) return;
-
-        if (_currentTool == EditorTool.Rectangle && _previewControl is Avalonia.Controls.Shapes.Rectangle rect)
-        {
-            double x = Math.Min(_startPoint.X, pt.X);
-            double y = Math.Min(_startPoint.Y, pt.Y);
-            double w = Math.Abs(pt.X - _startPoint.X);
-            double h = Math.Abs(pt.Y - _startPoint.Y);
-
-            Canvas.SetLeft(rect, x);
-            Canvas.SetTop(rect, y);
-            rect.Width = w;
-            rect.Height = h;
-        }
-        else if ((_currentTool is EditorTool.Line or EditorTool.Arrow) && _previewControl is Avalonia.Controls.Shapes.Line line)
-        {
-            line.EndPoint = pt;
-        }
-    }
-
-    private void OnCanvasPointerReleased(object? sender, PointerReleasedEventArgs e)
-    {
-        var pt = e.GetPosition(DrawingOverlayCanvas);
-
-        if (_isDraggingElement && _selectedElement != null)
-        {
-            float dx = (float)((pt.X - _dragStartPoint.X) / _displayScale);
-            float dy = (float)((pt.Y - _dragStartPoint.Y) / _displayScale);
-
-            _isDraggingElement = false;
-
-            if (Math.Abs(dx) > 1 || Math.Abs(dy) > 1)
-            {
-                _doc.MoveElement(_selectedElement, dx, dy);
                 RefreshDisplay();
+                UpdateSelectionHighlight();
             }
+        }
+    }
+
+    private void OnStrokeSliderValueChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        float stroke = (float)Math.Round(e.NewValue);
+        if (Math.Abs(stroke - _currentStrokeWidth) < 0.01f)
+        {
             return;
         }
 
-        if (!_isDrawing) return;
-        _isDrawing = false;
+        _currentStrokeWidth = stroke;
 
-        if (_previewControl != null)
+        if (StrokeValueLabel != null)
         {
-            DrawingOverlayCanvas.Children.Remove(_previewControl);
-            _previewControl = null;
+            StrokeValueLabel.Text = $"{stroke:0}px";
         }
 
-        float startX = (float)(_startPoint.X / _displayScale);
-        float startY = (float)(_startPoint.Y / _displayScale);
-        float endX = (float)(pt.X / _displayScale);
-        float endY = (float)(pt.Y / _displayScale);
-
-        float dist = (float)Math.Sqrt((endX - startX) * (endX - startX) + (endY - startY) * (endY - startY));
-        if (dist < 4f) return;
-
-        if (_currentTool == EditorTool.Rectangle)
+        // 同步 2/4/8/14 预设单选钮状态
+        if (StrokeThinBtn != null && StrokeMediumBtn != null && StrokeThickBtn != null && StrokeExtraBtn != null)
         {
-            _doc.AddElement(new RectangleElement
+            StrokeThinBtn.IsChecked = Math.Abs(stroke - 2f) < 0.1f;
+            StrokeMediumBtn.IsChecked = Math.Abs(stroke - 4f) < 0.1f;
+            StrokeThickBtn.IsChecked = Math.Abs(stroke - 8f) < 0.1f;
+            StrokeExtraBtn.IsChecked = Math.Abs(stroke - 14f) < 0.1f;
+        }
+
+        if (_selectedElement != null)
+        {
+            if (_selectedElement is RectangleElement r) r.StrokeWidth = _currentStrokeWidth;
+            else if (_selectedElement is LineElement l) l.StrokeWidth = _currentStrokeWidth;
+            else if (_selectedElement is ArrowElement a) a.StrokeWidth = _currentStrokeWidth;
+            else if (_selectedElement is PenElement p) p.StrokeWidth = _currentStrokeWidth;
+            else if (_selectedElement is MosaicElement m) m.StrokeWidth = _currentStrokeWidth;
+            else if (_selectedElement is TextElement t)
             {
-                Left = Math.Min(startX, endX),
-                Top = Math.Min(startY, endY),
-                Right = Math.Max(startX, endX),
-                Bottom = Math.Max(startY, endY),
-                Color = _currentColor,
-                StrokeWidth = 3f
-            });
-        }
-        else if (_currentTool == EditorTool.Line)
-        {
-            _doc.AddElement(new LineElement
-            {
-                StartX = startX,
-                StartY = startY,
-                EndX = endX,
-                EndY = endY,
-                Color = _currentColor,
-                StrokeWidth = 3f
-            });
-        }
-        else if (_currentTool == EditorTool.Arrow)
-        {
-            _doc.AddElement(new ArrowElement
-            {
-                StartX = startX,
-                StartY = startY,
-                EndX = endX,
-                EndY = endY,
-                Color = _currentColor,
-                StrokeWidth = 3.5f
-            });
+                t.StrokeWidth = _currentStrokeWidth;
+                t.IsBold = _currentStrokeWidth > 2.5f;
+            }
+
+            RefreshDisplay();
+            UpdateSelectionHighlight();
         }
 
-        RefreshDisplay();
+        // 避免高频拖拽每像素写磁盘引发卡顿，粗细设置会在 Window.Closed 及动作执行时统一持久化保存
     }
 
-    private void ShowInlineTextBox(Point pt)
+    private void OnColorPresetClick(object? sender, RoutedEventArgs e)
     {
-        InlineTextBox.Text = string.Empty;
-        Canvas.SetLeft(InlineTextBox, Math.Clamp(pt.X, 0, CanvasContainer.Width - 120));
-        Canvas.SetTop(InlineTextBox, Math.Clamp(pt.Y, 0, CanvasContainer.Height - 40));
-        InlineTextBox.IsVisible = true;
-        InlineTextBox.Focus();
+        if (sender is RadioButton rb && rb.Tag is string hexStr && SKColor.TryParse(hexStr, out var skColor))
+        {
+            ApplyColor(skColor);
+        }
     }
 
-    private void CommitInlineText()
+    private void OnPaletteColorChanged(object? sender, ColorChangedEventArgs e)
     {
-        if (!InlineTextBox.IsVisible) return;
+        var col = e.NewColor;
+        var skColor = new SKColor(col.R, col.G, col.B, col.A);
+        ApplyColor(skColor);
+    }
 
-        string text = InlineTextBox.Text?.Trim() ?? string.Empty;
-        InlineTextBox.IsVisible = false;
+    private void ApplyColor(SKColor color)
+    {
+        _currentColor = color;
 
-        if (!string.IsNullOrEmpty(text))
+        var avaloniaColor = Color.FromArgb(_currentColor.Alpha, _currentColor.Red, _currentColor.Green, _currentColor.Blue);
+        InlineTextBox.Foreground = new SolidColorBrush(avaloniaColor);
+        InlineTextBox.CaretBrush = new SolidColorBrush(avaloniaColor);
+
+        if (_selectedElement != null)
         {
-            float imgX = (float)(_textInsertPoint.X / _displayScale);
-            float imgY = (float)(_textInsertPoint.Y / _displayScale);
-
-            _doc.AddElement(new TextElement
-            {
-                X = imgX,
-                Y = imgY,
-                Text = text,
-                Color = _currentColor,
-                FontSize = 22f,
-                IsBold = true
-            });
+            if (_selectedElement is RectangleElement r) r.Color = _currentColor;
+            else if (_selectedElement is EllipseElement el) el.Color = _currentColor;
+            else if (_selectedElement is LineElement l) l.Color = _currentColor;
+            else if (_selectedElement is ArrowElement a) a.Color = _currentColor;
+            else if (_selectedElement is TextElement t) t.Color = _currentColor;
+            else if (_selectedElement is PenElement p) p.Color = _currentColor;
+            else if (_selectedElement is WatermarkElement wm) wm.Color = _currentColor;
 
             RefreshDisplay();
         }
     }
 
-    private void OnInlineTextBoxLostFocus(object? sender, RoutedEventArgs e)
+    private void OnFontSizeTextChanged(object? sender, TextChangedEventArgs e)
     {
-        CommitInlineText();
-    }
-
-    private void OnInlineTextBoxKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (e.Key == Key.Enter && !e.KeyModifiers.HasFlag(KeyModifiers.Shift))
+        string text = FontSizeTextBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(text))
         {
-            CommitInlineText();
-            e.Handled = true;
+            _customFontSize = null;
         }
-        else if (e.Key == Key.Escape)
+        else if (float.TryParse(text, out float fs) && fs >= 1f)
         {
-            InlineTextBox.IsVisible = false;
-            e.Handled = true;
-        }
-    }
-
-    private void UpdateSelectionHighlight()
-    {
-        if (_selectionHighlightBox != null)
-        {
-            DrawingOverlayCanvas.Children.Remove(_selectionHighlightBox);
-            _selectionHighlightBox = null;
+            _customFontSize = fs;
         }
 
-        if (_selectedElement != null && _currentTool == EditorTool.Select)
+        if (_selectedElement is TextElement textElem)
         {
-            var box = _selectedElement.BoundingBox;
-            _selectionHighlightBox = new Border
-            {
-                BorderBrush = new SolidColorBrush(Color.FromRgb(64, 169, 255)),
-                BorderThickness = new Thickness(1.5),
-                Background = new SolidColorBrush(Color.FromArgb(30, 64, 169, 255)),
-                CornerRadius = new CornerRadius(3),
-                Width = box.Width * _displayScale + 8,
-                Height = box.Height * _displayScale + 8,
-                IsHitTestVisible = false
-            };
-
-            Canvas.SetLeft(_selectionHighlightBox, box.Left * _displayScale - 4);
-            Canvas.SetTop(_selectionHighlightBox, box.Top * _displayScale - 4);
-            DrawingOverlayCanvas.Children.Add(_selectionHighlightBox);
-        }
-    }
-
-    private void OnUndoClick(object? sender, RoutedEventArgs e)
-    {
-        CommitInlineText();
-        _doc.UndoRedo.Undo();
-        RefreshDisplay();
-    }
-
-    private void OnRedoClick(object? sender, RoutedEventArgs e)
-    {
-        CommitInlineText();
-        _doc.UndoRedo.Redo();
-        RefreshDisplay();
-    }
-
-    private async void OnCopyClick(object? sender, RoutedEventArgs e)
-    {
-        if (_isProcessingAction) return;
-        _isProcessingAction = true;
-
-        try
-        {
-            CommitInlineText();
-
-            using var rendered = _doc.RenderToBitmap();
-            bool copied = await _clipboardService.SetImageAsync(rendered);
-
-            if (copied)
-            {
-                ToastNotificationWindow.Show(
-                    "带标注图片已复制到剪贴板，可直接在微信/QQ/Word中粘贴",
-                    TimeSpan.Zero,
-                    "✓ 标注已复制到剪贴板");
-            }
-
-            Close();
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("截图标注复制图片异常", ex);
-        }
-    }
-
-    private async void OnQuickSaveClick(object? sender, RoutedEventArgs e)
-    {
-        CommitInlineText();
-
-        string? lastDir = _settingsService?.Current.LastSaveDirectory;
-        if (string.IsNullOrWhiteSpace(lastDir) || !Directory.Exists(lastDir))
-        {
-            // 尚未配置有效路径，平滑引导至保存设置窗口选择位置
-            ToastNotificationWindow.Show("尚未记录保存路径，请先选择一次目标文件夹");
-            OnSaveClick(sender, e);
-            return;
-        }
-
-        try
-        {
-            var cur = _settingsService?.Current ?? new AppSettings();
-            var fmt = Enum.TryParse<ImageSaveFormat>(cur.DefaultSaveFormat, true, out var parsedFmt) ? parsedFmt : ImageSaveFormat.Png;
-            int quality = Math.Clamp(cur.DefaultSaveQuality, 10, 100);
-            float scale = cur.DefaultSaveScale > 0 ? cur.DefaultSaveScale / 100f : 1.0f;
-            int targetW = Math.Max(1, (int)Math.Round(_doc.OriginalImage.Width * scale));
-            int targetH = Math.Max(1, (int)Math.Round(_doc.OriginalImage.Height * scale));
-
-            var options = new ImageExportOptions
-            {
-                Format = fmt,
-                Quality = quality,
-                TargetWidth = targetW,
-                TargetHeight = targetH
-            };
-
-            string extension = ImageExportOptions.GetExtension(fmt);
-            string fileName = $"ShawMuOCR_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
-            string filePath = System.IO.Path.Combine(lastDir, fileName);
-
-            byte[] bytes = _doc.Encode(options);
-            await System.IO.File.WriteAllBytesAsync(filePath, bytes);
-
-            ToastNotificationWindow.Show(
-                $"已保存至: {fileName}\n目录: {lastDir}",
-                TimeSpan.FromSeconds(3),
-                "✓ 已自动保存到上次路径");
-
-            Close();
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("快速保存截图失败", ex);
-            ToastNotificationWindow.Show($"快速保存图片失败: {ex.Message}");
-        }
-    }
-
-    private async void OnSaveClick(object? sender, RoutedEventArgs e)
-    {
-        CommitInlineText();
-
-        var dialog = new SaveImageDialog(_doc, _settingsService);
-        var result = await dialog.ShowDialog<bool>(this);
-        if (result && dialog.ShouldCloseEditor)
-        {
-            Close();
-        }
-    }
-
-    private void OnPinClick(object? sender, RoutedEventArgs e)
-    {
-        if (_isProcessingAction) return;
-        _isProcessingAction = true;
-
-        try
-        {
-            CommitInlineText();
-
-            var rendered = _doc.RenderToBitmap();
-
-            // 优先定位至原始截选区域的物理屏幕绝对坐标；若无则回退至当前编辑器坐标
-            PixelPoint pinPos = _selectionBounds.HasValue
-                ? new PixelPoint(_selectionBounds.Value.X, _selectionBounds.Value.Y)
-                : Position;
-
-            var pinWin = new PinnedImageWindow(rendered, pinPos);
-            pinWin.Show();
-
-            Close();
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("截图标注贴图异常", ex);
-        }
-    }
-
-    private async void OnOcrClick(object? sender, RoutedEventArgs e)
-    {
-        if (_isProcessingAction) return;
-        _isProcessingAction = true;
-
-        try
-        {
-            CommitInlineText();
-
-            // 将标注图层与底图合成渲染为全新的 OcrImage
-            var rendered = _doc.RenderToBitmap();
-
-            // 立即关闭截图标注窗口，为用户提供流畅即时的视觉反馈
-            Close();
-
-            if (_ocrCallback != null)
-            {
-                try
-                {
-                    // 移交图像所有权给 OCR 处理流程（由 OcrSession 接管生命周期并最终 Dispose）
-                    await _ocrCallback(rendered);
-                }
-                catch (Exception ex)
-                {
-                    rendered.Dispose();
-                    _logger?.Error("截图标注 OCR 识别任务执行异常", ex);
-                }
-            }
-            else
-            {
-                rendered.Dispose();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("截图标注点击 OCR 失败", ex);
-        }
-    }
-
-    private async void OnTranslateClick(object? sender, RoutedEventArgs e)
-    {
-        if (_isProcessingAction) return;
-        _isProcessingAction = true;
-
-        try
-        {
-            CommitInlineText();
-
-            // 将标注图层与底图合成渲染为全新的 OcrImage
-            var rendered = _doc.RenderToBitmap();
-
-            // 获取选区物理坐标（优先使用选区捕获时的物理坐标，回退至当前编辑器窗口物理位置）
-            var bounds = _selectionBounds ?? new ScreenRect(
-                (int)Position.X,
-                (int)Position.Y,
-                (int)Bounds.Width,
-                (int)Bounds.Height);
-
-            // 立即关闭截图标注编辑器窗口
-            Close();
-
-            if (_translateCallback != null)
-            {
-                try
-                {
-                    await _translateCallback(rendered, bounds);
-                }
-                catch (Exception ex)
-                {
-                    rendered.Dispose();
-                    _logger?.Error("截图标注翻译回调执行异常", ex);
-                }
-            }
-            else
-            {
-                rendered.Dispose();
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("截图标注点击翻译失败", ex);
-        }
-    }
-
-    private void OnCloseClick(object? sender, RoutedEventArgs e)
-    {
-        Close();
-    }
-
-    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
-    {
-        if (InlineTextBox.IsVisible) return;
-
-        if (e.Key == Key.Z && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            OnUndoClick(sender, e);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Y && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            OnRedoClick(sender, e);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.S && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-            {
-                OnQuickSaveClick(sender, e);
-            }
-            else
-            {
-                OnSaveClick(sender, e);
-            }
-            e.Handled = true;
-        }
-        else if (e.Key == Key.C && e.KeyModifiers.HasFlag(KeyModifiers.Control))
-        {
-            OnCopyClick(sender, e);
-            e.Handled = true;
-        }
-        else if (e.Key == Key.Escape)
-        {
-            Close();
-            e.Handled = true;
-        }
-        else if ((e.Key is Key.Delete or Key.Back) && _selectedElement != null)
-        {
-            _doc.RemoveElement(_selectedElement);
-            _selectedElement = null;
+            textElem.FontSize = GetCurrentFontSize();
             RefreshDisplay();
-            e.Handled = true;
+            UpdateSelectionHighlight();
         }
-        else if (e.Key == Key.V)
+
+        SaveAnnotationSettings();
+    }
+
+    private void SaveAnnotationSettings()
+    {
+        if (_isPrewarmInstance || _settingsService == null) return;
+        try
         {
-            ToolSelectBtn.IsChecked = true;
-            e.Handled = true;
+            var cur = _settingsService.Current.Clone();
+            cur.AnnotationStrokeWidth = _currentStrokeWidth;
+            cur.AnnotationFontSize = GetCurrentFontSize();
+            _settingsService.Save(cur);
         }
-        else if (e.Key == Key.T)
-        {
-            ToolTextBtn.IsChecked = true;
-            e.Handled = true;
-        }
-        else if (e.Key == Key.L)
-        {
-            ToolLineBtn.IsChecked = true;
-            e.Handled = true;
-        }
-        else if (e.Key == Key.A)
-        {
-            ToolArrowBtn.IsChecked = true;
-            e.Handled = true;
-        }
-        else if (e.Key == Key.R)
-        {
-            ToolRectBtn.IsChecked = true;
-            e.Handled = true;
-        }
+        catch { }
     }
 
     protected override void OnClosed(EventArgs e)
     {
         base.OnClosed(e);
         _doc.Dispose();
+        _fullScreenshot?.Dispose();
+        _fullScreenshot = null;
     }
 
     private static WriteableBitmap ConvertToBitmap(OcrImage image)

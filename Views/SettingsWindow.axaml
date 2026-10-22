@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:ShawMuOCR.ViewModels"
+        xmlns:services="using:ShawMuOCR.Services"
         x:Class="ShawMuOCR.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
         Title="设置 - 小沐 OCR"
@@ -10,9 +11,49 @@
         WindowStartupLocation="CenterOwner"
         Icon="/Assets/logo.ico">
 
-    <Grid RowDefinitions="*,Auto" Margin="24">
+    <Panel>
+    <Grid RowDefinitions="Auto,*" Margin="24">
+        <!-- 顶部操作栏 (Topbar) -->
+        <Border Grid.Row="0" Margin="0,0,0,14" Padding="14,10"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="8">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Button Grid.Column="0"
+                        Content="↺ 恢复默认设置"
+                        Command="{Binding ShowResetConfirmDialogCommand}"
+                        Classes="subtle"
+                        Padding="10,6"
+                        FontSize="12"
+                        ToolTip.Tip="将所有设置项还原为出厂默认设置" />
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="12,0,16,0">
+                    <TextBlock Text="💡" FontSize="12" VerticalAlignment="Center" IsVisible="{Binding !IsRecordingAnyHotkey}" />
+                    <TextBlock Text="{Binding StatusMessage}"
+                               VerticalAlignment="Center"
+                               FontSize="12"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                               IsVisible="{Binding !IsRecordingAnyHotkey}" />
+                </StackPanel>
+
+                <Button Grid.Column="2"
+                        Content="保存"
+                        Command="{Binding SaveCommand}"
+                        Classes="accent"
+                        Width="80"
+                        Margin="0,0,8,0" />
+
+                <Button Grid.Column="3"
+                        Content="取消"
+                        Command="{Binding CancelCommand}"
+                        Width="80" />
+            </Grid>
+        </Border>
+
         <!-- 内容区域 -->
-        <ScrollViewer Grid.Row="0">
+        <ScrollViewer Grid.Row="1">
             <StackPanel Spacing="16">
                 <!-- 常规设置 -->
                 <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
@@ -229,6 +270,7 @@
                             <ComboBox Grid.Column="1"
                                       ItemsSource="{Binding AvailableOcrBackends}"
                                       SelectedItem="{Binding SelectedOcrBackendOption}"
+                                      services:ComboBoxHelper.DisableWheelChange="True"
                                       MinWidth="180"
                                       VerticalAlignment="Center">
                                 <ComboBox.ItemTemplate>
@@ -276,6 +318,7 @@
                             <ComboBox Grid.Column="1"
                                       ItemsSource="{Binding AvailableGpuDevices}"
                                       SelectedItem="{Binding SelectedGpuDeviceOption}"
+                                      services:ComboBoxHelper.DisableWheelChange="True"
                                       MinWidth="240"
                                       VerticalAlignment="Center">
                                 <ComboBox.ItemTemplate>
@@ -341,6 +384,29 @@
                     <StackPanel Spacing="14">
                         <TextBlock Text="配置文件与日志服务" FontWeight="SemiBold" FontSize="15" />
 
+                        <!-- 软件数据根目录 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="软件数据根目录 (%LocalAppData%\ShawMuOCR)" FontWeight="Medium" />
+                                <TextBox Text="{Binding AppDataDirectory}"
+                                         IsReadOnly="True"
+                                         FontSize="12"
+                                         Margin="0,6,0,0"
+                                         VerticalAlignment="Center" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Bottom">
+                                <Button Content="打开目录"
+                                        Command="{Binding OpenAppDataFolderCommand}"
+                                        Padding="10,5" />
+                                <Button Content="复制路径"
+                                        Command="{Binding CopyAppDataPathCommand}"
+                                        Padding="10,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
                         <!-- 配置文件路径展示 -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
@@ -383,6 +449,32 @@
                                     Padding="10,5"
                                     VerticalAlignment="Bottom" />
                         </Grid>
+
+                        <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                        <!-- 日志定期自动清理 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="日志定期自动清理" FontWeight="Medium" />
+                                <TextBlock Text="定时扫描并自动清理超过保留期限的历史日志文件，避免长期运行无节制占用磁盘空间"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                <CheckBox Content="启用" IsChecked="{Binding EnableLogAutoClean}" VerticalAlignment="Center" />
+                                <ComboBox ItemsSource="{Binding AvailableLogRetentionDays}"
+                                          SelectedItem="{Binding LogRetentionDays}"
+                                          IsEnabled="{Binding EnableLogAutoClean}"
+                                          Width="80" />
+                                <TextBlock Text="天" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <Button Content="立即清理"
+                                        Command="{Binding CleanExpiredLogsCommand}"
+                                        Padding="10,5"
+                                        ToolTip.Tip="根据当前保留天数立即扫描并清理过期历史日志" />
+                            </StackPanel>
+                        </Grid>
                     </StackPanel>
                 </Border>
 
@@ -410,29 +502,67 @@
                 </Border>
             </StackPanel>
         </ScrollViewer>
-
-        <!-- 底部操作栏 -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,16,0,0">
-            <TextBlock Grid.Column="0"
-                       Text="{Binding StatusMessage}"
-                       VerticalAlignment="Center"
-                       FontSize="12"
-                       TextWrapping="Wrap"
-                       Margin="0,0,16,0"
-                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                       IsVisible="{Binding !IsRecordingAnyHotkey}" />
-
-            <Button Grid.Column="1"
-                    Content="保存"
-                    Command="{Binding SaveCommand}"
-                    Classes="accent"
-                    Width="80"
-                    Margin="0,0,8,0" />
-
-            <Button Grid.Column="2"
-                    Content="取消"
-                    Command="{Binding CancelCommand}"
-                    Width="80" />
-        </Grid>
     </Grid>
+
+    <!-- 恢复默认设置确认弹窗遮罩 -->
+    <Border Background="#60000000"
+            IsVisible="{Binding IsResetConfirmOpen}"
+            HorizontalAlignment="Stretch"
+            VerticalAlignment="Stretch">
+        <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="10"
+                Padding="22,18"
+                Width="380"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                BoxShadow="0 8 24 #30000000">
+            <StackPanel Spacing="14">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="↺" FontSize="18" FontWeight="Bold" Foreground="#D97706" VerticalAlignment="Center" />
+                    <TextBlock Text="确认恢复默认设置" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                </StackPanel>
+
+                <TextBlock Text="确定要将所有设置还原为初始默认值吗？快捷键、识别模型、界面主题、调度配置等将恢复为出厂状态。"
+                           FontSize="12"
+                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                           TextWrapping="Wrap" />
+
+                <!-- 询问是否清除 API 信息 -->
+                <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="6"
+                        Padding="12,10">
+                    <StackPanel Spacing="4">
+                        <CheckBox IsChecked="{Binding ResetClearApiCredentials}"
+                                  Content="同时清除 API 密钥与凭据配置"
+                                  FontWeight="Medium"
+                                  FontSize="12" />
+                        <TextBlock Text="勾选将一并清空百度、谷歌、OpenAI 等翻译 API Key 与 Token；默认不勾选以保留您的密钥资产。"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                   TextWrapping="Wrap"
+                                   Margin="28,0,0,0" />
+                    </StackPanel>
+                </Border>
+
+                <!-- 操作按钮 -->
+                <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,4,0,0">
+                    <Button Grid.Column="1"
+                            Content="取消"
+                            Command="{Binding CancelResetConfirmDialogCommand}"
+                            Padding="14,6"
+                            Margin="0,0,8,0" />
+                    <Button Grid.Column="2"
+                            Content="确认恢复"
+                            Command="{Binding ConfirmResetDefaultsCommand}"
+                            Classes="accent"
+                            Padding="14,6" />
+                </Grid>
+            </StackPanel>
+        </Border>
+    </Border>
+    </Panel>
 </Window>

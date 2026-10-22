@@ -43,6 +43,13 @@ public sealed class OcrImage : IDisposable
         return new OcrImage(cropped);
     }
 
+    public OcrImage Clone()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var cloned = Bitmap.Copy();
+        return new OcrImage(cloned);
+    }
+
     public void Dispose()
     {
         if (!_disposed)

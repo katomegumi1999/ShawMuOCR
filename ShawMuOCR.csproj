@@ -15,6 +15,8 @@
     <IlcInstructionSet>avx2</IlcInstructionSet>
     <OptimizationPreference>Size</OptimizationPreference>
     <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
+    <!-- 禁用 .NET AOT 优化跳步发布（UseOptimizedPublish），确保执行完整生成链以触发 Avalonia XAML IL 编译与资源编织 -->
+    <UseOptimizedPublish>false</UseOptimizedPublish>
   </PropertyGroup>
 
   <ItemGroup>
@@ -41,6 +43,7 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="12.1.4" />
     <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
@@ -50,8 +53,8 @@
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
     <PackageReference Include="Sdcb.SimdPaddleOCR" Version="2.0.0" />
-    <PackageReference Include="SkiaSharp" Version="4.155.0-preview.2.26479.13" />
-    <PackageReference Include="PdfPig" Version="0.1.17-alpha-202610130041-a0fc5" />
+    <PackageReference Include="SkiaSharp" Version="4.156.0-preview.1.26512.10" />
+    <PackageReference Include="PdfPig" Version="0.1.17-alpha-202610150035-3452b" />
   </ItemGroup>
 
   <Target Name="CleanupPublishOutput" AfterTargets="Publish">

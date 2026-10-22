@@ -49,6 +49,222 @@ public partial class ClipboardViewModel : ObservableObject
     private string _phraseEditorText = string.Empty;
 
     [ObservableProperty]
+    private int _phraseEditorCaretIndex = 0;
+
+    [ObservableProperty]
+    private string _cursorPositionText = "光标位置：第 0 字符处 (开头)";
+
+    [ObservableProperty]
+    private bool _isPhraseRuleEnabled;
+
+    partial void OnIsPhraseRuleEnabledChanged(bool value)
+    {
+        if (!value)
+        {
+            foreach (var r in CurrentPhraseRules)
+            {
+                r.IsEnabled = false;
+                r.RefreshState();
+            }
+        }
+        else
+        {
+            if (CurrentPhraseRules.Count > 0 && CurrentPhraseRules.All(r => !r.IsEnabled))
+            {
+                foreach (var r in CurrentPhraseRules)
+                {
+                    r.IsEnabled = true;
+                    r.RefreshState();
+                }
+            }
+        }
+        if (SelectedPhrase != null)
+        {
+            _service.SetPhraseRules(SelectedPhrase.Id, CurrentPhraseRules);
+        }
+        NotifyRuleProperties();
+    }
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RulePreviewOutputText))]
+    private int _ruleInsertPosition;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RulePreviewOutputText))]
+    private int _rulePositionMode = 1; // 0: 字符前插入, 1: 字符后追加
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RuleTimeStatusText))]
+    [NotifyPropertyChangedFor(nameof(RulePreviewOutputText))]
+    private string _ruleStartTime = "08:00";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RuleTimeStatusText))]
+    [NotifyPropertyChangedFor(nameof(RulePreviewOutputText))]
+    private string _ruleEndTime = "18:00";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(RuleTimeStatusText))]
+    [NotifyPropertyChangedFor(nameof(RulePreviewOutputText))]
+    private string _ruleAppendText = string.Empty;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditingRule))]
+    [NotifyPropertyChangedFor(nameof(RuleSubmitButtonText))]
+    [NotifyPropertyChangedFor(nameof(RuleSubmitButtonIcon))]
+    private string? _editingRuleId;
+
+    public bool IsEditingRule => !string.IsNullOrEmpty(EditingRuleId);
+    public string RuleSubmitButtonText => IsEditingRule ? "保存规则修改" : "添加为时段规则";
+    public string RuleSubmitButtonIcon => IsEditingRule ? "💾" : "➕";
+    public string CurrentRulesCountText => CurrentPhraseRules.Count > 0 ? $"({CurrentPhraseRules.Count} 条)" : "(0 条)";
+    public bool HasRules => CurrentPhraseRules.Count > 0;
+
+    public ObservableCollection<PhraseConditionalRule> CurrentPhraseRules { get; } = new();
+
+    public ObservableCollection<PhraseRuleTemplate> SavedRuleTemplates { get; } = new();
+
+    [ObservableProperty]
+    private PhraseRuleTemplate? _selectedRuleTemplate;
+
+    [ObservableProperty]
+    private string _newTemplateCustomName = string.Empty;
+
+    public string RuleTimeStatusText
+    {
+        get
+        {
+            // 1. 编辑状态：处于时段规则编辑或正在表单中输入追加文本
+            if (IsEditingRule || !string.IsNullOrWhiteSpace(RuleAppendText))
+            {
+                string start = string.IsNullOrWhiteSpace(RuleStartTime) ? "08:00" : RuleStartTime.Trim();
+                string end = string.IsNullOrWhiteSpace(RuleEndTime) ? "18:00" : RuleEndTime.Trim();
+                return $"✏ 正在预览编辑时段 ({start} ~ {end})";
+            }
+
+            // 2. 平时：未开启或无规则
+            if (!IsPhraseRuleEnabled || CurrentPhraseRules.Count == 0)
+            {
+                return "⚪ 动态条件追加已关闭";
+            }
+
+            // 3. 平时：按当前实时时段预览，检查当前时钟是否命中规则
+            var matchedRule = CurrentPhraseRules.FirstOrDefault(r => r.IsEnabled && r.IsTimeMatched(DateTime.Now));
+            if (matchedRule != null)
+            {
+                return $"🎯 实时时段预览 (当前命中: {matchedRule.TimeRangeText})";
+            }
+
+            return "🎯 实时时段预览 (当前时段未命中任何规则)";
+        }
+    }
+
+    public string RulePreviewOutputText
+    {
+        get
+        {
+            string raw = PhraseEditorText ?? string.Empty;
+
+            // 1. 编辑状态：只预览当前正在编辑/填写的那个时段规则，不与其它时段混杂
+            if (IsEditingRule || !string.IsNullOrWhiteSpace(RuleAppendText))
+            {
+                var editingRule = BuildCurrentRule();
+                return editingRule.ApplyUnconditional(raw);
+            }
+
+            // 2. 平时：按当前实时时段真实预览生效结果
+            if (!IsPhraseRuleEnabled || CurrentPhraseRules.Count == 0)
+            {
+                return string.IsNullOrEmpty(raw) ? "(无内容)" : raw;
+            }
+
+            return PhraseConditionalRule.ApplyRules(raw, CurrentPhraseRules, DateTime.Now);
+        }
+    }
+
+    public void NotifyRuleProperties()
+    {
+        OnPropertyChanged(nameof(IsEditingRule));
+        OnPropertyChanged(nameof(RuleSubmitButtonText));
+        OnPropertyChanged(nameof(RuleSubmitButtonIcon));
+        OnPropertyChanged(nameof(CurrentRulesCountText));
+        OnPropertyChanged(nameof(HasRules));
+        OnPropertyChanged(nameof(RuleTimeStatusText));
+        OnPropertyChanged(nameof(RulePreviewOutputText));
+    }
+
+    private PhraseConditionalRule BuildCurrentRule() => new()
+    {
+        Id = EditingRuleId ?? Guid.NewGuid().ToString("N"),
+        IsEnabled = true,
+        InsertPosition = RuleInsertPosition,
+        PositionMode = RulePositionMode,
+        StartTime = string.IsNullOrWhiteSpace(RuleStartTime) ? "08:00" : RuleStartTime.Trim(),
+        EndTime = string.IsNullOrWhiteSpace(RuleEndTime) ? "18:00" : RuleEndTime.Trim(),
+        AppendText = RuleAppendText ?? string.Empty
+    };
+
+    partial void OnPhraseEditorTextChanged(string value)
+    {
+        UpdateCursorPositionText();
+        OnPropertyChanged(nameof(RulePreviewOutputText));
+    }
+
+    partial void OnPhraseEditorCaretIndexChanged(int value)
+    {
+        UpdateCursorPositionText();
+    }
+
+    private void UpdateCursorPositionText()
+    {
+        int len = PhraseEditorText?.Length ?? 0;
+        int clamped = Math.Clamp(PhraseEditorCaretIndex, 0, len);
+        if (len == 0)
+        {
+            CursorPositionText = "光标位置：文本为空 (第 0 字符)";
+        }
+        else if (clamped == 0)
+        {
+            CursorPositionText = $"光标位置：第 0 字符处 (文本开头，共 {len} 字符)";
+        }
+        else if (clamped >= len)
+        {
+            CursorPositionText = $"光标位置：第 {len} 字符处 (文本最末尾，共 {len} 字符)";
+        }
+        else
+        {
+            char prev = PhraseEditorText![clamped - 1];
+            char next = PhraseEditorText[clamped];
+            string prevDisplay = prev == '\n' ? "\\n" : (prev == '\r' ? "\\r" : prev.ToString());
+            string nextDisplay = next == '\n' ? "\\n" : (next == '\r' ? "\\r" : next.ToString());
+            CursorPositionText = $"光标位置：第 {clamped} 字符处 ('{prevDisplay}' 与 '{nextDisplay}' 之间，共 {len} 字符)";
+        }
+    }
+
+    private void ResetRuleToDefaults()
+    {
+        EditingRuleId = null;
+        IsPhraseRuleEnabled = false;
+        RuleInsertPosition = 0;
+        RulePositionMode = 1;
+        RuleStartTime = "08:00";
+        RuleEndTime = "18:00";
+        RuleAppendText = string.Empty;
+        NotifyRuleProperties();
+    }
+
+    private void ResetRuleForm()
+    {
+        EditingRuleId = null;
+        RuleInsertPosition = 0;
+        RulePositionMode = 1;
+        RuleStartTime = "08:00";
+        RuleEndTime = "18:00";
+        RuleAppendText = string.Empty;
+        NotifyRuleProperties();
+    }
+
+    [ObservableProperty]
     private int _phrasesCount;
 
     public bool HasSelectedPhrase => SelectedPhrase != null && !IsAddingNewPhrase;
@@ -56,15 +272,43 @@ public partial class ClipboardViewModel : ObservableObject
 
     partial void OnSelectedPhraseChanged(MuClipPhraseItem? value)
     {
+        CurrentPhraseRules.Clear();
+        EditingRuleId = null;
+
         if (value != null)
         {
             IsAddingNewPhrase = false;
             PhraseEditorText = value.Content;
+            PhraseEditorCaretIndex = value.Content.Length;
+
+            var rules = _service.GetPhraseRules(value.Id);
+            foreach (var r in rules)
+            {
+                CurrentPhraseRules.Add(r);
+            }
+            IsPhraseRuleEnabled = CurrentPhraseRules.Count > 0 && CurrentPhraseRules.Any(r => r.IsEnabled);
+            if (rules.Count > 0)
+            {
+                var first = rules[0];
+                RuleInsertPosition = first.InsertPosition;
+                RulePositionMode = first.PositionMode;
+                RuleStartTime = first.StartTime;
+                RuleEndTime = first.EndTime;
+                RuleAppendText = first.AppendText;
+            }
+            else
+            {
+                ResetRuleForm();
+            }
         }
         else if (!IsAddingNewPhrase)
         {
             PhraseEditorText = string.Empty;
+            PhraseEditorCaretIndex = 0;
+            ResetRuleToDefaults();
         }
+        UpdateCursorPositionText();
+        NotifyRuleProperties();
     }
 
     [ObservableProperty]
@@ -77,10 +321,19 @@ public partial class ClipboardViewModel : ObservableObject
     private string _manualPeerInput = string.Empty;
 
     [ObservableProperty]
+    private string _customSyncPortText = "42424";
+
+    [ObservableProperty]
+    private string _portStatusMessage = string.Empty;
+
+    [ObservableProperty]
     private string _syncStatusText = "局域网同步未连接";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasOnlinePeers))]
     private int _onlinePeerCount;
+
+    public bool HasOnlinePeers => OnlinePeerCount > 0;
 
     [ObservableProperty]
     private int _pairedDeviceCount;
@@ -97,12 +350,36 @@ public partial class ClipboardViewModel : ObservableObject
     [ObservableProperty]
     private string _statusMessage = "就绪";
 
-    // 文件传输二级页面与状态
+    // 页面与子视图索引 (0: 剪贴板主页, 1: 文件传输二级页面, 2: 局域网同步二级页面)
     [ObservableProperty]
-    private bool _isFileTransferViewActive;
+    [NotifyPropertyChangedFor(nameof(IsMainViewActive))]
+    [NotifyPropertyChangedFor(nameof(IsFileTransferViewActive))]
+    [NotifyPropertyChangedFor(nameof(IsLanSyncViewActive))]
+    private int _currentViewIndex = 0;
+
+    public bool IsMainViewActive => CurrentViewIndex == 0;
+    public bool IsFileTransferViewActive
+    {
+        get => CurrentViewIndex == 1;
+        set => CurrentViewIndex = value ? 1 : 0;
+    }
+    public bool IsLanSyncViewActive
+    {
+        get => CurrentViewIndex == 2;
+        set => CurrentViewIndex = value ? 2 : 0;
+    }
+
+    // 文件传输日志区
+    [ObservableProperty]
+    private string _transferLogText = string.Empty;
+
+    private bool _hasInitializedTransferLog = false;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasActiveTransfers))]
     private int _activeTransferCount;
+
+    public bool HasActiveTransfers => ActiveTransferCount > 0;
 
     [ObservableProperty]
     private string _fileSaveDirectory = string.Empty;
@@ -132,6 +409,7 @@ public partial class ClipboardViewModel : ObservableObject
     public ObservableCollection<TransferTargetDeviceItem> AvailableTransferTargets { get; } = new();
 
     public Func<Task<string?>>? RequestPickFileFunc { get; set; }
+    public Func<Task<IReadOnlyList<string>?>>? RequestPickFilesFunc { get; set; }
     public Func<Task<string?>>? RequestPickFolderFunc { get; set; }
 
     // 发起方配对状态
@@ -199,6 +477,37 @@ public partial class ClipboardViewModel : ObservableObject
         new PaletteColorItem("#1E1E1E", "暗夜纯黑")
     };
 
+    public string DataDirectory => _service.DataDirectory;
+    public string DatabasePath => _service.DatabasePath;
+
+    [RelayCommand]
+    public void OpenDataDirectory()
+    {
+        try
+        {
+            if (!Directory.Exists(DataDirectory))
+            {
+                Directory.CreateDirectory(DataDirectory);
+            }
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = DataDirectory,
+                UseShellExecute = true
+            });
+        }
+        catch { }
+    }
+
+    [RelayCommand]
+    public void CopyDataDirectoryPath()
+    {
+        try
+        {
+            _service.CopyToSystemClipboard(DataDirectory);
+        }
+        catch { }
+    }
+
     public event Action<string>? PanelBackgroundChanged;
 
     partial void OnPanelBackgroundColorChanged(string value)
@@ -250,12 +559,58 @@ public partial class ClipboardViewModel : ObservableObject
         UpdateForegroundDiscoveryLoop();
     }
 
-    partial void OnIsSyncPanelVisibleChanged(bool value)
+    partial void OnCurrentViewIndexChanged(int value)
     {
+        OnPropertyChanged(nameof(IsMainViewActive));
+        OnPropertyChanged(nameof(IsFileTransferViewActive));
+        OnPropertyChanged(nameof(IsLanSyncViewActive));
         UpdateForegroundDiscoveryLoop();
+        if (value == 1)
+        {
+            EnsureTransferLogInitialized();
+            UpdateAvailableTransferTargets();
+        }
+        else if (value == 2)
+        {
+            UpdateAvailableTransferTargets();
+        }
     }
 
-    partial void OnIsFileTransferViewActiveChanged(bool value)
+    public void AppendTransferLog(string message)
+    {
+        string timestamp = DateTime.Now.ToString("HH:mm:ss");
+        string line = $"[{timestamp}] {message}";
+        if (string.IsNullOrEmpty(TransferLogText))
+        {
+            TransferLogText = line;
+        }
+        else
+        {
+            TransferLogText = TransferLogText + Environment.NewLine + line;
+        }
+    }
+
+    public void EnsureTransferLogInitialized()
+    {
+        if (!_hasInitializedTransferLog)
+        {
+            _hasInitializedTransferLog = true;
+            AppendTransferLog("128KB切片 · XChaCha20 · 100MB/s+");
+            AppendTransferLog($"接收目录: {FileSaveDirectory}");
+        }
+        else
+        {
+            AppendTransferLog($"接收目录: {FileSaveDirectory}");
+        }
+    }
+
+    [RelayCommand]
+    public void ClearTransferLog()
+    {
+        TransferLogText = string.Empty;
+    }
+
+    partial void OnIsSyncPanelVisibleChanged(bool value)
     {
         UpdateForegroundDiscoveryLoop();
     }
@@ -269,7 +624,7 @@ public partial class ClipboardViewModel : ObservableObject
 
     private void UpdateForegroundDiscoveryLoop()
     {
-        bool shouldScan = _isHostViewActive && AutoDiscoveryEnabled && (IsSyncPanelVisible || IsFileTransferViewActive);
+        bool shouldScan = _isHostViewActive && AutoDiscoveryEnabled && (IsLanSyncViewActive || IsFileTransferViewActive || IsSyncPanelVisible);
 
         System.Threading.CancellationToken token;
         lock (_scanLoopLock)
@@ -352,9 +707,11 @@ public partial class ClipboardViewModel : ObservableObject
 
         _fileSaveDirectory = _service.FileSaveDirectory;
         PairingPin = _service.PairingPin;
+        CustomSyncPortText = _service.SyncPort.ToString();
         RefreshDevicesCollections();
         UpdateSyncStatus();
         LoadPhrases();
+        LoadRuleTemplates();
         LoadItems();
     }
 
@@ -363,8 +720,11 @@ public partial class ClipboardViewModel : ObservableObject
         Dispatcher.UIThread.Post(LoadItems);
     }
 
+    private bool _isReorderingInternally;
+
     private void OnPhrasesChanged()
     {
+        if (_isReorderingInternally) return;
         Dispatcher.UIThread.Post(() =>
         {
             LoadPhrases();
@@ -394,10 +754,15 @@ public partial class ClipboardViewModel : ObservableObject
     private void UpdateDevicesCollectionsCore()
     {
         var pairedList = _service.PairedDevices;
-        PairedDevices.Clear();
-        foreach (var p in pairedList)
+        bool needRebuildPaired = pairedList.Count != PairedDevices.Count ||
+            !pairedList.Select(p => p.DeviceId).SequenceEqual(PairedDevices.Select(p => p.DeviceId));
+        if (needRebuildPaired)
         {
-            PairedDevices.Add(p);
+            PairedDevices.Clear();
+            foreach (var p in pairedList)
+            {
+                PairedDevices.Add(p);
+            }
         }
         PairedDeviceCount = PairedDevices.Count;
         OnlinePairedCount = PairedDevices.Count(p => p.IsOnline);
@@ -713,7 +1078,366 @@ public partial class ClipboardViewModel : ObservableObject
         IsAddingNewPhrase = true;
         SelectedPhrase = null;
         PhraseEditorText = string.Empty;
+        PhraseEditorCaretIndex = 0;
+        CurrentPhraseRules.Clear();
+        ResetRuleForm();
+        IsPhraseRuleEnabled = false;
+        UpdateCursorPositionText();
+        NotifyRuleProperties();
         StatusMessage = "请在右侧输入新常用语内容并点击「保存」";
+    }
+
+    [RelayCommand]
+    public void UseCurrentCaretPosition()
+    {
+        RuleInsertPosition = PhraseEditorCaretIndex;
+        StatusMessage = $"✓ 已填入当前光标位置：第 {RuleInsertPosition} 个字符";
+    }
+
+    [RelayCommand]
+    public void SetPositionToStart()
+    {
+        RuleInsertPosition = 0;
+        RulePositionMode = 0;
+        StatusMessage = "✓ 已设为在文本开头插入";
+    }
+
+    [RelayCommand]
+    public void SetPositionToEnd()
+    {
+        RuleInsertPosition = 9999;
+        RulePositionMode = 1;
+        StatusMessage = "✓ 已设为在文本最末尾追加";
+    }
+
+    [RelayCommand]
+    public void SetPresetTimeRange(string? preset)
+    {
+        switch (preset?.ToLowerInvariant())
+        {
+            case "early_morning":
+            case "zaoshang":
+                RuleStartTime = "06:00";
+                RuleEndTime = "10:00";
+                break;
+            case "morning":
+            case "shangwu":
+                RuleStartTime = "10:00";
+                RuleEndTime = "12:00";
+                break;
+            case "noon":
+            case "zhongwu":
+                RuleStartTime = "12:00";
+                RuleEndTime = "14:00";
+                break;
+            case "afternoon":
+            case "xiawu":
+                RuleStartTime = "14:00";
+                RuleEndTime = "18:00";
+                break;
+            case "evening":
+            case "wanshang":
+                RuleStartTime = "18:00";
+                RuleEndTime = "22:00";
+                break;
+            case "night":
+            case "yejian":
+                RuleStartTime = "22:00";
+                RuleEndTime = "06:00";
+                break;
+            case "all_day":
+            case "allday":
+                RuleStartTime = "00:00";
+                RuleEndTime = "23:59";
+                break;
+        }
+        StatusMessage = $"✓ 已设为生效时段: {RuleStartTime} ~ {RuleEndTime}";
+    }
+
+    [RelayCommand]
+    public void AddOrUpdateRule()
+    {
+        if (string.IsNullOrWhiteSpace(RuleAppendText))
+        {
+            StatusMessage = "⚠️ 请输入满足条件时追加的文字内容";
+            return;
+        }
+
+        string startTime = string.IsNullOrWhiteSpace(RuleStartTime) ? "08:00" : RuleStartTime.Trim();
+        string endTime = string.IsNullOrWhiteSpace(RuleEndTime) ? "18:00" : RuleEndTime.Trim();
+        string appendText = RuleAppendText.Trim();
+
+        if (IsEditingRule)
+        {
+            var existing = CurrentPhraseRules.FirstOrDefault(r => r.Id == EditingRuleId);
+            if (existing != null)
+            {
+                existing.InsertPosition = RuleInsertPosition;
+                existing.PositionMode = RulePositionMode;
+                existing.StartTime = startTime;
+                existing.EndTime = endTime;
+                existing.AppendText = appendText;
+                existing.IsEnabled = true;
+                existing.RefreshState();
+                StatusMessage = $"✓ 已保存时段 ({startTime} ~ {endTime}) 规则修改";
+            }
+            EditingRuleId = null;
+        }
+        else
+        {
+            var newRule = new PhraseConditionalRule
+            {
+                IsEnabled = true,
+                InsertPosition = RuleInsertPosition,
+                PositionMode = RulePositionMode,
+                StartTime = startTime,
+                EndTime = endTime,
+                AppendText = appendText
+            };
+            CurrentPhraseRules.Add(newRule);
+            StatusMessage = $"✓ 已添加新时段规则: {startTime} ~ {endTime}";
+        }
+
+        IsPhraseRuleEnabled = true;
+
+        if (SelectedPhrase != null)
+        {
+            _service.SetPhraseRules(SelectedPhrase.Id, CurrentPhraseRules);
+        }
+
+        ResetRuleForm();
+        NotifyRuleProperties();
+    }
+
+    [RelayCommand]
+    public void EditRule(PhraseConditionalRule? rule)
+    {
+        if (rule == null) return;
+        EditingRuleId = rule.Id;
+        RuleInsertPosition = rule.InsertPosition;
+        RulePositionMode = rule.PositionMode;
+        RuleStartTime = rule.StartTime;
+        RuleEndTime = rule.EndTime;
+        RuleAppendText = rule.AppendText;
+        StatusMessage = $"正在编辑时段 {rule.TimeRangeText} 规则，修改后请点击「保存」";
+        NotifyRuleProperties();
+    }
+
+    [RelayCommand]
+    public void CancelEditRule()
+    {
+        EditingRuleId = null;
+        ResetRuleForm();
+        StatusMessage = "已取消编辑规则";
+        NotifyRuleProperties();
+    }
+
+    [RelayCommand]
+    public void DeleteRule(PhraseConditionalRule? rule)
+    {
+        if (rule == null) return;
+        if (EditingRuleId == rule.Id)
+        {
+            EditingRuleId = null;
+            ResetRuleForm();
+        }
+        CurrentPhraseRules.Remove(rule);
+        if (SelectedPhrase != null)
+        {
+            _service.SetPhraseRules(SelectedPhrase.Id, CurrentPhraseRules);
+        }
+        if (CurrentPhraseRules.Count == 0)
+        {
+            IsPhraseRuleEnabled = false;
+        }
+        StatusMessage = $"已删除时段规则 ({rule.TimeRangeText})";
+        NotifyRuleProperties();
+    }
+
+    [RelayCommand]
+    public void ToggleRule(PhraseConditionalRule? rule)
+    {
+        if (rule == null) return;
+        rule.IsEnabled = !rule.IsEnabled;
+        rule.RefreshState();
+        if (SelectedPhrase != null)
+        {
+            _service.SetPhraseRules(SelectedPhrase.Id, CurrentPhraseRules);
+        }
+        IsPhraseRuleEnabled = CurrentPhraseRules.Any(r => r.IsEnabled);
+        StatusMessage = rule.IsEnabled ? $"已启用规则 ({rule.TimeRangeText})" : $"已停用规则 ({rule.TimeRangeText})";
+        NotifyRuleProperties();
+    }
+
+    public bool HasRuleTemplates => SavedRuleTemplates.Count > 0;
+
+    public void LoadRuleTemplates()
+    {
+        var templates = _service.GetRuleTemplates();
+        SavedRuleTemplates.Clear();
+        foreach (var tpl in templates)
+        {
+            SavedRuleTemplates.Add(tpl);
+        }
+        if (SavedRuleTemplates.Count > 0 && SelectedRuleTemplate == null)
+        {
+            SelectedRuleTemplate = SavedRuleTemplates[0];
+        }
+        OnPropertyChanged(nameof(HasRuleTemplates));
+    }
+
+    [RelayCommand]
+    public void ApplySelectedTemplate()
+    {
+        if (SelectedRuleTemplate != null)
+        {
+            ApplyRuleTemplate(SelectedRuleTemplate);
+        }
+        else if (SavedRuleTemplates.Count > 0)
+        {
+            ApplyRuleTemplate(SavedRuleTemplates[0]);
+        }
+    }
+
+    [RelayCommand]
+    public void ApplyRuleTemplate(PhraseRuleTemplate? template)
+    {
+        if (template == null) return;
+        RuleInsertPosition = template.InsertPosition;
+        RulePositionMode = template.PositionMode;
+        RuleStartTime = template.StartTime;
+        RuleEndTime = template.EndTime;
+        RuleAppendText = template.AppendText;
+        StatusMessage = $"✓ 已套用模板「{template.Name}」到规则输入栏";
+        NotifyRuleProperties();
+    }
+
+    [RelayCommand]
+    public void SaveCurrentAsTemplate(string? nameInput = null)
+    {
+        string name = !string.IsNullOrWhiteSpace(nameInput)
+            ? nameInput.Trim()
+            : (!string.IsNullOrWhiteSpace(NewTemplateCustomName) ? NewTemplateCustomName.Trim() : string.Empty);
+
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = string.IsNullOrWhiteSpace(RuleAppendText)
+                ? $"时段规则 ({RuleStartTime}~{RuleEndTime})"
+                : $"{RuleAppendText.Trim()} ({RuleStartTime}~{RuleEndTime})";
+        }
+
+        var tpl = new PhraseRuleTemplate
+        {
+            Name = name,
+            InsertPosition = RuleInsertPosition,
+            PositionMode = RulePositionMode,
+            StartTime = string.IsNullOrWhiteSpace(RuleStartTime) ? "08:00" : RuleStartTime.Trim(),
+            EndTime = string.IsNullOrWhiteSpace(RuleEndTime) ? "18:00" : RuleEndTime.Trim(),
+            AppendText = RuleAppendText ?? string.Empty
+        };
+
+        _service.SaveRuleTemplate(tpl);
+        LoadRuleTemplates();
+        SelectedRuleTemplate = SavedRuleTemplates.FirstOrDefault(t => t.Id == tpl.Id) ?? SavedRuleTemplates.FirstOrDefault();
+        NewTemplateCustomName = string.Empty;
+        StatusMessage = $"✓ 规则已保存为常用模板「{name}」，下次新增可直接套用！";
+    }
+
+    [RelayCommand]
+    public void SaveRuleAsTemplate(PhraseConditionalRule? rule)
+    {
+        if (rule == null) return;
+        string name = string.IsNullOrWhiteSpace(rule.AppendText)
+            ? $"规则 ({rule.TimeRangeText})"
+            : $"{rule.AppendText} ({rule.TimeRangeText})";
+
+        var tpl = PhraseRuleTemplate.FromRule(rule, name);
+        _service.SaveRuleTemplate(tpl);
+        LoadRuleTemplates();
+        SelectedRuleTemplate = SavedRuleTemplates.FirstOrDefault(t => t.Id == tpl.Id) ?? SavedRuleTemplates.FirstOrDefault();
+        StatusMessage = $"✓ 已将规则保存为常用模板「{name}」";
+    }
+
+    [RelayCommand]
+    public void DeleteRuleTemplate(PhraseRuleTemplate? template)
+    {
+        var target = template ?? SelectedRuleTemplate;
+        if (target == null) return;
+        string name = target.Name;
+        _service.DeleteRuleTemplate(target.Id);
+        LoadRuleTemplates();
+        SelectedRuleTemplate = SavedRuleTemplates.FirstOrDefault();
+        StatusMessage = $"已删除规则模板「{name}」";
+    }
+
+    [ObservableProperty]
+    private string _managerTemplateName = string.Empty;
+
+    [ObservableProperty]
+    private string _managerTemplateStartTime = "08:00";
+
+    [ObservableProperty]
+    private string _managerTemplateEndTime = "18:00";
+
+    [ObservableProperty]
+    private int _managerTemplatePositionMode = 1; // 0: 开头, 1: 末尾
+
+    [ObservableProperty]
+    private string _managerTemplateAppendText = string.Empty;
+
+    [RelayCommand]
+    public void SetManagerPresetPosition(string mode)
+    {
+        ManagerTemplatePositionMode = mode == "start" ? 0 : 1;
+    }
+
+    [RelayCommand]
+    public void SetManagerPresetTime(string preset)
+    {
+        (ManagerTemplateStartTime, ManagerTemplateEndTime) = preset switch
+        {
+            "early_morning" => ("06:00", "10:00"),
+            "morning" => ("10:00", "12:00"),
+            "noon" => ("12:00", "14:00"),
+            "afternoon" => ("14:00", "18:00"),
+            "evening" => ("18:00", "22:00"),
+            "night" => ("22:00", "06:00"),
+            "work" => ("09:00", "18:00"),
+            "all_day" => ("00:00", "23:59"),
+            _ => ("08:00", "18:00")
+        };
+    }
+
+    [RelayCommand]
+    public void AddTemplateFromManager()
+    {
+        string text = ManagerTemplateAppendText?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(text))
+        {
+            StatusMessage = "⚠️ 请输入追加文字内容后再保存模板";
+            return;
+        }
+
+        string name = string.IsNullOrWhiteSpace(ManagerTemplateName)
+            ? $"{text} ({ManagerTemplateStartTime}~{ManagerTemplateEndTime})"
+            : ManagerTemplateName.Trim();
+
+        var tpl = new PhraseRuleTemplate
+        {
+            Name = name,
+            InsertPosition = ManagerTemplatePositionMode == 1 ? 9999 : 0,
+            PositionMode = ManagerTemplatePositionMode,
+            StartTime = string.IsNullOrWhiteSpace(ManagerTemplateStartTime) ? "08:00" : ManagerTemplateStartTime.Trim(),
+            EndTime = string.IsNullOrWhiteSpace(ManagerTemplateEndTime) ? "18:00" : ManagerTemplateEndTime.Trim(),
+            AppendText = text
+        };
+
+        _service.SaveRuleTemplate(tpl);
+        LoadRuleTemplates();
+        SelectedRuleTemplate = SavedRuleTemplates.FirstOrDefault(t => t.Id == tpl.Id) ?? SavedRuleTemplates.FirstOrDefault();
+        ManagerTemplateName = string.Empty;
+        ManagerTemplateAppendText = string.Empty;
+        StatusMessage = $"✓ 常用语规则模板「{name}」已添加并保存！";
     }
 
     [RelayCommand]
@@ -726,18 +1450,19 @@ public partial class ClipboardViewModel : ObservableObject
             return;
         }
 
+        long targetId;
         if (IsAddingNewPhrase || SelectedPhrase == null)
         {
-            long newId = _service.AddPhrase(text);
+            targetId = _service.AddPhrase(text);
             IsAddingNewPhrase = false;
             LoadPhrases();
             SyncHistoryFavoriteStates();
-            SelectedPhrase = FilteredPhrases.FirstOrDefault(p => p.Id == newId) ?? FilteredPhrases.FirstOrDefault();
+            SelectedPhrase = FilteredPhrases.FirstOrDefault(p => p.Id == targetId) ?? FilteredPhrases.FirstOrDefault();
             StatusMessage = "✓ 已新增常用语";
         }
         else
         {
-            long targetId = SelectedPhrase.Id;
+            targetId = SelectedPhrase.Id;
             if (!_service.EditPhrase(targetId, text))
             {
                 _service.DeletePhrase(targetId);
@@ -748,6 +1473,19 @@ public partial class ClipboardViewModel : ObservableObject
             SelectedPhrase = FilteredPhrases.FirstOrDefault(p => p.Id == targetId) ?? FilteredPhrases.FirstOrDefault();
             StatusMessage = "✓ 已保存常用语修改";
         }
+
+        // 若用户在表单填写了追加文本但未点击添加规则，且当前没有任何规则，则自动加入
+        if (!string.IsNullOrWhiteSpace(RuleAppendText) && CurrentPhraseRules.Count == 0)
+        {
+            var autoRule = BuildCurrentRule();
+            CurrentPhraseRules.Add(autoRule);
+            IsPhraseRuleEnabled = true;
+            ResetRuleForm();
+        }
+
+        // 保存多条条件追加规则列表
+        _service.SetPhraseRules(targetId, CurrentPhraseRules);
+        NotifyRuleProperties();
     }
 
     [RelayCommand]
@@ -790,6 +1528,34 @@ public partial class ClipboardViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void StartEditPhrase(MuClipPhraseItem? phrase)
+    {
+        if (phrase == null) return;
+        SelectedPhrase = phrase;
+        StatusMessage = "已选中常用语，可在右侧编辑内容与规则";
+    }
+
+    [RelayCommand]
+    public void StartEditItem(MuClipItem? item)
+    {
+        if (item == null) return;
+        SelectedItem = item;
+    }
+
+    public void CommitPhrasesReordered()
+    {
+        _isReorderingInternally = true;
+        try
+        {
+            _service.ReorderPhrases(FilteredPhrases.Select(x => x.Id).ToList());
+        }
+        finally
+        {
+            _isReorderingInternally = false;
+        }
+    }
+
+    [RelayCommand]
     public void CopyItem(MuClipItem? item)
     {
         if (item == null || string.IsNullOrEmpty(item.Content)) return;
@@ -821,6 +1587,130 @@ public partial class ClipboardViewModel : ObservableObject
         StatusMessage = "已清空所有剪贴板记录";
     }
 
+    [ObservableProperty]
+    private string _cleanupStartTimeText = string.Empty;
+
+    [ObservableProperty]
+    private string _cleanupEndTimeText = string.Empty;
+
+    [ObservableProperty]
+    private string _cleanupStatusPrompt = "可选择上方快捷预设或输入时间后点击确认清理";
+
+    [RelayCommand]
+    public void SetCleanupPreset(string? preset)
+    {
+        switch (preset?.ToLowerInvariant())
+        {
+            case "1h":
+                CleanupStartTimeText = string.Empty;
+                CleanupEndTimeText = DateTime.Now.AddHours(-1).ToString("yyyy-MM-dd HH:mm:ss");
+                CleanupStatusPrompt = $"将清理 1 小时前 (早于 {CleanupEndTimeText}) 的历史记录";
+                break;
+            case "24h":
+                CleanupStartTimeText = string.Empty;
+                CleanupEndTimeText = DateTime.Now.AddHours(-24).ToString("yyyy-MM-dd HH:mm:ss");
+                CleanupStatusPrompt = $"将清理 24 小时前 (早于 {CleanupEndTimeText}) 的历史记录";
+                break;
+            case "3d":
+                CleanupStartTimeText = string.Empty;
+                CleanupEndTimeText = DateTime.Now.AddDays(-3).ToString("yyyy-MM-dd HH:mm:ss");
+                CleanupStatusPrompt = $"将清理 3 天前 (早于 {CleanupEndTimeText}) 的历史记录";
+                break;
+            case "7d":
+                CleanupStartTimeText = string.Empty;
+                CleanupEndTimeText = DateTime.Now.AddDays(-7).ToString("yyyy-MM-dd HH:mm:ss");
+                CleanupStatusPrompt = $"将清理 7 天前 (早于 {CleanupEndTimeText}) 的历史记录";
+                break;
+            case "30d":
+                CleanupStartTimeText = string.Empty;
+                CleanupEndTimeText = DateTime.Now.AddDays(-30).ToString("yyyy-MM-dd HH:mm:ss");
+                CleanupStatusPrompt = $"将清理 30 天前 (早于 {CleanupEndTimeText}) 的历史记录";
+                break;
+            case "today":
+                CleanupStartTimeText = string.Empty;
+                CleanupEndTimeText = DateTime.Today.ToString("yyyy-MM-dd 00:00:00");
+                CleanupStatusPrompt = "将清理今天 00:00 之前产生的历史记录";
+                break;
+        }
+    }
+
+    [RelayCommand]
+    public void SetCleanupRangeShortcut(string? shortcut)
+    {
+        switch (shortcut?.ToLowerInvariant())
+        {
+            case "today_only":
+                CleanupStartTimeText = DateTime.Today.ToString("yyyy-MM-dd 00:00:00");
+                CleanupEndTimeText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                CleanupStatusPrompt = "将清理今天内产生的所有历史记录";
+                break;
+            case "yesterday_only":
+                CleanupStartTimeText = DateTime.Today.AddDays(-1).ToString("yyyy-MM-dd 00:00:00");
+                CleanupEndTimeText = DateTime.Today.ToString("yyyy-MM-dd 00:00:00");
+                CleanupStatusPrompt = "将清理昨天整天产生的所有历史记录";
+                break;
+            case "this_week":
+                int diff = (7 + (DateTime.Today.DayOfWeek - DayOfWeek.Monday)) % 7;
+                var monday = DateTime.Today.AddDays(-1 * diff);
+                CleanupStartTimeText = monday.ToString("yyyy-MM-dd 00:00:00");
+                CleanupEndTimeText = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
+                CleanupStatusPrompt = "将清理本周内产生的所有历史记录";
+                break;
+        }
+    }
+
+    [RelayCommand]
+    public void ClearCleanupInputs()
+    {
+        CleanupStartTimeText = string.Empty;
+        CleanupEndTimeText = string.Empty;
+        CleanupStatusPrompt = "已清空时间条件 (全部不限时将清空所有历史)";
+    }
+
+    [RelayCommand]
+    public void ExecuteCleanupByRange()
+    {
+        DateTime? startTime = null;
+        DateTime? endTime = null;
+
+        if (!string.IsNullOrWhiteSpace(CleanupStartTimeText))
+        {
+            if (DateTime.TryParse(CleanupStartTimeText.Trim(), out var st))
+            {
+                startTime = st;
+            }
+            else
+            {
+                CleanupStatusPrompt = "⚠️ 起始时间格式无效，请参考 2026-10-01 00:00:00";
+                return;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(CleanupEndTimeText))
+        {
+            if (DateTime.TryParse(CleanupEndTimeText.Trim(), out var et))
+            {
+                endTime = et;
+            }
+            else
+            {
+                CleanupStatusPrompt = "⚠️ 结束时间格式无效，请参考 2026-10-20 12:00:00";
+                return;
+            }
+        }
+
+        if (startTime.HasValue && endTime.HasValue && startTime.Value > endTime.Value)
+        {
+            CleanupStatusPrompt = "⚠️ 起始时间不能晚于结束时间";
+            return;
+        }
+
+        int deleted = _service.DeleteHistoryByTimeRange(startTime, endTime);
+        StatusMessage = $"✓ 已按时间区间批量清理 {deleted} 条历史记录";
+        CleanupStatusPrompt = $"✓ 上次清理成功：共删除 {deleted} 条历史记录";
+        LoadItems();
+    }
+
     [RelayCommand]
     public async Task BroadcastItemAsync(MuClipItem? item)
     {
@@ -833,7 +1723,25 @@ public partial class ClipboardViewModel : ObservableObject
     [RelayCommand]
     public void ToggleSyncPanel()
     {
-        IsSyncPanelVisible = !IsSyncPanelVisible;
+        CurrentViewIndex = (CurrentViewIndex == 2) ? 0 : 2;
+    }
+
+    [RelayCommand]
+    public void OpenLanSyncView()
+    {
+        CurrentViewIndex = 2;
+    }
+
+    [RelayCommand]
+    public void CloseLanSyncView()
+    {
+        CurrentViewIndex = 0;
+    }
+
+    [RelayCommand]
+    public void BackToMainView()
+    {
+        CurrentViewIndex = 0;
     }
 
     [RelayCommand]
@@ -849,6 +1757,29 @@ public partial class ClipboardViewModel : ObservableObject
             }
             _service.UpdatePairingPin(trimmedPin);
             StatusMessage = $"配对 PIN 码已更新: {trimmedPin}";
+        }
+    }
+
+    [RelayCommand]
+    public void ApplyCustomSyncPort()
+    {
+        if (ushort.TryParse(CustomSyncPortText.Trim(), out var port) && port >= 1024)
+        {
+            bool success = _service.ChangeSyncPort(port);
+            if (success)
+            {
+                PortStatusMessage = $"✓ 监听端口已更新为 {port}";
+                StatusMessage = $"局域网同步监听端口已更新为 {port}";
+                SyncStatusText = $"局域网加密同步已运行 (端口: {port})，已配对: {PairedDeviceCount} 台 (在线 {OnlinePairedCount} 台)";
+            }
+            else
+            {
+                PortStatusMessage = $"✕ 绑定端口 {port} 失败，可能端口被占用";
+            }
+        }
+        else
+        {
+            PortStatusMessage = "⚠️ 请输入有效端口 (1024 - 65535)";
         }
     }
 
@@ -991,39 +1922,43 @@ public partial class ClipboardViewModel : ObservableObject
     {
         if (device == null) return;
 
-        StatusMessage = $"正在测试与 [{device.DeviceName}] ({device.Endpoint}) 的连接...";
-        string pingMsg = $"[MuClip 同步测试] 来自 {Environment.MachineName} ({DateTime.Now:HH:mm:ss})";
+        device.IsTestingLatency = true;
+        device.LatencySuccess = null;
+        device.LatencyFeedback = "⏳ 测速中...";
+        StatusMessage = $"正在测试与 [{device.DeviceName}] ({device.Endpoint}) 的连接延迟...";
 
-        var (latency, sentCount) = await Task.Run(() =>
+        int latency = await Task.Run(() =>
         {
             try
             {
-                int rtt = _service.TestPeerConnection(device.Ip, device.SyncPort);
-                if (rtt < 0)
-                {
-                    return (-1, 0);
-                }
-                _service.AddRecord(pingMsg, broadcast: false);
-                int sent = _service.Broadcast(pingMsg);
-                return (rtt, sent);
+                return _service.TestPeerConnection(device.Ip, device.SyncPort);
             }
             catch
             {
-                return (-1, 0);
+                return -1;
             }
         });
 
-        RefreshDevicesCollections();
+        device.IsTestingLatency = false;
 
-        if (latency >= 0 && sentCount > 0)
+        if (latency >= 0)
         {
-            StatusMessage = $"✓ 同步测试成功！已送达 [{device.DeviceName}] (延迟 {latency} ms)";
+            device.IsOnline = true;
+            device.LatencySuccess = true;
+            device.LatencyFeedback = $"⚡ {latency} ms (正常)";
+            StatusMessage = $"✓ 连接正常！与 [{device.DeviceName}] 的延迟: {latency} ms";
         }
         else
         {
-            StatusMessage = $"✕ 向 [{device.DeviceName}] 发送测试失败（设备已离线或不可达）";
+            device.IsOnline = false;
+            device.LatencySuccess = false;
+            device.LatencyFeedback = "✕ 连接超时 (离线)";
+            StatusMessage = $"✕ 与 [{device.DeviceName}] 连接测试失败（设备已离线或不可达）";
         }
+
+        RefreshDevicesCollections();
     }
+
 
     [RelayCommand]
     public void AddManualPeer()
@@ -1072,19 +2007,26 @@ public partial class ClipboardViewModel : ObservableObject
     [RelayCommand]
     public void ToggleFileTransferView()
     {
-        IsFileTransferViewActive = !IsFileTransferViewActive;
+        CurrentViewIndex = (CurrentViewIndex == 1) ? 0 : 1;
     }
 
     [RelayCommand]
     public void OpenFileTransferView()
     {
-        IsFileTransferViewActive = true;
+        if (CurrentViewIndex == 1)
+        {
+            EnsureTransferLogInitialized();
+        }
+        else
+        {
+            CurrentViewIndex = 1;
+        }
     }
 
     [RelayCommand]
     public void CloseFileTransferView()
     {
-        IsFileTransferViewActive = false;
+        CurrentViewIndex = 0;
     }
 
     private void UpdateAvailableTransferTargets()
@@ -1124,17 +2066,35 @@ public partial class ClipboardViewModel : ObservableObject
             }
         }
 
+        // 记住先前勾选的设备端点
+        var selectedEndpoints = AvailableTransferTargets
+            .Where(t => t.IsSelected)
+            .Select(t => t.Endpoint)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
         AvailableTransferTargets.Clear();
         foreach (var t in targets)
         {
+            if (selectedEndpoints.Contains(t.Endpoint))
+            {
+                t.IsSelected = true;
+            }
             AvailableTransferTargets.Add(t);
         }
 
-        if (SelectedTransferTarget == null || !AvailableTransferTargets.Any(t => t.Endpoint == SelectedTransferTarget.Endpoint))
+        // 若没有任何设备被勾选，优先自动勾选第一个在线设备
+        if (!AvailableTransferTargets.Any(t => t.IsSelected))
         {
-            SelectedTransferTarget = AvailableTransferTargets.FirstOrDefault(t => t.IsOnline && t.IsPaired)
-                                  ?? AvailableTransferTargets.FirstOrDefault();
+            var defaultTarget = AvailableTransferTargets.FirstOrDefault(t => t.IsOnline && t.IsPaired)
+                             ?? AvailableTransferTargets.FirstOrDefault(t => t.IsOnline);
+            if (defaultTarget != null)
+            {
+                defaultTarget.IsSelected = true;
+            }
         }
+
+        SelectedTransferTarget = AvailableTransferTargets.FirstOrDefault(t => t.IsSelected)
+                              ?? AvailableTransferTargets.FirstOrDefault();
     }
 
     private void OnFileProgress(FileProgressEvent e)
@@ -1142,7 +2102,7 @@ public partial class ClipboardViewModel : ObservableObject
         Dispatcher.UIThread.Post(() =>
         {
             var item = FileTransfers.FirstOrDefault(t => t.TransferId == e.TransferId)
-                       ?? (e.IsSend ? FileTransfers.FirstOrDefault(t => t.IsSend && string.IsNullOrEmpty(t.TransferId)) : null);
+                       ?? (e.IsSend ? FileTransfers.FirstOrDefault(t => t.IsSend && string.IsNullOrEmpty(t.TransferId) && t.Status == TransferStatus.Transferring) : null);
             if (item != null)
             {
                 if (string.IsNullOrEmpty(item.TransferId)) item.TransferId = e.TransferId;
@@ -1170,7 +2130,7 @@ public partial class ClipboardViewModel : ObservableObject
         Dispatcher.UIThread.Post(() =>
         {
             var item = FileTransfers.FirstOrDefault(t => t.TransferId == e.TransferId)
-                       ?? (e.IsSend ? FileTransfers.FirstOrDefault(t => t.IsSend && string.IsNullOrEmpty(t.TransferId)) : null);
+                       ?? (e.IsSend ? FileTransfers.FirstOrDefault(t => t.IsSend && string.IsNullOrEmpty(t.TransferId) && t.Status == TransferStatus.Transferring) : null);
             if (item != null)
             {
                 if (string.IsNullOrEmpty(item.TransferId)) item.TransferId = e.TransferId;
@@ -1178,6 +2138,14 @@ public partial class ClipboardViewModel : ObservableObject
                 StatusMessage = e.Success
                     ? $"✓ 文件传输完成: {item.FileName}"
                     : $"✕ 文件传输失败: {e.ErrorMessage}";
+                if (e.Success)
+                {
+                    AppendTransferLog($"✓ 传输完成: {item.FileName}");
+                }
+                else
+                {
+                    AppendTransferLog($"✕ 传输失败: {item.FileName} - {e.ErrorMessage}");
+                }
             }
             else
             {
@@ -1190,6 +2158,14 @@ public partial class ClipboardViewModel : ObservableObject
                 };
                 newItem.MarkCompleted(e.FilePath, e.Success, e.ErrorMessage);
                 FileTransfers.Insert(0, newItem);
+                if (e.Success)
+                {
+                    AppendTransferLog($"✓ 传输完成: {newItem.FileName}");
+                }
+                else
+                {
+                    AppendTransferLog($"✕ 传输失败: {newItem.FileName} - {e.ErrorMessage}");
+                }
             }
             ActiveTransferCount = FileTransfers.Count(t => t.Status == TransferStatus.Transferring);
         });
@@ -1214,6 +2190,7 @@ public partial class ClipboardViewModel : ObservableObject
                 FileTransfers.Insert(0, item);
             }
             StatusMessage = $"📥 正在接收来自【{e.FromDeviceName}】的文件: {e.FileName} ({FileTransferItem.FormatFileSize(e.FileSize)})";
+            AppendTransferLog($"📥 收到传输请求: {e.FileName} ({FileTransferItem.FormatFileSize(e.FileSize)}) 来自 {e.FromDeviceName}");
             ActiveTransferCount = FileTransfers.Count(t => t.Status == TransferStatus.Transferring);
         });
     }
@@ -1221,19 +2198,67 @@ public partial class ClipboardViewModel : ObservableObject
     [RelayCommand]
     public async Task PickSendFileAsync()
     {
-        if (RequestPickFileFunc != null)
+        if (RequestPickFilesFunc != null)
+        {
+            var files = await RequestPickFilesFunc.Invoke();
+            if (files != null && files.Count > 0)
+            {
+                AddFilesToTransferQueue(files);
+                return;
+            }
+        }
+        else if (RequestPickFileFunc != null)
         {
             string? file = await RequestPickFileFunc.Invoke();
             if (!string.IsNullOrEmpty(file) && System.IO.File.Exists(file))
             {
-                SelectedSendFilePath = file;
-                SelectedSendFileName = System.IO.Path.GetFileName(file);
-                var fi = new System.IO.FileInfo(file);
-                SelectedSendFileSizeText = FileTransferItem.FormatFileSize((ulong)fi.Length);
-                HasSelectedSendFile = true;
-                StatusMessage = $"已选定文件: {SelectedSendFileName} ({SelectedSendFileSizeText})";
+                AddFilesToTransferQueue(new[] { file });
             }
         }
+    }
+
+    public void AddFilesToTransferQueue(IEnumerable<string> filePaths)
+    {
+        int added = 0;
+        foreach (var path in filePaths.Distinct())
+        {
+            if (string.IsNullOrWhiteSpace(path) || !System.IO.File.Exists(path)) continue;
+            // 避免重复将相同的待发送任务加入队列
+            if (FileTransfers.Any(t => t.Status == TransferStatus.Pending && string.Equals(t.FilePath, path, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+            var fi = new System.IO.FileInfo(path);
+            var item = new FileTransferItem
+            {
+                FileName = fi.Name,
+                FilePath = path,
+                IsSend = true,
+                TotalBytes = (ulong)fi.Length,
+                Status = TransferStatus.Pending,
+                PeerName = "等待发送"
+            };
+            FileTransfers.Insert(0, item);
+            AppendTransferLog($"添加待发送文件: {fi.Name} ({FileTransferItem.FormatFileSize((ulong)fi.Length)})");
+            added++;
+        }
+        if (added > 0)
+        {
+            StatusMessage = $"已添加 {added} 个待发送文件到传输任务列表";
+        }
+    }
+
+    [RelayCommand]
+    public void RemoveTransferItem(FileTransferItem? item)
+    {
+        if (item == null) return;
+        if (item.Status == TransferStatus.Transferring)
+        {
+            CancelTransfer(item);
+        }
+        FileTransfers.Remove(item);
+        AppendTransferLog($"移除文件: {item.FileName}");
+        ActiveTransferCount = FileTransfers.Count(t => t.Status == TransferStatus.Transferring);
     }
 
     [RelayCommand]
@@ -1250,65 +2275,71 @@ public partial class ClipboardViewModel : ObservableObject
     {
         if (IsSendingFile) return;
 
-        if (!HasSelectedSendFile || string.IsNullOrEmpty(SelectedSendFilePath) || !System.IO.File.Exists(SelectedSendFilePath))
+        // 收集所有勾选的目标设备
+        var targets = AvailableTransferTargets.Where(t => t.IsSelected).ToList();
+        if (targets.Count == 0 && !string.IsNullOrWhiteSpace(ManualTargetEndpoint))
         {
-            StatusMessage = "⚠️ 请先选择要发送的本地文件";
-            return;
-        }
-
-        string targetEndpoint = SelectedTransferTarget?.Endpoint ?? ManualTargetEndpoint.Trim();
-        if (string.IsNullOrWhiteSpace(targetEndpoint))
-        {
-            StatusMessage = "⚠️ 请先选择目标设备或输入目标 IP 与端口";
-            return;
-        }
-
-        string targetName = SelectedTransferTarget?.DeviceName ?? targetEndpoint;
-        var fi = new System.IO.FileInfo(SelectedSendFilePath);
-        ulong totalBytes = (ulong)fi.Length;
-        string fileName = SelectedSendFileName;
-        string filePath = SelectedSendFilePath;
-
-        var transferItem = new FileTransferItem
-        {
-            FileName = fileName,
-            FilePath = filePath,
-            IsSend = true,
-            PeerName = targetName,
-            PeerEndpoint = targetEndpoint,
-            TotalBytes = totalBytes,
-            Status = TransferStatus.Transferring
-        };
-
-        FileTransfers.Insert(0, transferItem);
-        ActiveTransferCount = FileTransfers.Count(t => t.Status == TransferStatus.Transferring);
-        IsSendingFile = true;
-        StatusMessage = $"🚀 正在连接 [{targetName}] 并启动高速加密传输...";
-
-        string? tid = await Task.Run(() => _service.SendFile(targetEndpoint, filePath));
-        IsSendingFile = false;
-
-        if (string.IsNullOrEmpty(tid))
-        {
-            transferItem.MarkCompleted(filePath, false, "连接目标设备失败或对方未开启监听");
-            StatusMessage = $"✕ 向 [{targetName}] 发送文件失败";
-        }
-        else
-        {
-            transferItem.TransferId = tid;
-            var dup = FileTransfers.FirstOrDefault(t => t != transferItem && t.TransferId == tid);
-            if (dup != null)
+            string ep = ManualTargetEndpoint.Trim();
+            targets.Add(new TransferTargetDeviceItem
             {
-                transferItem.UpdateProgress(dup.TransferredBytes, dup.TotalBytes, dup.SpeedBps);
-                if (dup.Status != TransferStatus.Transferring)
-                {
-                    transferItem.MarkCompleted(dup.FilePath, dup.Status == TransferStatus.Completed, dup.ErrorMessage);
-                }
-                FileTransfers.Remove(dup);
-            }
-            StatusMessage = $"🚀 已启动传输任务: {fileName} -> {targetName}";
+                DeviceName = ep,
+                Endpoint = ep,
+                IsOnline = true
+            });
         }
-        ActiveTransferCount = FileTransfers.Count(t => t.Status == TransferStatus.Transferring);
+
+        if (targets.Count == 0)
+        {
+            StatusMessage = "⚠️ 请先在上方勾选至少一个接收端设备";
+            AppendTransferLog("⚠️ 发送失败: 未勾选接收端设备");
+            return;
+        }
+
+        // 收集待发送的队列项
+        var pendingItems = FileTransfers.Where(t => t.Status == TransferStatus.Pending).ToList();
+        if (pendingItems.Count == 0)
+        {
+            StatusMessage = "⚠️ 传输任务列表中没有待发送的文件，请先选择或拖拽文件添加";
+            AppendTransferLog("⚠️ 发送失败: 列表中无待发送文件");
+            return;
+        }
+
+        IsSendingFile = true;
+        StatusMessage = $"🚀 正在准备向 {targets.Count} 台设备发送 {pendingItems.Count} 个文件...";
+        AppendTransferLog($"🚀 开始批量发送: {pendingItems.Count} 个文件 -> {targets.Count} 台设备");
+
+        try
+        {
+            foreach (var target in targets)
+            {
+                foreach (var item in pendingItems)
+                {
+                    item.Status = TransferStatus.Transferring;
+                    item.PeerName = target.DeviceName;
+                    item.PeerEndpoint = target.Endpoint;
+                    ActiveTransferCount = FileTransfers.Count(t => t.Status == TransferStatus.Transferring);
+
+                    AppendTransferLog($"正在发送: {item.FileName} -> {target.DeviceName} ({target.Endpoint})");
+
+                    string? tid = await Task.Run(() => _service.SendFile(target.Endpoint, item.FilePath));
+                    if (string.IsNullOrEmpty(tid))
+                    {
+                        item.MarkCompleted(item.FilePath, false, "连接目标设备失败或对方未开启监听");
+                        AppendTransferLog($"✕ 发送失败: {item.FileName} -> {target.DeviceName}");
+                    }
+                    else
+                    {
+                        item.TransferId = tid;
+                        AppendTransferLog($"✓ 已发起发送: {item.FileName} (传输ID: {tid[..Math.Min(8, tid.Length)]})");
+                    }
+                }
+            }
+        }
+        finally
+        {
+            IsSendingFile = false;
+            ActiveTransferCount = FileTransfers.Count(t => t.Status == TransferStatus.Transferring);
+        }
     }
 
     [RelayCommand]
@@ -1390,6 +2421,7 @@ public partial class ClipboardViewModel : ObservableObject
                 _service.SetFileSaveDirectory(dir);
                 FileSaveDirectory = dir;
                 StatusMessage = $"接收保存目录已更新: {dir}";
+                AppendTransferLog($"接收目录已更新为: {dir}");
             }
         }
     }

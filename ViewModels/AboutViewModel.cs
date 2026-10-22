@@ -9,6 +9,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Services;
+using ShawMuOCR.Views;
 
 namespace ShawMuOCR.ViewModels;
 
@@ -20,10 +21,25 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
     private bool _disposed;
 
     [ObservableProperty]
+    private bool _isLogoModalOpen;
+
+    [RelayCommand]
+    public void ShowLogoModal() => IsLogoModalOpen = true;
+
+    [RelayCommand]
+    public void CloseLogoModal() => IsLogoModalOpen = false;
+
+    [ObservableProperty]
     private string _gitHubUrl = "https://github.com/katomegumi1999/ShawMuOCR";
 
     [ObservableProperty]
     private string _gitHubRepoText = "katomegumi1999/ShawMuOCR";
+
+    [ObservableProperty]
+    private string _websiteUrl = "https://www.23771139.xyz/ShawMuOCR/";
+
+    [ObservableProperty]
+    private string _websiteText = "https://www.23771139.xyz/ShawMuOCR/";
 
     [ObservableProperty]
     private string _authorText = "沐洵羽 (B站 @沐洵羽)";
@@ -315,15 +331,39 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
         LastUpdatedText = report.Timestamp.ToString("HH:mm:ss");
     }
 
-    [RelayCommand]
-    public void OpenGitHub()
+    private static void SafeShowToast(string text, string title = "复制成功")
     {
+        try
+        {
+            if (Avalonia.Application.Current != null)
+            {
+                ToastNotificationWindow.Show(text, TimeSpan.FromMilliseconds(50), title);
+            }
+        }
+        catch
+        {
+            // Unit test environment or no UI thread
+        }
+    }
+
+    [RelayCommand]
+    public async Task OpenGitHubAsync()
+    {
+        await CopyGitHubUrlAsync();
         OpenUrl(GitHubUrl);
     }
 
     [RelayCommand]
-    public void OpenBilibili()
+    public async Task OpenWebsiteAsync()
     {
+        await CopyWebsiteUrlAsync();
+        OpenUrl(WebsiteUrl);
+    }
+
+    [RelayCommand]
+    public async Task OpenBilibiliAsync()
+    {
+        await CopyBilibiliUrlAsync();
         OpenUrl(BilibiliUrl);
     }
 
@@ -334,6 +374,37 @@ public partial class AboutViewModel : ViewModelBase, IDisposable
         {
             await _clipboardService.SetTextAsync(GitHubUrl);
             StatusMessage = "✓ 已复制 GitHub 仓库链接至剪贴板";
+            SafeShowToast("GitHub 仓库链接已复制到剪贴板", "复制成功");
+        }
+        else
+        {
+            StatusMessage = "剪贴板服务暂不可用";
+        }
+    }
+
+    [RelayCommand]
+    public async Task CopyWebsiteUrlAsync()
+    {
+        if (_clipboardService != null)
+        {
+            await _clipboardService.SetTextAsync(WebsiteUrl);
+            StatusMessage = "✓ 已复制官方网站链接至剪贴板";
+            SafeShowToast("官方网站链接已复制到剪贴板", "复制成功");
+        }
+        else
+        {
+            StatusMessage = "剪贴板服务暂不可用";
+        }
+    }
+
+    [RelayCommand]
+    public async Task CopyBilibiliUrlAsync()
+    {
+        if (_clipboardService != null)
+        {
+            await _clipboardService.SetTextAsync(BilibiliUrl);
+            StatusMessage = "✓ 已复制作者 B站主页链接至剪贴板";
+            SafeShowToast("作者 B站主页链接已复制到剪贴板", "复制成功");
         }
         else
         {

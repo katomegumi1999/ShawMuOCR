@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -5,36 +7,48 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.Services;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation;
+using ShawMuOCR.Services;
+using MuClip.Services;
 
 namespace ShawMuOCR.Views;
 
 public enum FloatingWindowMode
 {
     Translation,
-    OcrPopup
+    OcrPopup,
+    Note
 }
 
 /// <summary>
-/// 随动翻译浮窗 / OCR 弹窗（纯 UI 视图层）：
+/// 随动翻译浮窗 / OCR 窗格 / 随手便笺（纯 UI 视图层）：
 /// 彻底与数据和后台业务解耦，只负责渲染展示与收集基础交互（如点击重试、复制、切换置顶等）。
 /// 所有 OCR 识别、网络翻译、耗时统计与数据流水线均由协调服务统筹推进，并直接推送至本视图。
 /// </summary>
 public partial class TranslateFloatingWindow : Window
 {
-    private readonly ISettingsService _settingsService;
+    private const int DWMWA_WINDOW_CORNER_PREFERENCE = 33;
+    private const int DWMWCP_ROUND = 2;
+
+    [LibraryImport("dwmapi.dll")]
+    private static partial int DwmSetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    private readonly ISettingsService? _settingsService;
     private readonly IClipboardService _clipboardService;
     private readonly ITranslationService? _translationService;
+    private readonly IMuClipService? _muClipService;
     private readonly FloatingWindowMode _mode;
 
     private string _currentOcrText = string.Empty;
     private string _currentResultText = string.Empty;
     private string _originalResultText = string.Empty;
     private bool _isInitializingProvider = false;
+    private bool _isInitializingLanguages = false;
 
     /// <summary>
     /// 当用户点击浮窗内的"重试"按钮时触发
@@ -42,7 +56,7 @@ public partial class TranslateFloatingWindow : Window
     public event Action? RetryRequested;
 
     /// <summary>
-    /// 当用户点击浮窗内的"新建"按钮时触发（发起新的 OCR 弹窗识别）
+    /// 当用户点击浮窗内的"新建"按钮时触发（发起新的 OCR 窗格 / 选区识别）
     /// </summary>
     public event Action? NewSessionRequested;
 
@@ -52,6 +66,7 @@ public partial class TranslateFloatingWindow : Window
         _settingsService = null!;
         _clipboardService = null!;
         _translationService = null!;
+        _muClipService = null;
         _mode = FloatingWindowMode.Translation;
     }
 
@@ -59,7 +74,8 @@ public partial class TranslateFloatingWindow : Window
         ISettingsService settingsService,
         IClipboardService clipboardService,
         ITranslationService? translationService,
-        FloatingWindowMode mode = FloatingWindowMode.Translation)
+        FloatingWindowMode mode = FloatingWindowMode.Translation,
+        IMuClipService? muClipService = null)
     {
         InitializeComponent();
 
@@ -67,18 +83,162 @@ public partial class TranslateFloatingWindow : Window
         _clipboardService = clipboardService;
         _translationService = translationService;
         _mode = mode;
+        _muClipService = muClipService;
 
         ApplyMode();
+        ApplyCustomThemeColors();
 
         if (_mode == FloatingWindowMode.Translation)
         {
             InitializeProviderComboBox();
-            UpdateLanguageDirectionText();
+            InitializeLanguageComboBoxes();
             UpdateQuotaDisplay();
         }
         UpdateSourceTooltip(string.Empty);
 
         KeyDown += OnWindowKeyDown;
+
+        if (_settingsService != null)
+        {
+            _settingsService.SettingsChanged += OnSettingsChanged;
+            Closed += (_, _) => _settingsService.SettingsChanged -= OnSettingsChanged;
+        }
+    }
+
+    private void OnSettingsChanged(AppSettings _)
+    {
+        Dispatcher.UIThread.Post(ApplyCustomThemeColors);
+    }
+
+    private void ApplyCustomThemeColors()
+    {
+        if (_settingsService?.Current == null) return;
+
+        var s = _settingsService.Current;
+        string? bgHex = s.ThemeFloatingWindowBackgroundColorHex;
+        string? textHex = s.ThemeFloatingWindowTextColorHex;
+
+        if (!string.IsNullOrWhiteSpace(bgHex) && ColorPaletteHelper.TryParseColor(bgHex, out var bg))
+        {
+            double brightness = (0.299 * bg.R + 0.587 * bg.G + 0.114 * bg.B) / 255.0;
+            bool isDark = brightness < 0.5;
+
+            Color headerBg = isDark
+                ? Color.FromArgb(255, (byte)Math.Min(255, bg.R + 12), (byte)Math.Min(255, bg.G + 12), (byte)Math.Min(255, bg.B + 12))
+                : Color.FromArgb(255, (byte)Math.Max(0, bg.R - 10), (byte)Math.Max(0, bg.G - 10), (byte)Math.Max(0, bg.B - 10));
+
+            Color border = isDark
+                ? Color.FromArgb(255, (byte)Math.Min(255, bg.R + 35), (byte)Math.Min(255, bg.G + 35), (byte)Math.Min(255, bg.B + 35))
+                : Color.FromArgb(255, (byte)Math.Max(0, bg.R - 25), (byte)Math.Max(0, bg.G - 25), (byte)Math.Max(0, bg.B - 25));
+
+            Color divider = isDark
+                ? Color.FromArgb(255, (byte)Math.Min(255, bg.R + 22), (byte)Math.Min(255, bg.G + 22), (byte)Math.Min(255, bg.B + 22))
+                : Color.FromArgb(255, (byte)Math.Max(0, bg.R - 18), (byte)Math.Max(0, bg.G - 18), (byte)Math.Max(0, bg.B - 18));
+
+            Color hover = isDark ? Color.FromArgb(32, 255, 255, 255) : Color.FromArgb(24, 0, 0, 0);
+            Color pressed = isDark ? Color.FromArgb(48, 255, 255, 255) : Color.FromArgb(40, 0, 0, 0);
+
+            Color textPrimary;
+            if (!string.IsNullOrWhiteSpace(textHex) && ColorPaletteHelper.TryParseColor(textHex, out var customText))
+            {
+                textPrimary = customText;
+            }
+            else
+            {
+                textPrimary = isDark ? Color.FromRgb(237, 237, 237) : Color.FromRgb(32, 32, 32);
+            }
+
+            Color textSecondary = Color.FromArgb((byte)(textPrimary.A * 0.72), textPrimary.R, textPrimary.G, textPrimary.B);
+            Color textTertiary = Color.FromArgb((byte)(textPrimary.A * 0.52), textPrimary.R, textPrimary.G, textPrimary.B);
+
+            Resources["FloatingWindowBackground"] = new SolidColorBrush(bg);
+            Resources["FloatingWindowHeaderBg"] = new SolidColorBrush(headerBg);
+            Resources["FloatingWindowCardBg"] = new SolidColorBrush(bg);
+            Resources["FloatingWindowBorder"] = new SolidColorBrush(border);
+            Resources["FloatingWindowDivider"] = new SolidColorBrush(divider);
+            Resources["FloatingWindowHoverBrush"] = new SolidColorBrush(hover);
+            Resources["FloatingWindowPressedBrush"] = new SolidColorBrush(pressed);
+            Resources["FloatingWindowTextPrimary"] = new SolidColorBrush(textPrimary);
+            Resources["FloatingWindowTextSecondary"] = new SolidColorBrush(textSecondary);
+            Resources["FloatingWindowTextTertiary"] = new SolidColorBrush(textTertiary);
+            Resources["TextControlForeground"] = new SolidColorBrush(textPrimary);
+            Resources["TextControlCaretBrush"] = new SolidColorBrush(textPrimary);
+            Resources["ButtonForeground"] = new SolidColorBrush(textPrimary);
+
+            if (RootCardBorder != null)
+            {
+                RootCardBorder.Background = new SolidColorBrush(bg);
+                RootCardBorder.BorderBrush = new SolidColorBrush(border);
+            }
+        }
+        else
+        {
+            string[] keysToClear =
+            [
+                "FloatingWindowBackground",
+                "FloatingWindowHeaderBg",
+                "FloatingWindowCardBg",
+                "FloatingWindowBorder",
+                "FloatingWindowDivider",
+                "FloatingWindowHoverBrush",
+                "FloatingWindowPressedBrush",
+                "FloatingWindowTextPrimary",
+                "FloatingWindowTextSecondary",
+                "FloatingWindowTextTertiary",
+                "TextControlForeground",
+                "TextControlCaretBrush",
+                "ButtonForeground"
+            ];
+            foreach (var key in keysToClear)
+            {
+                Resources.Remove(key);
+            }
+
+            if (!string.IsNullOrWhiteSpace(textHex) && ColorPaletteHelper.TryParseColor(textHex, out var customText))
+            {
+                Color textSecondary = Color.FromArgb((byte)(customText.A * 0.72), customText.R, customText.G, customText.B);
+                Color textTertiary = Color.FromArgb((byte)(customText.A * 0.52), customText.R, customText.G, customText.B);
+
+                Resources["FloatingWindowTextPrimary"] = new SolidColorBrush(customText);
+                Resources["FloatingWindowTextSecondary"] = new SolidColorBrush(textSecondary);
+                Resources["FloatingWindowTextTertiary"] = new SolidColorBrush(textTertiary);
+                Resources["TextControlForeground"] = new SolidColorBrush(customText);
+                Resources["TextControlCaretBrush"] = new SolidColorBrush(customText);
+                Resources["ButtonForeground"] = new SolidColorBrush(customText);
+            }
+
+            if (RootCardBorder != null)
+            {
+                RootCardBorder.ClearValue(Border.BackgroundProperty);
+                RootCardBorder.ClearValue(Border.BorderBrushProperty);
+            }
+        }
+    }
+
+    protected override void OnOpened(EventArgs e)
+    {
+        base.OnOpened(e);
+        if (_mode == FloatingWindowMode.Note)
+        {
+            Dispatcher.UIThread.Post(() =>
+            {
+                ResultTextBox.Focus();
+            }, DispatcherPriority.Input);
+        }
+
+        var handle = TryGetPlatformHandle()?.Handle;
+        if (handle.HasValue && handle.Value != IntPtr.Zero)
+        {
+            try
+            {
+                int preference = DWMWCP_ROUND;
+                DwmSetWindowAttribute(handle.Value, DWMWA_WINDOW_CORNER_PREFERENCE, ref preference, sizeof(int));
+            }
+            catch
+            {
+                // 容错处理（Win10 及更早系统自动忽略）
+            }
+        }
     }
 
     private void ApplyMode()
@@ -89,25 +249,55 @@ public partial class TranslateFloatingWindow : Window
                 Title = "选区翻译 - 小沐 OCR";
                 TitleIcon.Text = "\U0001f310";
                 TitleText.Text = "选区翻译";
+                TitleElapsedBadge.IsVisible = false;
+                TitleElapsedBadge.Text = string.Empty;
                 ToolbarBorder.IsVisible = true;
+                StatusStackPanel.IsVisible = true;
                 QuotaRow.IsVisible = true;
                 RetryButton.IsVisible = true;
                 RestoreButton.IsVisible = true;
-                NewSessionButton.IsVisible = false;
+                NewSessionButton.IsVisible = true;
                 CopySourceButton.IsVisible = true;
+                ClearNoteButton.IsVisible = false;
+                SavePhraseButton.IsVisible = false;
                 CopyResultText.Text = "复制译文";
                 break;
             case FloatingWindowMode.OcrPopup:
-                Title = "OCR 弹窗 - 小沐 OCR";
+                Title = "OCR 窗格 - 小沐 OCR";
                 TitleIcon.Text = "\U0001f4dd";
-                TitleText.Text = "OCR 弹窗";
+                TitleText.Text = "OCR 窗格";
+                TitleElapsedBadge.IsVisible = true;
+                TitleElapsedBadge.Text = string.Empty;
                 ToolbarBorder.IsVisible = false;
+                StatusStackPanel.IsVisible = false;
                 QuotaRow.IsVisible = false;
                 RetryButton.IsVisible = false;
                 RestoreButton.IsVisible = true;
                 NewSessionButton.IsVisible = true;
                 CopySourceButton.IsVisible = false;
+                ClearNoteButton.IsVisible = false;
+                SavePhraseButton.IsVisible = false;
                 CopyResultText.Text = "复制结果";
+                break;
+            case FloatingWindowMode.Note:
+                Title = "随手便笺 - 小沐 OCR";
+                TitleIcon.Text = "\U0001f4dd";
+                TitleText.Text = "随手便笺";
+                TitleElapsedBadge.IsVisible = false;
+                TitleElapsedBadge.Text = string.Empty;
+                ToolbarBorder.IsVisible = false;
+                StatusStackPanel.IsVisible = false;
+                LoadingPanel.IsVisible = false;
+                ErrorPanel.IsVisible = false;
+                ResultTextBox.IsVisible = true;
+                ResultTextBox.PlaceholderText = "在此输入便笺内容，支持自由编辑、换行与快捷保存...";
+                RetryButton.IsVisible = false;
+                RestoreButton.IsVisible = false;
+                NewSessionButton.IsVisible = false;
+                CopySourceButton.IsVisible = false;
+                ClearNoteButton.IsVisible = true;
+                SavePhraseButton.IsVisible = true;
+                CopyResultText.Text = "复制";
                 break;
         }
     }
@@ -115,54 +305,82 @@ public partial class TranslateFloatingWindow : Window
     #region 公共数据推送接口 (UI 只负责展示)
 
     /// <summary>
-    /// 首次唤起时计算初始位置靠在选区旁边。
-    /// 选区 ScreenRect 来自 Win32 物理像素，Avalonia WorkingArea 与 Window.Position 均为 DIP，
-    /// 因此先将选区换算到 DIP 再做边界防溢出判定。
+    /// 根据用户框选的屏幕物理区域与鼠标起始按下坐标计算浮窗初始物理位置，
+    /// 以用户起始鼠标位置为准展开，在多屏混合 DPI 场景下精准对齐、屏幕边缘停靠不翻转、绝不溢出屏幕边界。
     /// </summary>
-    public void InitializePosition(ScreenRect sel)
+    public void InitializePosition(ScreenRect sel, ScreenPoint? startPoint = null)
     {
-        var screen = Screens.ScreenFromPoint(
-            new PixelPoint(sel.X + sel.Width / 2, sel.Y + sel.Height / 2)) ?? Screens.Primary;
+        double dipW = Width > 0 ? Width : 380;
+        double dipH = Height > 0 ? Height : 440;
 
-        if (screen == null)
+        // 以用户起始鼠标位置为准；若未传入起始点则使用选区左上角
+        int refX = startPoint?.X ?? sel.X;
+        int refY = startPoint?.Y ?? sel.Y;
+
+        var screen = Screens.ScreenFromPoint(new PixelPoint(refX, refY)) ?? Screens.Primary;
+
+        if (screen != null)
         {
-            Position = new PixelPoint(sel.X + sel.Width + 10, sel.Y);
-            return;
+            double scale = screen.Scaling;
+            var bounds = screen.WorkingArea; // bounds 为真实屏幕物理像素
+
+            int physicalW = (int)Math.Ceiling(dipW * scale);
+            int physicalH = (int)Math.Ceiling(dipH * scale);
+            int marginPx = (int)(10 * scale);
+
+            // 以用户鼠标起始按下位置为准展开
+            int targetX = refX;
+            int targetY = refY;
+
+            // 1. 水平方向边界防出界调整（停靠在屏幕边缘，不自动翻转）
+            if (targetX + physicalW > bounds.X + bounds.Width - marginPx)
+            {
+                targetX = bounds.X + bounds.Width - physicalW - marginPx;
+            }
+            if (targetX < bounds.X + marginPx)
+            {
+                targetX = bounds.X + marginPx;
+            }
+
+            // 2. 垂直方向边界防出界调整（停靠在屏幕边缘，不自动翻转）
+            if (targetY + physicalH > bounds.Y + bounds.Height - marginPx)
+            {
+                targetY = bounds.Y + bounds.Height - physicalH - marginPx;
+            }
+            if (targetY < bounds.Y + marginPx)
+            {
+                targetY = bounds.Y + marginPx;
+            }
+
+            Position = new PixelPoint(targetX, targetY);
         }
-
-        double scale = screen.Scaling;
-        var bounds = screen.WorkingArea;
-
-        double selX = sel.X / scale;
-        double selY = sel.Y / scale;
-        double selW = sel.Width / scale;
-        double selH = sel.Height / scale;
-
-        double dipW = Width > 0 ? Width : 390;
-        double dipH = Height > 0 ? Height : 430;
-        double margin = 10;
-
-        double x = selX + selW + margin;
-        double y = selY;
-
-        if (x + dipW > bounds.X + bounds.Width - margin)
+        else
         {
-            x = selX - dipW - margin;
+            Position = new PixelPoint(refX, refY);
         }
-        if (x < bounds.X + margin)
-        {
-            x = Math.Max(bounds.X + margin, Math.Min(selX, bounds.X + bounds.Width - dipW - margin));
-        }
-        if (y + dipH > bounds.Y + bounds.Height - margin)
-        {
-            y = selY - dipH - margin;
-        }
-        if (y < bounds.Y + margin)
-        {
-            y = bounds.Y + margin;
-        }
+    }
 
-        Position = new PixelPoint((int)Math.Round(x), (int)Math.Round(y));
+    /// <summary>
+    /// 便笺模式初始位置：在屏幕中上方舒适展开（更符合视线与输入习惯）
+    /// </summary>
+    public void InitializeCenterPosition()
+    {
+        double dipW = Width > 0 ? Width : 380;
+        double dipH = Height > 0 ? Height : 440;
+
+        var screen = Screens.ScreenFromPoint(Position) ?? Screens.Primary;
+        if (screen != null)
+        {
+            double scale = screen.Scaling;
+            var bounds = screen.WorkingArea;
+            int physicalW = (int)Math.Ceiling(dipW * scale);
+            int physicalH = (int)Math.Ceiling(dipH * scale);
+
+            int targetX = bounds.X + (bounds.Width - physicalW) / 2;
+            int targetY = bounds.Y + (bounds.Height - physicalH) / 3;
+
+            Position = new PixelPoint(targetX, targetY);
+        }
     }
 
     /// <summary>
@@ -188,6 +406,13 @@ public partial class TranslateFloatingWindow : Window
         ErrorPanel.IsVisible = false;
         LoadingStatusText.Text = statusText;
         ElapsedText.Text = "处理中...";
+
+        if (_mode == FloatingWindowMode.OcrPopup)
+        {
+            TitleElapsedBadge.IsVisible = true;
+            TitleElapsedBadge.Text = "· 识别中...";
+            ToolTip.SetTip(TitleElapsedBadge, null);
+        }
     }
 
     /// <summary>
@@ -217,6 +442,12 @@ public partial class TranslateFloatingWindow : Window
         {
             QuotaInfoText.Text = quotaText;
         }
+        else if (_mode == FloatingWindowMode.OcrPopup)
+        {
+            TitleElapsedBadge.IsVisible = true;
+            TitleElapsedBadge.Text = string.IsNullOrWhiteSpace(elapsedText) ? string.Empty : $"· {elapsedText}";
+            ToolTip.SetTip(TitleElapsedBadge, $"耗时统计: {elapsedText}");
+        }
     }
 
     /// <summary>
@@ -230,6 +461,13 @@ public partial class TranslateFloatingWindow : Window
 
         ErrorTextBlock.Text = errorMsg;
         ElapsedText.Text = elapsedText;
+
+        if (_mode == FloatingWindowMode.OcrPopup)
+        {
+            TitleElapsedBadge.IsVisible = true;
+            TitleElapsedBadge.Text = string.IsNullOrWhiteSpace(elapsedText) ? string.Empty : $"· {elapsedText}";
+            ToolTip.SetTip(TitleElapsedBadge, $"异常终止耗时: {elapsedText}");
+        }
     }
 
     /// <summary>
@@ -250,23 +488,157 @@ public partial class TranslateFloatingWindow : Window
     }
 
     /// <summary>
-    /// 更新源语言与目标语言方向标签
+    /// 更新源语言与目标语言方向（同步下拉列表选中项）
     /// </summary>
     public void UpdateLanguageDirectionText()
     {
-        if (_settingsService == null) return;
+        if (_settingsService == null || SourceLangComboBox == null || TargetLangComboBox == null) return;
         var s = _settingsService.Current;
-        string srcName = TranslationLanguages.GetName(s.TranslateSourceLang);
-        string tgtName = TranslationLanguages.GetName(s.TranslateTargetLang);
-        LanguageDirectionText.Text = $"[{srcName} ➔ {tgtName}]";
+
+        _isInitializingLanguages = true;
+        try
+        {
+            if (SourceLangComboBox.ItemsSource is IEnumerable<ComboBoxItem> srcItems)
+            {
+                var match = srcItems.FirstOrDefault(i => string.Equals(i.Tag as string, s.TranslateSourceLang, StringComparison.OrdinalIgnoreCase));
+                if (match != null) SourceLangComboBox.SelectedItem = match;
+            }
+            if (TargetLangComboBox.ItemsSource is IEnumerable<ComboBoxItem> tgtItems)
+            {
+                var match = tgtItems.FirstOrDefault(i => string.Equals(i.Tag as string, s.TranslateTargetLang, StringComparison.OrdinalIgnoreCase));
+                if (match != null) TargetLangComboBox.SelectedItem = match;
+            }
+        }
+        finally
+        {
+            _isInitializingLanguages = false;
+        }
     }
 
     #endregion
 
     #region 私有交互与渲染逻辑
 
+    private void InitializeLanguageComboBoxes()
+    {
+        if (_settingsService == null) return;
+        _isInitializingLanguages = true;
+        try
+        {
+            var s = _settingsService.Current;
+
+            // 源语言列表 (支持 auto 自动检测及各类常用语言)
+            var srcItems = new List<ComboBoxItem>();
+            foreach (var lang in TranslationLanguages.SupportedSourceLanguages)
+            {
+                string display = lang.Code == "auto" ? "自动" : lang.DisplayName.Split(' ')[0];
+                var item = new ComboBoxItem { Tag = lang.Code, Content = display };
+                ToolTip.SetTip(item, lang.DisplayName);
+                srcItems.Add(item);
+            }
+            SourceLangComboBox.ItemsSource = srcItems;
+            var selectedSrc = srcItems.FirstOrDefault(i => string.Equals(i.Tag as string, s.TranslateSourceLang, StringComparison.OrdinalIgnoreCase)) ?? srcItems[0];
+            SourceLangComboBox.SelectedItem = selectedSrc;
+
+            // 目标语言列表 (不包含 auto)
+            var tgtItems = new List<ComboBoxItem>();
+            foreach (var lang in TranslationLanguages.SupportedTargetLanguages)
+            {
+                string display = lang.DisplayName.Split(' ')[0];
+                var item = new ComboBoxItem { Tag = lang.Code, Content = display };
+                ToolTip.SetTip(item, lang.DisplayName);
+                tgtItems.Add(item);
+            }
+            TargetLangComboBox.ItemsSource = tgtItems;
+            var selectedTgt = tgtItems.FirstOrDefault(i => string.Equals(i.Tag as string, s.TranslateTargetLang, StringComparison.OrdinalIgnoreCase)) ?? tgtItems[0];
+            TargetLangComboBox.SelectedItem = selectedTgt;
+        }
+        finally
+        {
+            _isInitializingLanguages = false;
+        }
+    }
+
+    private void OnSourceLangSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_isInitializingLanguages || _settingsService == null) return;
+
+        if (SourceLangComboBox.SelectedItem is ComboBoxItem item && item.Tag is string newSrc)
+        {
+            var s = _settingsService.Current;
+            if (!string.Equals(s.TranslateSourceLang, newSrc, StringComparison.OrdinalIgnoreCase))
+            {
+                s.TranslateSourceLang = newSrc;
+                _settingsService.Save(s);
+
+                // 切换语言后，若已有 OCR 识别原文则自动触发重试翻译
+                if (!string.IsNullOrWhiteSpace(_currentOcrText))
+                {
+                    RetryRequested?.Invoke();
+                }
+            }
+        }
+    }
+
+    private void OnTargetLangSelectionChanged(object? sender, SelectionChangedEventArgs e)
+    {
+        if (_isInitializingLanguages || _settingsService == null) return;
+
+        if (TargetLangComboBox.SelectedItem is ComboBoxItem item && item.Tag is string newTgt)
+        {
+            var s = _settingsService.Current;
+            if (!string.Equals(s.TranslateTargetLang, newTgt, StringComparison.OrdinalIgnoreCase))
+            {
+                s.TranslateTargetLang = newTgt;
+                _settingsService.Save(s);
+
+                // 切换语言后，若已有 OCR 识别原文则自动触发重试翻译
+                if (!string.IsNullOrWhiteSpace(_currentOcrText))
+                {
+                    RetryRequested?.Invoke();
+                }
+            }
+        }
+    }
+
+    private void OnSwapLangClick(object? sender, RoutedEventArgs e)
+    {
+        if (_settingsService == null) return;
+        var s = _settingsService.Current;
+
+        string oldSrc = s.TranslateSourceLang;
+        string oldTgt = s.TranslateTargetLang;
+
+        string newSrc;
+        string newTgt;
+
+        if (string.Equals(oldSrc, "auto", StringComparison.OrdinalIgnoreCase))
+        {
+            // 若源语言为自动检测，按目标语言直接翻转（如目标为中文则直接切换为中文->英语；若非中文则切换为该语言->中文）
+            newSrc = oldTgt;
+            newTgt = (oldTgt == "zh" || oldTgt == "zh-CN") ? "en" : "zh";
+        }
+        else
+        {
+            newSrc = oldTgt;
+            newTgt = oldSrc;
+        }
+
+        s.TranslateSourceLang = newSrc;
+        s.TranslateTargetLang = newTgt;
+        _settingsService.Save(s);
+
+        UpdateLanguageDirectionText();
+
+        if (!string.IsNullOrWhiteSpace(_currentOcrText))
+        {
+            RetryRequested?.Invoke();
+        }
+    }
+
     private void InitializeProviderComboBox()
     {
+        if (_settingsService == null) return;
         _isInitializingProvider = true;
         try
         {
@@ -276,14 +648,20 @@ public partial class TranslateFloatingWindow : Window
             var baiduItem = new ComboBoxItem { Tag = "Baidu", Content = "百度翻译" };
             var googleItem = new ComboBoxItem { Tag = "Google", Content = "谷歌翻译" };
 
-            string openAiLabel = string.IsNullOrWhiteSpace(s.OpenAiModel)
-                ? "OpenAI 兼容"
+            var openAiItem = new ComboBoxItem { Tag = "OpenAI", Content = "OpenAI" };
+            string openAiTip = string.IsNullOrWhiteSpace(s.OpenAiModel)
+                ? "OpenAI 兼容接口"
                 : $"OpenAI ({s.OpenAiModel})";
-            var openAiItem = new ComboBoxItem { Tag = "OpenAI", Content = openAiLabel };
+            ToolTip.SetTip(openAiItem, openAiTip);
 
             items.Add(baiduItem);
             items.Add(googleItem);
             items.Add(openAiItem);
+
+            var volcengineItem = new ComboBoxItem { Tag = "Volcengine", Content = "火山引擎" };
+            var aliyunItem = new ComboBoxItem { Tag = "Aliyun", Content = "阿里云翻译" };
+            items.Add(volcengineItem);
+            items.Add(aliyunItem);
 
             ProviderComboBox.ItemsSource = items;
 
@@ -298,7 +676,7 @@ public partial class TranslateFloatingWindow : Window
 
     private void OnProviderSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        if (_isInitializingProvider) return;
+        if (_isInitializingProvider || _settingsService == null) return;
 
         if (ProviderComboBox.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag is string newProvider)
         {
@@ -311,7 +689,7 @@ public partial class TranslateFloatingWindow : Window
                 UpdateLanguageDirectionText();
                 UpdateQuotaDisplay();
 
-                // 要求1：用户手动切换模型时不自动重新发起翻译，仅保存设置并刷新界面提示。用户如需重新翻译可主动点击"重试"按钮
+                // 用户手动切换模型时，若已有 OCR 识别内容可点击重试
             }
         }
     }
@@ -343,13 +721,13 @@ public partial class TranslateFloatingWindow : Window
             Text = "📄 OCR 提取原文",
             FontWeight = FontWeight.SemiBold,
             FontSize = 11,
-            Foreground = this.TryFindResource("TextFillColorSecondaryBrush", out var fg) && fg is IBrush brushFg ? brushFg : Brushes.LightGray
+            Foreground = this.TryFindResource("FloatingWindowTextSecondary", out var fg) && fg is IBrush brushFg ? brushFg : Brushes.LightGray
         });
         var countText = new TextBlock
         {
             Text = $"{text.Length} 字符",
             FontSize = 11,
-            Foreground = this.TryFindResource("TextFillColorTertiaryBrush", out var tg) && tg is IBrush brushTg ? brushTg : Brushes.Gray,
+            Foreground = this.TryFindResource("FloatingWindowTextTertiary", out var tg) && tg is IBrush brushTg ? brushTg : Brushes.Gray,
             HorizontalAlignment = HorizontalAlignment.Right
         };
         DockPanel.SetDock(countText, Dock.Right);
@@ -358,7 +736,7 @@ public partial class TranslateFloatingWindow : Window
         var sep = new Separator
         {
             Height = 1,
-            Background = this.TryFindResource("DividerStrokeColorDefaultBrush", out var dv) && dv is IBrush brushDv ? brushDv : Brushes.Gray,
+            Background = this.TryFindResource("FloatingWindowDivider", out var dv) && dv is IBrush brushDv ? brushDv : Brushes.Gray,
             Margin = new Thickness(0, 2)
         };
 
@@ -371,7 +749,8 @@ public partial class TranslateFloatingWindow : Window
                 Text = text,
                 TextWrapping = TextWrapping.Wrap,
                 FontSize = 12,
-                LineHeight = 18
+                LineHeight = 18,
+                Foreground = this.TryFindResource("FloatingWindowTextPrimary", out var tp) && tp is IBrush brushTp ? brushTp : Brushes.Gray
             }
         };
 
@@ -379,7 +758,7 @@ public partial class TranslateFloatingWindow : Window
         {
             Text = "💡 提示: 点击按钮可直接复制原文",
             FontSize = 10,
-            Foreground = this.TryFindResource("TextFillColorTertiaryBrush", out var ft) && ft is IBrush brushFt ? brushFt : Brushes.Gray,
+            Foreground = this.TryFindResource("FloatingWindowTextTertiary", out var ft) && ft is IBrush brushFt ? brushFt : Brushes.Gray,
             Margin = new Thickness(0, 2, 0, 0)
         };
 
@@ -435,8 +814,44 @@ public partial class TranslateFloatingWindow : Window
         if (!string.IsNullOrWhiteSpace(text))
         {
             await _clipboardService.SetTextAsync(text);
-            string label = _mode == FloatingWindowMode.Translation ? "译文" : "识别结果";
+            string label = _mode switch
+            {
+                FloatingWindowMode.Translation => "译文",
+                FloatingWindowMode.Note => "便笺内容",
+                _ => "识别结果"
+            };
             ToastNotificationWindow.Show($"{label}已复制到剪贴板", TimeSpan.FromMilliseconds(50), "复制成功");
+        }
+        else if (_mode == FloatingWindowMode.Note)
+        {
+            ToastNotificationWindow.Show("便笺内容为空", TimeSpan.FromMilliseconds(50), "提示");
+        }
+    }
+
+    private void OnClearNoteClick(object? sender, RoutedEventArgs e)
+    {
+        ResultTextBox.Text = string.Empty;
+        ResultTextBox.Focus();
+        ToastNotificationWindow.Show("便笺内容已清空", TimeSpan.FromMilliseconds(50), "清空");
+    }
+
+    private void OnSavePhraseClick(object? sender, RoutedEventArgs e)
+    {
+        string text = ResultTextBox.Text?.Trim() ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            ToastNotificationWindow.Show("便笺内容为空，无法保存", TimeSpan.FromMilliseconds(50), "提示");
+            return;
+        }
+
+        if (_muClipService != null)
+        {
+            _muClipService.AddPhrase(text);
+            ToastNotificationWindow.Show("已成功保存至常用语", TimeSpan.FromMilliseconds(50), "常用语");
+        }
+        else
+        {
+            ToastNotificationWindow.Show("未启用剪贴板模块，无法保存常用语", TimeSpan.FromMilliseconds(50), "提示");
         }
     }
 

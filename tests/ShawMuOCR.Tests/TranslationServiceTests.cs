@@ -1,8 +1,11 @@
 using System.Net;
 using System.Text;
+using ShawMuOCR.Core.Clipboard;
+using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.Core.Translation.Providers;
+using ShawMuOCR.ViewModels;
 using Xunit;
 
 namespace ShawMuOCR.Tests;
@@ -334,5 +337,371 @@ public class TranslationServiceTests
         Assert.True(result.IsSuccess);
         Assert.Equal("你好世界", result.TranslatedText);
         Assert.Equal(20, result.ConsumedTokens);
+    }
+
+    [Fact]
+    public async Task VolcengineTranslator_MockSuccess_ParsesResponseAndHeadersCorrectly()
+    {
+        string capturedAuth = string.Empty;
+        string capturedDate = string.Empty;
+        string capturedSha = string.Empty;
+        string capturedBody = string.Empty;
+
+        var mockHandler = new MockHttpMessageHandler(req =>
+        {
+            capturedAuth = req.Headers.GetValues("Authorization").FirstOrDefault() ?? "";
+            capturedDate = req.Headers.GetValues("X-Date").FirstOrDefault() ?? "";
+            capturedSha = req.Headers.GetValues("X-Content-Sha256").FirstOrDefault() ?? "";
+            capturedBody = req.Content?.ReadAsStringAsync().Result ?? "";
+
+            string json = """
+            {
+                "TranslationList": [
+                    {
+                        "Translation": "你好世界",
+                        "DetectedSourceLanguage": "en"
+                    }
+                ],
+                "ResponseMetadata": {
+                    "RequestId": "20261020test",
+                    "Action": "TranslateText",
+                    "Version": "2020-06-01",
+                    "Service": "translate",
+                    "Region": "cn-north-1",
+                    "Error": null
+                }
+            }
+            """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(mockHandler);
+        using var translator = new VolcengineTranslator(
+            () => "test_ak",
+            () => "test_sk",
+            () => "cn-north-1",
+            httpClient);
+
+        var result = await translator.TranslateAsync(new TranslationRequest("Hello world", "auto", "zh"));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("你好世界", result.TranslatedText);
+        Assert.Equal("en", result.SourceLanguage);
+        Assert.StartsWith("HMAC-SHA256 Credential=test_ak/", capturedAuth);
+        Assert.NotEmpty(capturedDate);
+        Assert.NotEmpty(capturedSha);
+        Assert.Contains("\"TargetLanguage\":\"zh\"", capturedBody);
+        Assert.Contains("\"TextList\":[\"Hello world\"]", capturedBody);
+    }
+
+    [Fact]
+    public async Task VolcengineTranslator_MockError_ReturnsFailedResult()
+    {
+        var mockHandler = new MockHttpMessageHandler(req =>
+        {
+            string json = """
+            {
+                "ResponseMetadata": {
+                    "RequestId": "20261020err",
+                    "Action": "TranslateText",
+                    "Version": "2020-06-01",
+                    "Service": "translate",
+                    "Region": "cn-north-1",
+                    "Error": {
+                        "Code": "-400",
+                        "Message": "Invalid target language"
+                    }
+                }
+            }
+            """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(mockHandler);
+        using var translator = new VolcengineTranslator(
+            () => "test_ak",
+            () => "test_sk",
+            () => "cn-north-1",
+            httpClient);
+
+        var result = await translator.TranslateAsync(new TranslationRequest("Hello", "auto", "bad_lang"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("-400", result.ErrorMessage);
+        Assert.Contains("Invalid target language", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task AliyunTranslator_MockSuccess_ParsesResponseAndHeadersCorrectly()
+    {
+        string capturedAuth = string.Empty;
+        string capturedMd5 = string.Empty;
+        string capturedDate = string.Empty;
+        string capturedBody = string.Empty;
+
+        var mockHandler = new MockHttpMessageHandler(req =>
+        {
+            capturedAuth = req.Headers.GetValues("Authorization").FirstOrDefault() ?? "";
+            capturedMd5 = req.Content?.Headers.GetValues("Content-MD5").FirstOrDefault() ?? "";
+            capturedDate = req.Headers.GetValues("Date").FirstOrDefault() ?? "";
+            capturedBody = req.Content?.ReadAsStringAsync().Result ?? "";
+
+            string json = """
+            {
+                "Code": 200,
+                "Message": "success",
+                "RequestId": "aliyun-req-123",
+                "Data": {
+                    "Translated": "大疆无人机",
+                    "WordCount": "10",
+                    "DetectedLanguage": "en"
+                }
+            }
+            """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(mockHandler);
+        using var translator = new AliyunTranslator(
+            () => "test_ak_id",
+            () => "test_ak_secret",
+            () => "http://mt.cn-hangzhou.aliyuncs.com/api/translate/web/general",
+            httpClient);
+
+        var result = await translator.TranslateAsync(new TranslationRequest("DJI Drone", "auto", "zh"));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal("大疆无人机", result.TranslatedText);
+        Assert.Equal("en", result.SourceLanguage);
+        Assert.StartsWith("acs test_ak_id:", capturedAuth);
+        Assert.NotEmpty(capturedMd5);
+        Assert.NotEmpty(capturedDate);
+        Assert.Contains("\"SourceText\":\"DJI Drone\"", capturedBody);
+        Assert.Contains("\"Scene\":\"general\"", capturedBody);
+    }
+
+    [Fact]
+    public async Task AliyunTranslator_StringCode_ParsesSuccess()
+    {
+        var mockHandler = new MockHttpMessageHandler(req =>
+        {
+            string json = """
+            {
+                "Code": "200",
+                "Data": {
+                    "Translated": "测试成功",
+                    "WordCount": "5"
+                }
+            }
+            """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(mockHandler);
+        using var translator = new AliyunTranslator(
+            () => "test_ak_id",
+            () => "test_ak_secret",
+            () => "http://mt.cn-hangzhou.aliyuncs.com/api/translate/web/general",
+            httpClient);
+
+        var result = await translator.TranslateAsync(new TranslationRequest("Test success", "auto", "zh"));
+
+        Assert.True(result.IsSuccess, result.ErrorMessage);
+        Assert.Equal("测试成功", result.TranslatedText);
+    }
+
+    [Fact]
+    public async Task AliyunTranslator_MockError_ReturnsFailedResult()
+    {
+        var mockHandler = new MockHttpMessageHandler(req =>
+        {
+            string json = """
+            {
+                "errorCode": "InvalidAccessKeyId.NotFound",
+                "errorMsg": "Specified access key id not found."
+            }
+            """;
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(json, Encoding.UTF8, "application/json")
+            };
+        });
+
+        using var httpClient = new HttpClient(mockHandler);
+        using var translator = new AliyunTranslator(
+            () => "invalid_id",
+            () => "invalid_secret",
+            () => "http://mt.cn-hangzhou.aliyuncs.com/api/translate/web/general",
+            httpClient);
+
+        var result = await translator.TranslateAsync(new TranslationRequest("Test", "auto", "zh"));
+
+        Assert.False(result.IsSuccess);
+        Assert.Contains("InvalidAccessKeyId.NotFound", result.ErrorMessage);
+    }
+
+    [Fact]
+    public async Task TranslationService_Interception_WhenVolcengineOrAliyunLimitExceeded()
+    {
+        var settingsService = new MockSettingsService();
+        var s = settingsService.Current;
+        s.TranslationUsageMonth = DateTime.Now.ToString("yyyy-MM");
+
+        // 1. 测试火山引擎限额拦截
+        s.TranslateProvider = "Volcengine";
+        s.VolcengineAccessKey = "ak";
+        s.VolcengineSecretKey = "sk";
+        s.VolcengineMonthlyLimit = 1000;
+        s.VolcengineUsedCount = 1000;
+        settingsService.Save(s);
+
+        using var service = new TranslationService(settingsService);
+        var volcResult = await service.TranslateAsync("Hello");
+        Assert.False(volcResult.IsSuccess);
+        Assert.Contains("火山引擎翻译字符额度上限", volcResult.ErrorMessage);
+
+        // 2. 测试阿里云限额拦截
+        s.TranslateProvider = "Aliyun";
+        s.AliyunAccessKeyId = "ak_id";
+        s.AliyunAccessKeySecret = "ak_sec";
+        s.AliyunMonthlyLimit = 2000;
+        s.AliyunUsedCount = 2000;
+        settingsService.Save(s);
+
+        var aliyunResult = await service.TranslateAsync("Hello");
+        Assert.False(aliyunResult.IsSuccess);
+        Assert.Contains("阿里云机器翻译字符额度上限", aliyunResult.ErrorMessage);
+
+        // 3. 额度信息获取验证
+        var volcQuota = service.GetQuotaInfo("Volcengine");
+        Assert.Equal("Volcengine", volcQuota.ProviderName);
+        Assert.Equal(100.0, volcQuota.Percentage);
+
+        var aliyunQuota = service.GetQuotaInfo("Aliyun");
+        Assert.Equal("Aliyun", aliyunQuota.ProviderName);
+        Assert.Equal(100.0, aliyunQuota.Percentage);
+    }
+
+    private sealed class MockClipboardService : IClipboardService
+    {
+        public string? Text { get; set; }
+        public Task<bool> SetTextAsync(string text)
+        {
+            Text = text;
+            return Task.FromResult(true);
+        }
+        public Task<string?> GetTextAsync() => Task.FromResult(Text);
+        public Task<bool> SetImageAsync(OcrImage image) => Task.FromResult(true);
+    }
+
+    [Fact]
+    public void TranslationProviders_ReturnsCorrectChineseNames()
+    {
+        Assert.Equal(5, TranslationProviders.All.Count);
+        Assert.Equal("百度翻译", TranslationProviders.GetDisplayName("Baidu"));
+        Assert.Equal("谷歌翻译", TranslationProviders.GetDisplayName("Google"));
+        Assert.Equal("OpenAI", TranslationProviders.GetDisplayName("OpenAI"));
+        Assert.Equal("火山引擎", TranslationProviders.GetDisplayName("Volcengine"));
+        Assert.Equal("阿里云翻译", TranslationProviders.GetDisplayName("Aliyun"));
+
+        var baidu = TranslationProviders.All.First(p => p.Id == "Baidu");
+        Assert.Equal("百度翻译", baidu.ToString());
+    }
+
+    [Fact]
+    public void TranslateViewModel_SwapLanguages_AutoToZh_DirectlyBecomesZhToEn()
+    {
+        var settingsService = new MockSettingsService();
+        var s = settingsService.Current;
+        s.TranslateSourceLang = "auto";
+        s.TranslateTargetLang = "zh";
+        settingsService.Save(s);
+
+        using var translationService = new TranslationService(settingsService);
+        var clipboardService = new MockClipboardService();
+        var vm = new TranslateViewModel(translationService, settingsService, clipboardService);
+
+        vm.SourceText = "Hello";
+        vm.TranslatedText = "你好";
+
+        Assert.Equal("auto", vm.SelectedSourceLang.Code);
+        Assert.Equal("zh", vm.SelectedTargetLang.Code);
+
+        // 第一次切换：auto-zh 直接转换为 zh-en（无需先转为 en-zh 再转）
+        vm.SwapLanguages();
+
+        Assert.Equal("zh", vm.SelectedSourceLang.Code);
+        Assert.Equal("en", vm.SelectedTargetLang.Code);
+        Assert.Equal("你好", vm.SourceText);
+        Assert.Equal("Hello", vm.TranslatedText);
+
+        // 再次切换：zh-en 翻转为 en-zh
+        vm.SwapLanguages();
+
+        Assert.Equal("en", vm.SelectedSourceLang.Code);
+        Assert.Equal("zh", vm.SelectedTargetLang.Code);
+        Assert.Equal("Hello", vm.SourceText);
+        Assert.Equal("你好", vm.TranslatedText);
+    }
+
+    [Fact]
+    public void TranslateViewModel_SwapLanguages_AutoToEn_DirectlyBecomesEnToZh()
+    {
+        var settingsService = new MockSettingsService();
+        var s = settingsService.Current;
+        s.TranslateSourceLang = "auto";
+        s.TranslateTargetLang = "en";
+        settingsService.Save(s);
+
+        using var translationService = new TranslationService(settingsService);
+        var clipboardService = new MockClipboardService();
+        var vm = new TranslateViewModel(translationService, settingsService, clipboardService);
+
+        Assert.Equal("auto", vm.SelectedSourceLang.Code);
+        Assert.Equal("en", vm.SelectedTargetLang.Code);
+
+        vm.SwapLanguages();
+
+        Assert.Equal("en", vm.SelectedSourceLang.Code);
+        Assert.Equal("zh", vm.SelectedTargetLang.Code);
+    }
+
+    [Fact]
+    public void TranslateViewModel_ProviderSelection_DisplaysChineseNameAndSyncsId()
+    {
+        var settingsService = new MockSettingsService();
+        var s = settingsService.Current;
+        s.TranslateProvider = "Baidu";
+        settingsService.Save(s);
+
+        using var translationService = new TranslationService(settingsService);
+        var clipboardService = new MockClipboardService();
+        var vm = new TranslateViewModel(translationService, settingsService, clipboardService);
+
+        Assert.Equal("Baidu", vm.SelectedProvider);
+        Assert.Equal("百度翻译", vm.SelectedProviderItem.DisplayName);
+
+        // 切换为火山引擎
+        var volc = vm.AvailableProviders.First(p => p.Id == "Volcengine");
+        vm.SelectedProviderItem = volc;
+        Assert.Equal("Volcengine", vm.SelectedProvider);
+        Assert.Equal("火山引擎", vm.SelectedProviderItem.DisplayName);
+
+        // 通过字符串 ID 切换
+        vm.SelectedProvider = "Aliyun";
+        Assert.Equal("Aliyun", vm.SelectedProvider);
+        Assert.Equal("阿里云翻译", vm.SelectedProviderItem.DisplayName);
     }
 }

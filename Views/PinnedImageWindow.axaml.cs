@@ -7,6 +7,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Windows.Clipboard;
 using SkiaSharp;
@@ -230,6 +231,15 @@ public partial class PinnedImageWindow : Window
             Close();
             e.Handled = true;
         }
+    }
+
+    private void OnEditImageClick(object? sender, RoutedEventArgs e)
+    {
+        var editor = new ScreenshotEditorWindow(
+            _image.Clone(),
+            selectionBounds: new ScreenRect(Position.X, Position.Y, _pixelWidth, _pixelHeight));
+        editor.Show();
+        Close();
     }
 
     private void OnCopyImageClick(object? sender, RoutedEventArgs e)

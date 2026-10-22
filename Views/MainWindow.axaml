@@ -2,16 +2,17 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:ShawMuOCR.ViewModels"
         xmlns:pages="using:ShawMuOCR.Views.Pages"
-        xmlns:muclip="using:MuClip.Views"
+        xmlns:muclip="using:ShawMuOCR.Views.Clipboard"
         x:Class="ShawMuOCR.Views.MainWindow"
         x:DataType="vm:MainViewModel"
         Icon="{Binding WindowIcon}"
         Title="{Binding WindowTitle}"
-        Width="980" Height="620"
-        MinWidth="780" MinHeight="480"
+        Width="1160" Height="680"
+        MinWidth="900" MinHeight="540"
         Topmost="{Binding IsAlwaysOnTop}"
         DragDrop.AllowDrop="True"
-        WindowStartupLocation="CenterScreen">
+        WindowStartupLocation="CenterScreen"
+        FontFamily="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif">
 
     <Window.Styles>
         <!-- 侧边栏导航按钮样式 -->
@@ -19,9 +20,13 @@
             <Setter Property="HorizontalAlignment" Value="Stretch" />
             <Setter Property="HorizontalContentAlignment" Value="Left" />
             <Setter Property="Background" Value="Transparent" />
-            <Setter Property="BorderThickness" Value="0" />
-            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Padding" Value="9,7" />
             <Setter Property="CornerRadius" Value="6" />
+        </Style>
+        <Style Selector="Button.nav TextBlock:not(.emoji)">
+            <Setter Property="FontWeight" Value="Bold" />
         </Style>
         <Style Selector="Button.nav:pointerover">
             <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
@@ -32,7 +37,7 @@
         </Style>
         <Style Selector="Button.nav.active TextBlock:not(.emoji)">
             <Setter Property="Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="FontWeight" Value="Bold" />
         </Style>
         <Style Selector="TextBlock.emoji">
             <Setter Property="FontFamily" Value="Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, sans-serif" />
@@ -41,9 +46,49 @@
         <Style Selector="Button.nav.active TextBlock.emoji">
             <Setter Property="FontWeight" Value="Normal" />
         </Style>
+
+        <!-- 窗口置顶激活样式：与「立即截屏识别」同款的 Accent 高亮主题主按钮样式 -->
+        <Style Selector="Button.nav.pinned">
+            <Setter Property="Background" Value="{DynamicResource AccentButtonBackground}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="{DynamicResource AccentButtonBorder}" />
+        </Style>
+        <Style Selector="Button.nav.pinned:pointerover">
+            <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPointerOver}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
+        </Style>
+        <Style Selector="Button.nav.pinned:pressed">
+            <Setter Property="Background" Value="{DynamicResource AccentButtonBackgroundPressed}" />
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
+        </Style>
+        <Style Selector="Button.nav.pinned TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForeground}" />
+            <Setter Property="FontWeight" Value="Bold" />
+        </Style>
+        <Style Selector="Button.nav.pinned:pointerover TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPointerOver}" />
+        </Style>
+        <Style Selector="Button.nav.pinned:pressed TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource AccentButtonForegroundPressed}" />
+        </Style>
     </Window.Styles>
 
-    <Grid ColumnDefinitions="Auto,*" Background="Transparent" DragDrop.AllowDrop="True">
+    <Panel DragDrop.AllowDrop="True">
+        <!-- 0. 基础底色层 (支持自定义纯色背景与调色盘) -->
+        <Border Background="{DynamicResource MainWindowBackdropSolidColorBrush}" IsHitTestVisible="False" />
+
+        <!-- 1. 自定义背景图与半透明磨砂遮罩 (仅在设置背景图时呈现) -->
+        <Panel IsVisible="{Binding HasCustomBackgroundImage}" IsHitTestVisible="False">
+            <Image Source="{Binding CustomBackgroundBitmap}"
+                   Stretch="UniformToFill"
+                   HorizontalAlignment="Center"
+                   VerticalAlignment="Center" />
+            <Border Background="{DynamicResource MainWindowBackdropOverlayBrush}" />
+        </Panel>
+
+        <!-- 2. 主体 UI 容器 -->
+        <Grid ColumnDefinitions="Auto,*" Background="Transparent" DragDrop.AllowDrop="True">
         <!-- 左侧：现代化导航侧边栏 (带平滑抽屉式呼出动效) -->
         <Border Grid.Column="0"
                 Width="{Binding SidebarWidth}"
@@ -57,27 +102,25 @@
                 </Transitions>
             </Border.Transitions>
             <Grid RowDefinitions="Auto,*,Auto" Margin="8,12,8,12">
-                <!-- 顶部：汉堡菜单按钮与标题 -->
-                <DockPanel Grid.Row="0" LastChildFill="True" Margin="0,0,0,12">
-                    <!-- 菜单切换按钮 -->
-                    <Button DockPanel.Dock="Left"
-                            Content="☰"
-                            Command="{Binding ToggleSidebarCommand}"
-                            ToolTip.Tip="展开/折叠侧边栏"
-                            FontSize="15"
-                            FontWeight="Bold"
-                            Padding="8,5"
-                            Margin="0,0,6,0"
-                            VerticalAlignment="Center" />
-
-                    <!-- 展开时显示的 Logo 与产品名称 -->
-                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
-                                IsVisible="{Binding IsSidebarExpanded}">
-                        <Image Source="{Binding AppLogo}" Width="22" Height="22" VerticalAlignment="Center"
+                <!-- 顶部：整行可点击的 Logo 与标题折叠切换按钮 -->
+                <Button Grid.Row="0"
+                        Classes="nav"
+                        Command="{Binding ToggleSidebarCommand}"
+                        ToolTip.Tip="展开/折叠侧边栏"
+                        Margin="0,0,0,12">
+                    <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                        <Image Source="{Binding AppLogo}"
+                               Width="22" Height="22"
+                               Margin="1,0"
+                               VerticalAlignment="Center"
                                RenderOptions.BitmapInterpolationMode="HighQuality" />
-                        <TextBlock Text="{Binding AppTitleText}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding AppTitleText}"
+                                   FontSize="15"
+                                   FontWeight="Bold"
+                                   VerticalAlignment="Center"
+                                   IsVisible="{Binding IsSidebarExpanded}" />
                     </StackPanel>
-                </DockPanel>
+                </Button>
 
                 <!-- 中间：四个核心页面导航项 -->
                 <StackPanel Grid.Row="1" Spacing="4">
@@ -87,8 +130,9 @@
                             Command="{Binding NavigateToOcrCommand}"
                             ToolTip.Tip="OCR 文字识别">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="📄" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="OCR 识别" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/icon-ocr.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="OCR 识别" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
@@ -99,8 +143,9 @@
                             Command="{Binding NavigateToBatchCommand}"
                             ToolTip.Tip="批量图片/PDF OCR 转换">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="📚" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="批量转换" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/icon-batch.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="批量转换" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
@@ -111,69 +156,102 @@
                             Command="{Binding NavigateToHttpApiCommand}"
                             ToolTip.Tip="开放本地与局域网 HTTP OCR 接口">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="🔌" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="HTTP 调用" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/icon-http.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="HTTP 调用" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
 
-                    <!-- 2. 截屏工具 -->
+                    <!-- 4. 截屏工具 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsCapturePage}"
                             Command="{Binding NavigateToCaptureCommand}"
                             ToolTip.Tip="截屏与图像工具">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="✂️" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="截屏工具" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/icon-screenshot.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="截屏工具" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
 
-                    <!-- 3. 文本翻译 -->
+                    <!-- 5. 文本翻译 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsTranslatePage}"
                             Command="{Binding NavigateToTranslateCommand}"
                             ToolTip.Tip="文本与选区翻译">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="🌐" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="文本翻译" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/icon-translate.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="文本翻译" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
 
-                    <!-- 4. 小沐剪贴板 -->
+                    <!-- 6. 小沐剪贴板 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsClipboardPage}"
                             Command="{Binding NavigateToClipboardCommand}"
                             IsVisible="{Binding IsClipboardEnabled}"
                             ToolTip.Tip="小沐剪贴板与局域网同步">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <Image Source="avares://ShawMuOCR/Assets/MuClip.png" Width="18" Height="18" VerticalAlignment="Center" Margin="1,0" />
-                            <TextBlock Text="小沐剪贴板" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/MuClip.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="小沐剪贴板" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
 
-                    <!-- 5. 系统设置 -->
+                    <!-- 7. 个性主题 -->
+                    <Button Classes="nav"
+                            Classes.active="{Binding IsThemePage}"
+                            Command="{Binding NavigateToThemeCommand}"
+                            ToolTip.Tip="个性主题、背景图片与毛玻璃设置">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Image Source="avares://ShawMuOCR/Assets/icon-theme.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="个性主题" FontSize="14" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsSidebarExpanded}" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 8. 系统设置 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsSettingsPage}"
                             Command="{Binding NavigateToSettingsCommand}"
                             ToolTip.Tip="系统与热键设置">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="⚙️" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="系统设置" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/icon-settings.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="系统设置" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
 
-                    <!-- 4. 关于软件 -->
+                    <!-- 9. 日志记录 (仅在开启本地运行日志记录后显示) -->
+                    <Button Classes="nav"
+                            Classes.active="{Binding IsLogPage}"
+                            Command="{Binding NavigateToLogCommand}"
+                            IsVisible="{Binding IsLoggingEnabled}"
+                            ToolTip.Tip="查看本地运行审计与错误日志">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Image Source="avares://ShawMuOCR/Assets/icon-log.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="日志记录" FontSize="14" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsSidebarExpanded}" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 10. 关于软件 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsAboutPage}"
                             Command="{Binding NavigateToAboutCommand}"
                             ToolTip.Tip="关于与内存诊断">
                         <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="ℹ️" FontSize="16" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="关于软件" FontSize="13" VerticalAlignment="Center"
+                            <Image Source="avares://ShawMuOCR/Assets/icon-about.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="关于软件" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
                     </Button>
@@ -182,146 +260,113 @@
                 <!-- 底部：固定操作项 (置顶) -->
                 <StackPanel Grid.Row="2" Spacing="6">
                     <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,0,0,6" />
-                    <ToggleButton IsChecked="{Binding IsAlwaysOnTop}"
-                                  HorizontalAlignment="Stretch"
-                                  HorizontalContentAlignment="Left"
-                                  Padding="10,6"
-                                  ToolTip.Tip="保持主窗口最前置顶">
-                        <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Classes="emoji" Text="📌" FontSize="14" Width="20" TextAlignment="Center" VerticalAlignment="Center" />
-                            <TextBlock Text="窗口置顶" FontSize="12" VerticalAlignment="Center"
+                    <Button Classes="nav"
+                            Classes.pinned="{Binding IsAlwaysOnTop}"
+                            Command="{Binding ToggleAlwaysOnTopCommand}"
+                            ToolTip.Tip="{Binding TopmostTooltip}">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Classes="emoji" Text="📌" FontSize="14" Width="22" Height="22" Margin="1,0" TextAlignment="Center" VerticalAlignment="Center" LineHeight="22" />
+                            <TextBlock Text="{Binding TopmostButtonText}" FontSize="14" VerticalAlignment="Center"
                                        IsVisible="{Binding IsSidebarExpanded}" />
                         </StackPanel>
-                    </ToggleButton>
+                    </Button>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- 右侧：主工作与页面切换区 -->
         <Grid Grid.Column="1" RowDefinitions="Auto,*,Auto" Margin="16,12,16,12">
-            <!-- 顶部标题与快速截屏栏 -->
-            <DockPanel Grid.Row="0" Margin="0,0,0,12" LastChildFill="True">
-                <!-- 左侧：页面标题与当前引擎标识 -->
+            <!-- 顶部标题与功能页自定义插槽 -->
+            <DockPanel Grid.Row="0" Margin="0,0,0,12" LastChildFill="True" MinHeight="32">
+                <!-- 左侧：页面标题 -->
                 <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding CurrentPageTitle}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center" />
-                    <Border Background="{DynamicResource AccentFillColorTertiaryBrush}"
-                            CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding CurrentModel}" FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
-                    </Border>
+                    <TextBlock Text="{Binding CurrentPageTitle}" FontSize="18" FontWeight="Bold" VerticalAlignment="Center" />
                 </StackPanel>
 
-                <!-- 右侧：快捷截屏触发按钮（供任何页面随时点击） -->
-                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <Button Command="{Binding StartCaptureCommand}"
-                            Classes="accent"
+                <!-- 小沐剪贴板顶栏快捷操作区 (剪贴板、文件传输、局域网同步) -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                            IsVisible="{Binding IsClipboardPage}">
+                    <!-- 剪贴板主页切换按钮 -->
+                    <Button Command="{Binding ClipboardVm.BackToMainViewCommand}"
+                            Classes.accent="{Binding ClipboardVm.IsMainViewActive}"
                             Padding="10,5"
-                            ToolTip.Tip="唤起全屏框选截屏识别">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="✂" FontSize="13" VerticalAlignment="Center" />
-                            <TextBlock Text="截屏识别" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
-                            <Border Background="#25FFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
-                                    IsVisible="{Binding HasHotkey}">
-                                <TextBlock Text="{Binding CurrentHotkey}" FontSize="10" Opacity="0.9" />
-                            </Border>
-                        </StackPanel>
-                    </Button>
-                    <Button Command="{Binding StartCaptureImageCommand}"
-                            Padding="10,5"
-                            ToolTip.Tip="唤起全屏框选并直接复制图像">
+                            ToolTip.Tip="剪贴板历史与常用语">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="📋" FontSize="13" VerticalAlignment="Center" />
-                            <TextBlock Text="截图复制" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="剪贴板" FontSize="12" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
-                    <Button Command="{Binding StartAnnotateCommand}"
+
+                    <!-- 文件传输切换按钮 -->
+                    <Button Command="{Binding ClipboardVm.ToggleFileTransferViewCommand}"
+                            Classes.accent="{Binding ClipboardVm.IsFileTransferViewActive}"
                             Padding="10,5"
-                            ToolTip.Tip="唤起全屏框选画图编辑器与置顶贴图">
+                            ToolTip.Tip="进入局域网高速加密文件传输二级页面 (100MB/s+)">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="🎨" FontSize="13" VerticalAlignment="Center" />
-                            <TextBlock Text="截图标注" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="🚀" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="文件传输" FontSize="12" VerticalAlignment="Center" />
+                            <Border Background="#10B981"
+                                    CornerRadius="8" Padding="5,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding ClipboardVm.HasActiveTransfers}">
+                                <TextBlock Text="{Binding ClipboardVm.ActiveTransferCount}" FontSize="10" Foreground="White" FontWeight="Bold" />
+                            </Border>
                         </StackPanel>
                     </Button>
-                    <Button Command="{Binding StartTranslateSelectionCommand}"
+
+                    <!-- 局域网同步切换按钮 -->
+                    <Button Command="{Binding ClipboardVm.ToggleSyncPanelCommand}"
+                            Classes.accent="{Binding ClipboardVm.IsLanSyncViewActive}"
                             Padding="10,5"
-                            ToolTip.Tip="唤起全屏框选并随动翻译">
+                            ToolTip.Tip="进入局域网多端自发现与配对二级页面">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="🌐" FontSize="13" VerticalAlignment="Center" />
-                            <TextBlock Text="选区翻译" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
-                            <Border Background="#25FFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
-                                    IsVisible="{Binding HasTranslateHotkey}">
-                                <TextBlock Text="{Binding CurrentTranslateHotkey}" FontSize="10" Opacity="0.9" />
+                            <TextBlock Text="📡" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="局域网同步" FontSize="12" VerticalAlignment="Center" />
+                            <Border Background="{DynamicResource AccentFillColorDefaultBrush}"
+                                    CornerRadius="8" Padding="5,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding ClipboardVm.HasOnlinePeers}">
+                                <TextBlock Text="{Binding ClipboardVm.OnlinePeerCount}" FontSize="10" Foreground="White" FontWeight="Bold" />
                             </Border>
                         </StackPanel>
                     </Button>
                 </StackPanel>
+
+                <!-- 右侧：留白给功能页自己添加/自定义扩展内容插槽 -->
+                <ContentControl Content="{Binding TopBarCustomContent}" HorizontalAlignment="Right" VerticalAlignment="Center" />
             </DockPanel>
 
-            <!-- 中间：六个页面切换宿主 -->
-            <Grid Grid.Row="1">
-                <Panel IsVisible="{Binding IsOcrPage}">
-                    <pages:OcrPageView DataContext="{Binding}" />
-                </Panel>
-                <Panel IsVisible="{Binding IsBatchPage}">
-                    <pages:BatchOcrPageView DataContext="{Binding BatchVm}" />
-                </Panel>
-                <Panel IsVisible="{Binding IsHttpApiPage}">
-                    <pages:HttpApiPageView DataContext="{Binding HttpApiVm}" />
-                </Panel>
-                <Panel IsVisible="{Binding IsCapturePage}">
-                    <pages:CapturePageView DataContext="{Binding}" />
-                </Panel>
-                <Panel IsVisible="{Binding IsTranslatePage}">
-                    <pages:TranslatePageView DataContext="{Binding TranslateVm}" />
-                </Panel>
-                <Panel IsVisible="{Binding IsClipboardPage}">
-                    <muclip:ClipboardView DataContext="{Binding ClipboardVm}" />
-                </Panel>
-                <Panel IsVisible="{Binding IsSettingsPage}">
-                    <pages:SettingsPageView DataContext="{Binding SettingsVm}" />
-                </Panel>
-                <Panel IsVisible="{Binding IsAboutPage}">
-                    <pages:AboutPageView DataContext="{Binding AboutVm}" />
-                </Panel>
+            <!-- 中间：页面切换宿主 (支持按需动态渲染与后台平滑加载) -->
+            <Grid Grid.Row="1" Name="PageContainerGrid">
+                <Panel Name="OcrPageHost" IsVisible="{Binding IsOcrPage}" />
+                <Panel Name="BatchPageHost" IsVisible="{Binding IsBatchPage}" />
+                <Panel Name="HttpApiPageHost" IsVisible="{Binding IsHttpApiPage}" />
+                <Panel Name="CapturePageHost" IsVisible="{Binding IsCapturePage}" />
+                <Panel Name="TranslatePageHost" IsVisible="{Binding IsTranslatePage}" />
+                <Panel Name="ClipboardPageHost" IsVisible="{Binding IsClipboardPage}" />
+                <Panel Name="ThemePageHost" IsVisible="{Binding IsThemePage}" />
+                <Panel Name="SettingsPageHost" IsVisible="{Binding IsSettingsPage}" />
+                <Panel Name="AboutPageHost" IsVisible="{Binding IsAboutPage}" />
+                <Panel Name="LogPageHost" IsVisible="{Binding IsLogPage}" />
             </Grid>
 
-            <!-- 底部：系统全局状态栏 -->
+            <!-- 底部：系统全局状态栏 (统一状态消息) -->
             <Border Grid.Row="2"
                     Margin="0,10,0,0"
-                    Padding="10,4"
+                    Padding="12,5"
                     Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
                     CornerRadius="6">
-                <Grid ColumnDefinitions="*,Auto,Auto">
+                <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding StatusMessage}" FontWeight="Medium" FontSize="12" />
+                        <TextBlock Text="{Binding StatusMessage}" FontWeight="Medium" FontSize="12" TextTrimming="CharacterEllipsis" />
                     </StackPanel>
 
                     <TextBlock Grid.Column="1"
                                Text="{Binding ElapsedText}"
                                FontSize="12"
                                Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               Margin="0,0,16,0"
                                VerticalAlignment="Center" />
-
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
-                        <TextBlock Text="{Binding CurrentHotkey, StringFormat='识别: {0}'}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   IsVisible="{Binding HasHotkey}" />
-                        <TextBlock Text="{Binding CurrentCaptureImageHotkey, StringFormat='复制: {0}'}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   IsVisible="{Binding HasCaptureImageHotkey}" />
-                        <TextBlock Text="{Binding CurrentAnnotateHotkey, StringFormat='标注: {0}'}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   IsVisible="{Binding HasAnnotateHotkey}" />
-                        <TextBlock Text="{Binding CurrentTranslateHotkey, StringFormat='翻译: {0}'}"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   IsVisible="{Binding HasTranslateHotkey}" />
-                    </StackPanel>
                 </Grid>
             </Border>
         </Grid>
     </Grid>
+    </Panel>
 </Window>

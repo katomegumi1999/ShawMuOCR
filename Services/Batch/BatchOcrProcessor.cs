@@ -75,7 +75,7 @@ public sealed class BatchOcrProcessor
         ArgumentNullException.ThrowIfNull(items);
         ArgumentNullException.ThrowIfNull(options);
 
-        int maxCores = Math.Clamp(options.MaxCores, 1, Environment.ProcessorCount);
+        int maxCores = Math.Clamp(options.MaxCores, 1, Math.Max(8, Environment.ProcessorCount));
         int cpuLimit = Math.Clamp(options.CpuLimitPercent, 10, 100);
 
         _logger?.Info($"开始批量 OCR 转换任务: 待处理文件数={items.Count}, 核心并发上限={maxCores}, CPU利用率上限={cpuLimit}%");

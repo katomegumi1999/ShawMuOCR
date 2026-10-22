@@ -22,7 +22,7 @@ using ShawMuOCR.Windows.Hotkey;
 using ShawMuOCR.Windows.ScreenCapture;
 using ShawMuOCR.Windows.Startup;
 using MuClip.Services;
-using MuClip.Views;
+using ShawMuOCR.Views.Clipboard;
 
 namespace ShawMuOCR;
 
@@ -45,6 +45,7 @@ public partial class App : Application
     private const int HOTKEY_ID_CLIPBOARD = 5;
     private const int HOTKEY_ID_PHRASES = 6;
     private const int HOTKEY_ID_OCR_POPUP = 7;
+    private const int HOTKEY_ID_NOTE = 8;
 
     private ISettingsService? _settingsService;
     private IStartupService? _startupService;
@@ -61,6 +62,7 @@ public partial class App : Application
 
     private MainWindow? _mainWindow;
     private MainViewModel? _mainViewModel;
+    private TranslateFloatingWindow? _activeNoteWindow;
     private static App? s_instance;
 
     public App()
@@ -85,8 +87,17 @@ public partial class App : Application
             desktop.ShutdownMode = Avalonia.Controls.ShutdownMode.OnExplicitShutdown;
 
             // 1. 初始化核心领域服务
-            _settingsService = new JsonSettingsService();
+            var settingsService = new JsonSettingsService();
+            _settingsService = settingsService;
             _loggerService = new ShawMuOCR.Core.Logging.FileLoggerService(_settingsService);
+
+            // 配置读写失败一律留痕，不再静默丢弃（避免"设置莫名重置"无从排查）
+            settingsService.LoadFailed += (message, ex) => _loggerService?.Error(message, ex);
+            settingsService.SaveFailed += (message, ex) => _loggerService?.Error(message, ex);
+            if (settingsService.LastLoadError is { Length: > 0 } initialLoadError)
+            {
+                _loggerService?.Warn($"启动时读取配置失败，已回退默认配置（原文件已备份为 *.bad-时间戳）：{initialLoadError}");
+            }
 
             AppDomain.CurrentDomain.UnhandledException += (s, e) =>
             {
@@ -139,19 +150,43 @@ public partial class App : Application
             _coordinator.RequestShowMainWindow += ShowMainWindow;
             desktop.Exit += OnDesktopExit;
 
-            // 4. 根据静默启动配置决定是否呈现主界面
-            if (!_settingsService.Current.SilentStartup)
+            // 4. 根据静默启动配置或独立剪贴板模式决定是否呈现主界面
+            if (Program.IsClipStandaloneMode)
             {
+                _mainViewModel.CurrentPage = ViewModels.AppNavPage.Clipboard;
+                _mainWindow.EnsurePageLoaded(ViewModels.AppNavPage.Clipboard);
+                _loggerService?.Info("已开启小沐剪贴板轻量模式：常驻系统托盘，按快捷键即可呼出快捷面板。");
+                Dispatcher.UIThread.Post(() => _mainWindow.PreloadRemainingPages(), DispatcherPriority.Background);
+            }
+            else if (!_settingsService.Current.SilentStartup)
+            {
+                // 普通正常启动：先且仅先渲染用户退出前记忆的默认页面，实现秒级冷启动直现！
+                _mainWindow.EnsurePageLoaded(_mainViewModel.CurrentPage);
                 desktop.MainWindow = _mainWindow;
                 _mainWindow.Show();
+
+                // 启动完全呈现后，在后台空闲帧平滑逐步预加载其余页面与编辑器，不阻塞当前界面交互
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _mainWindow.PreloadRemainingPages();
+                    ScreenshotEditorWindow.Prewarm(_loggerService, "程序启动");
+                }, DispatcherPriority.Background);
             }
             else
             {
+                // 静默启动：启动时不渲染任何页面，以最高速度完成托盘常驻！
                 _loggerService?.Info("已开启静默启动：程序常驻系统托盘，未显示主界面。");
+
+                // 程序启动就绪后，在后台空闲队列中逐步完成页面渲染预热与编辑器预热
+                Dispatcher.UIThread.Post(() =>
+                {
+                    _mainWindow.PreloadRemainingPages();
+                    ScreenshotEditorWindow.Prewarm(_loggerService, "程序启动");
+                }, DispatcherPriority.Background);
             }
 
-            // 5. 若启动时未在同级 models 文件夹下检测到任何模型，主动弹出气泡提醒用户
-            if (_modelProvider.GetAvailableModels().Count == 0)
+            // 5. 若启动时未在同级 models 文件夹下检测到任何模型，主动弹出气泡提醒用户（剪贴板轻量模式下不弹出）
+            if (!Program.IsClipStandaloneMode && _modelProvider.GetAvailableModels().Count == 0)
             {
                 _loggerService?.Warn($"启动检测：未在 models 目录 ({_modelProvider.BaseModelsDirectory}) 下发现任何可用 OCR 模型。");
                 Dispatcher.UIThread.Post(() =>
@@ -223,8 +258,8 @@ public partial class App : Application
         if (_muClipService != null) return;
         try
         {
-            string appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-            string clipDbPath = Path.Combine(appData, "ShawMuOCR", "muclip.db");
+            string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+            string clipDbPath = Path.Combine(appData, "ShawMuOCR", "Muclip", "muclip.db");
             _muClipService = new MuClipService(_clipboardService);
             _muClipService.Initialize(clipDbPath, startSync: true, syncPort: 42424);
             _loggerService?.Info($"小沐剪贴板服务已就绪，当前配对信任凭证已加载 (PIN: {_muClipService.PairingPin})");
@@ -360,7 +395,7 @@ public partial class App : Application
             {
                 clipboardSuccess = _hotkeyService.Register(HOTKEY_ID_CLIPBOARD, clipGesture, () =>
                 {
-                    ClipboardQuickPanelWindow.ShowInstance(_muClipService, _settingsService?.Current.ClipboardPanelBackground ?? settings.ClipboardPanelBackground, initialTabIndex: 0);
+                    ClipboardQuickPanelWindow.ShowInstance(_muClipService, _settingsService, initialTabIndex: 0);
                 });
             }
             else
@@ -381,7 +416,7 @@ public partial class App : Application
             {
                 phrasesSuccess = _hotkeyService.Register(HOTKEY_ID_PHRASES, phrasesGesture, () =>
                 {
-                    ClipboardQuickPanelWindow.ShowInstance(_muClipService, _settingsService?.Current.ClipboardPanelBackground ?? settings.ClipboardPanelBackground, initialTabIndex: 1);
+                    ClipboardQuickPanelWindow.ShowInstance(_muClipService, _settingsService, initialTabIndex: 1);
                 });
             }
             else
@@ -394,9 +429,29 @@ public partial class App : Application
             _hotkeyService.Unregister(HOTKEY_ID_PHRASES);
         }
 
+        bool noteSuccess = true;
+        if (!IsDisabledHotkey(settings.QuickNoteHotkey))
+        {
+            if (HotkeyGesture.TryParse(settings.QuickNoteHotkey, out var noteGesture))
+            {
+                noteSuccess = _hotkeyService.Register(HOTKEY_ID_NOTE, noteGesture, () =>
+                {
+                    OpenQuickNoteWindow();
+                });
+            }
+            else
+            {
+                noteSuccess = false;
+            }
+        }
+        else
+        {
+            _hotkeyService.Unregister(HOTKEY_ID_NOTE);
+        }
+
         if (_mainViewModel != null)
         {
-            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !translateSuccess && !ocrPopupSuccess && !clipboardSuccess)
+            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !translateSuccess && !ocrPopupSuccess && !clipboardSuccess && !noteSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 快捷键注册失败，请检查冲突并重新设置";
             }
@@ -418,17 +473,48 @@ public partial class App : Application
             }
             else if (!ocrPopupSuccess)
             {
-                _mainViewModel.StatusMessage = $"⚠️ OCR 弹窗快捷键 {settings.OcrPopupHotkey} 注册失败(可能被占用)";
+                _mainViewModel.StatusMessage = $"⚠️ OCR 窗格快捷键 {settings.OcrPopupHotkey} 注册失败(可能被占用)";
             }
             else if (!clipboardSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 剪贴板快捷键 {settings.ClipboardPanelHotkey} 注册失败(可能被占用)";
             }
-            else if (_mainViewModel.StatusMessage.StartsWith("⚠️ 快捷键") || _mainViewModel.StatusMessage.StartsWith("⚠️ 截图") || _mainViewModel.StatusMessage.StartsWith("⚠️ 选区") || _mainViewModel.StatusMessage.StartsWith("⚠️ OCR") || _mainViewModel.StatusMessage.StartsWith("⚠️ 剪贴板"))
+            else if (!noteSuccess)
+            {
+                _mainViewModel.StatusMessage = $"⚠️ 随手便笺快捷键 {settings.QuickNoteHotkey} 注册失败(可能被占用)";
+            }
+            else if (_mainViewModel.StatusMessage.StartsWith("⚠️ 快捷键") || _mainViewModel.StatusMessage.StartsWith("⚠️ 截图") || _mainViewModel.StatusMessage.StartsWith("⚠️ 选区") || _mainViewModel.StatusMessage.StartsWith("⚠️ OCR") || _mainViewModel.StatusMessage.StartsWith("⚠️ 剪贴板") || _mainViewModel.StatusMessage.StartsWith("⚠️ 随手便笺"))
             {
                 _mainViewModel.StatusMessage = "就绪";
             }
         }
+    }
+
+    public void OpenQuickNoteWindow()
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (_activeNoteWindow != null && _activeNoteWindow.IsVisible)
+            {
+                _activeNoteWindow.WindowState = Avalonia.Controls.WindowState.Normal;
+                _activeNoteWindow.Activate();
+                return;
+            }
+
+            EnsureMuClipServiceInitialized();
+
+            _activeNoteWindow = new TranslateFloatingWindow(
+                _settingsService!,
+                _clipboardService!,
+                translationService: null,
+                FloatingWindowMode.Note,
+                _muClipService);
+
+            _activeNoteWindow.Closed += (_, _) => _activeNoteWindow = null;
+            _activeNoteWindow.InitializeCenterPosition();
+            _activeNoteWindow.Show();
+            _activeNoteWindow.Activate();
+        });
     }
 
     private SettingsViewModel CreateSettingsViewModel()
@@ -447,6 +533,10 @@ public partial class App : Application
         {
             if (_mainWindow != null)
             {
+                if (_mainViewModel != null)
+                {
+                    _mainWindow.EnsurePageLoaded(_mainViewModel.CurrentPage);
+                }
                 if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop && desktop.MainWindow == null)
                 {
                     desktop.MainWindow = _mainWindow;
@@ -486,6 +576,11 @@ public partial class App : Application
     private void OnTrayOcrPopupClick(object? sender, EventArgs e)
     {
         _ = _coordinator?.StartOcrPopupAsync();
+    }
+
+    private void OnTrayQuickNoteClick(object? sender, EventArgs e)
+    {
+        OpenQuickNoteWindow();
     }
 
     private void OnTrayOpenMainClick(object? sender, EventArgs e)

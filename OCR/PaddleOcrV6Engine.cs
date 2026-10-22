@@ -31,9 +31,9 @@ public sealed record OcrBackendProbeInfo(
         : AutoSelectsGpu
             ? (SupportsCoopMatrix
                 ? "支持硬件协作矩阵 (CoopMatrix)"
-                : $"支持 Wave{SubgroupMin} 子群并行 (SubgroupMin={SubgroupMin}≥64)")
+                : $"支持 Wave{SubgroupMin} 子群并行 (SubgroupMin={SubgroupMin}≥32)")
             : (HasVulkanDevice && !string.IsNullOrWhiteSpace(GpuDeviceName)
-                ? $"核显 {GpuDeviceName} 无协作矩阵且 SubgroupMin={SubgroupMin}<64，已自动优选 CPU（如需强制使用可切换至 GPU 加速或手动指定显卡）"
+                ? $"核显 {GpuDeviceName} 无协作矩阵且 SubgroupMin={SubgroupMin}<32，已自动优选 CPU（如需强制使用可切换至 GPU 加速或手动指定显卡）"
                 : "未检测到满足条件的 Vulkan GPU，已自动优选 CPU");
 }
 
@@ -59,7 +59,7 @@ public sealed record DiscoveredGpuDevice(
             ? "自动选择 (默认 · 优先独立显卡)"
             : $"[{TypeTag}] {Name} (设备 #{Index}" +
               (SupportsCoopMatrix ? " · 硬件矩阵" :
-               SubgroupMin >= 64 ? $" · Wave{SubgroupMin}" : string.Empty) + ")";
+               SubgroupMin >= 32 ? $" · Wave{SubgroupMin}" : string.Empty) + ")";
 }
 
 public sealed partial class PaddleOcrV6Engine : IOcrEngine
@@ -294,6 +294,11 @@ public sealed partial class PaddleOcrV6Engine : IOcrEngine
                         string? deviceName = devType.GetField("DeviceName", instFlags)?.GetValue(vkDevice) as string;
                         bool coopGemm = devType.GetProperty("CoopGemm", instFlags)?.GetValue(vkDevice) is true;
                         uint subgroupMin = devType.GetField("SubgroupMin", instFlags)?.GetValue(vkDevice) is uint sg ? sg : 0u;
+
+                        if (!autoSelectsGpu && s_currentSelectedGpuIndex < 0 && (coopGemm || subgroupMin >= 32))
+                        {
+                            autoSelectsGpu = true;
+                        }
 
                         s_cachedProbeInfo = new OcrBackendProbeInfo(
                             AutoSelectsGpu: autoSelectsGpu,

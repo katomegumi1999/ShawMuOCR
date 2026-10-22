@@ -5,6 +5,16 @@
               x:Class="ShawMuOCR.Views.Pages.HttpApiPageView"
               x:DataType="vm:HttpApiViewModel">
 
+    <UserControl.Styles>
+        <!-- 统一定制 TabItem 标题字号与边距，杜绝 FluentTheme 默认过大字号 (20px)，保持整洁协调 -->
+        <Style Selector="TabItem">
+            <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="MinHeight" Value="32" />
+            <Setter Property="Padding" Value="12,4" />
+        </Style>
+    </UserControl.Styles>
+
     <Grid RowDefinitions="Auto,Auto,*" Margin="0,0,0,4">
 
         <!-- 1. 顶部服务状态与控制栏 -->
@@ -29,7 +39,7 @@
 
                     <!-- 接口地址与复制按钮 -->
                     <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                        <TextBlock Text="接口地址:" FontSize="13" FontWeight="Medium" VerticalAlignment="Center" />
+                        <TextBlock Text="接口地址:" FontSize="13" VerticalAlignment="Center" />
                         <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
@@ -111,16 +121,61 @@
                               IsEnabled="{Binding IsSettingsEnabled}"
                               Content="允许局域网外部设备访问 (绑定 0.0.0.0)"
                               FontSize="12"
-                              ToolTip.Tip="开启后允许同局域网内其他设备发起调用；若权限不足会自动回退至本地 127.0.0.1 模式" />
+                              ToolTip.Tip="开启后允许同局域网内其他设备发起调用；若权限不足会自动回退至本地 127.0.0.1 模式。开启后强制要求访问令牌鉴权" />
+
+                    <!-- 局域网可用地址提示 -->
+                    <TextBlock Text="{Binding LanAccessHint}"
+                               IsVisible="{Binding AllowRemote}"
+                               FontSize="11"
+                               TextWrapping="Wrap"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+
+                    <!-- 无令牌开放（仅局域网模式下有意义） -->
+                    <CheckBox IsChecked="{Binding AllowAnonymousRemote}"
+                              IsVisible="{Binding AllowRemote}"
+                              IsEnabled="{Binding IsSettingsEnabled}"
+                              Content="允许局域网无令牌访问（同网段设备可直接调用）"
+                              FontSize="12"
+                              ToolTip.Tip="用于临时分享给同事：勾选后清空令牌，同网段任何设备都能调用本机 OCR 并占用 CPU。接口不会读取本机任何文件" />
+
+                    <!-- 访问令牌（配置后所有调用都需携带 Authorization: Bearer） -->
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" IsVisible="{Binding IsTokenRowVisible}" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" Text="访问令牌:" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding AccessToken}"
+                                 PlaceholderText="未配置（仅本机直连可调用）"
+                                 IsReadOnly="True"
+                                 FontSize="11"
+                                 FontFamily="Consolas"
+                                 VerticalAlignment="Center"
+                                 ToolTip.Tip="调用方需在请求头携带 Authorization: Bearer 加此令牌" />
+                        <Button Grid.Column="2"
+                                Content="复制"
+                                Command="{Binding CopyAccessTokenCommand}"
+                                FontSize="11"
+                                Padding="8,2"
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center" />
+                        <Button Grid.Column="3"
+                                Content="重新生成"
+                                Command="{Binding RegenerateAccessTokenCommand}"
+                                IsEnabled="{Binding IsSettingsEnabled}"
+                                FontSize="11"
+                                Padding="8,2"
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center" />
+                    </Grid>
 
                     <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
 
                     <!-- 接口规格说明 -->
                     <StackPanel Spacing="3">
-                        <TextBlock Text="📌 支持接口路由与输入协议:" FontSize="11" FontWeight="Medium" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="📌 支持接口路由与输入协议:" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                         <TextBlock Text="• POST /ocr : 接收 multipart/form-data、JSON Base64 或纯图片二进制" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                         <TextBlock Text="• GET /health : 服务健康检查与状态探针" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                         <TextBlock Text="• 支持 query 参数 ?splitColumns=true (分列) 与 ?format=text (纯文本)" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Text="• 鉴权: 请求头 Authorization: Bearer &lt;访问令牌&gt;" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Text="• 安全限制: 单请求体上限 20MB；并发超限返回 429；不接受服务器本地文件路径 (?path= / imagePath 已禁用)" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -133,18 +188,23 @@
                     CornerRadius="8">
                 <StackPanel Spacing="10">
                     <Grid ColumnDefinitions="*,Auto">
-                        <TextBlock Grid.Column="0" Text="⚡ CPU 多核调度与限流 (实时生效)" FontWeight="SemiBold" FontSize="13" />
-                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
-                            <TextBlock Text="{Binding ActiveTasks, StringFormat='执行中: {0}'}" FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding SchedulerTitle}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                            <Border Background="{DynamicResource AccentFillColorTertiaryBrush}" CornerRadius="4" Padding="5,1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DeviceBadgeText}" FontSize="10" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                            </Border>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                            <TextBlock Text="{Binding ActiveTasks, StringFormat='执行中: {0}'}" FontSize="11" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             <TextBlock Text="{Binding QueuedTasks, StringFormat='排队中: {0}'}" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                         </StackPanel>
                     </Grid>
 
-                    <!-- 并发核心上限 Slider -->
+                    <!-- 并发上限 Slider -->
                     <StackPanel Spacing="4">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="最大并发核心数上限:" FontSize="12" />
-                            <TextBlock Grid.Column="1" Text="{Binding MaxCores, StringFormat='{}{0} 核'}" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Grid.Column="0" Text="{Binding ConcurrencyLabel}" FontSize="12" />
+                            <TextBlock Grid.Column="1" Text="{Binding ConcurrencyValueText}" FontWeight="SemiBold" FontSize="12" />
                         </Grid>
                         <Slider Minimum="1"
                                 Maximum="{Binding MaxAvailableCores}"
@@ -153,11 +213,11 @@
                                 IsSnapToTickEnabled="True" />
                     </StackPanel>
 
-                    <!-- CPU 占用率上限 Slider -->
+                    <!-- 利用率与负载上限 Slider -->
                     <StackPanel Spacing="4">
                         <Grid ColumnDefinitions="*,Auto">
-                            <TextBlock Grid.Column="0" Text="CPU 利用率上限 (占空比限流):" FontSize="12" />
-                            <TextBlock Grid.Column="1" Text="{Binding CpuLimitPercent, StringFormat='{}{0}%'}" FontWeight="SemiBold" FontSize="12" />
+                            <TextBlock Grid.Column="0" Text="{Binding UsageLimitLabel}" FontSize="12" />
+                            <TextBlock Grid.Column="1" Text="{Binding UsageLimitValueText}" FontWeight="SemiBold" FontSize="12" />
                         </Grid>
                         <Slider Minimum="10"
                                 Maximum="100"
@@ -350,6 +410,54 @@
                     </Grid>
                 </TabItem>
             </TabControl>
+        </Border>
+
+        <!-- 多路并发/并发流安全提示遮罩弹窗 -->
+        <Border Grid.Row="0" Grid.RowSpan="3"
+                Background="#60000000"
+                IsVisible="{Binding IsConcurrencyWarningOpen}"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                ZIndex="100">
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="10"
+                    Padding="22,18"
+                    Width="430"
+                    HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    BoxShadow="0 8 24 #30000000">
+                <StackPanel Spacing="14">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="⚠️" FontSize="18" Foreground="#D97706" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ConcurrencyWarningTitle}" FontSize="15" FontWeight="SemiBold" VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <TextBlock Text="{Binding ConcurrencyWarningMessage}"
+                               FontSize="12"
+                               LineHeight="18"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
+
+                    <!-- 操作按钮 -->
+                    <Grid ColumnDefinitions="*,10,*">
+                        <Button Grid.Column="0"
+                                Content="{Binding CancelConcurrencyButtonText}"
+                                Command="{Binding CancelConcurrencyWarningCommand}"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Padding="0,8" />
+                        <Button Grid.Column="2"
+                                Content="{Binding ConfirmConcurrencyButtonText}"
+                                Command="{Binding ConfirmConcurrencyWarningCommand}"
+                                Classes="accent"
+                                HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Center"
+                                Padding="0,8" />
+                    </Grid>
+                </StackPanel>
+            </Border>
         </Border>
     </Grid>
 </UserControl>

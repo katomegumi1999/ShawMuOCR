@@ -35,19 +35,23 @@ public class FileOfferEvent
 
 public enum TransferStatus
 {
+    Pending,
     Transferring,
     Completed,
     Failed,
     Canceled
 }
 
-public class TransferTargetDeviceItem
+public partial class TransferTargetDeviceItem : ObservableObject
 {
     public string DeviceId { get; set; } = string.Empty;
     public string DeviceName { get; set; } = string.Empty;
     public string Endpoint { get; set; } = string.Empty;
     public bool IsPaired { get; set; }
     public bool IsOnline { get; set; }
+
+    [ObservableProperty]
+    private bool _isSelected;
 
     public string DisplayName => IsPaired
         ? $"💻 {DeviceName} ({Endpoint}) [已配对]"
@@ -89,6 +93,13 @@ public partial class FileTransferItem : ObservableObject
     private double _progressPercent;
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusText))]
+    [NotifyPropertyChangedFor(nameof(DirectionBadge))]
+    [NotifyPropertyChangedFor(nameof(DirectionColor))]
+    [NotifyPropertyChangedFor(nameof(CanCancel))]
+    [NotifyPropertyChangedFor(nameof(CanRemove))]
+    [NotifyPropertyChangedFor(nameof(CanOpenFile))]
+    [NotifyPropertyChangedFor(nameof(CanOpenFolder))]
     private TransferStatus _status = TransferStatus.Transferring;
 
     [ObservableProperty]
@@ -101,11 +112,50 @@ public partial class FileTransferItem : ObservableObject
     public string FormattedSpeed => $"{SpeedMBs:F2} MB/s";
     public string FormattedSize => $"{FormatFileSize(TransferredBytes)} / {FormatFileSize(TotalBytes)}";
     public string FormattedPercent => $"{ProgressPercent:F1}%";
-    public string DirectionBadge => IsSend ? "发送 ↑" : "接收 ↓";
-    public string DirectionColor => IsSend ? "#3B82F6" : "#10B981";
+    public string DirectionBadge => Status == TransferStatus.Pending ? "待发送" : (IsSend ? "发送 ↑" : "接收 ↓");
+    public string DirectionColor => Status == TransferStatus.Pending ? "#F59E0B" : (IsSend ? "#3B82F6" : "#10B981");
+
+    /// <summary>
+    /// 预计剩余时间（例如 "⏱ 剩余约 15 秒"、"⏱ 剩余约 2 分 30 秒"）
+    /// </summary>
+    public string FormattedRemainingTime
+    {
+        get
+        {
+            if (Status != TransferStatus.Transferring)
+                return string.Empty;
+
+            if (TotalBytes <= TransferredBytes)
+                return string.Empty;
+
+            if (SpeedBps == 0)
+                return "⏱ 计算剩余时间...";
+
+            ulong remainingBytes = TotalBytes - TransferredBytes;
+            double seconds = (double)remainingBytes / SpeedBps;
+
+            if (seconds < 1)
+                return "⏱ 即将完成";
+            if (seconds < 60)
+                return $"⏱ 剩余约 {(int)Math.Ceiling(seconds)} 秒";
+            if (seconds < 3600)
+            {
+                int mins = (int)(seconds / 60);
+                int secs = (int)(seconds % 60);
+                return secs > 0 ? $"⏱ 剩余约 {mins} 分 {secs} 秒" : $"⏱ 剩余约 {mins} 分钟";
+            }
+            else
+            {
+                int hours = (int)(seconds / 3600);
+                int mins = (int)((seconds % 3600) / 60);
+                return mins > 0 ? $"⏱ 剩余约 {hours} 小时 {mins} 分" : $"⏱ 剩余约 {hours} 小时";
+            }
+        }
+    }
 
     public string StatusText => Status switch
     {
+        TransferStatus.Pending => "待发送",
         TransferStatus.Transferring => "传输中...",
         TransferStatus.Completed => "✓ 已完成",
         TransferStatus.Failed => $"✕ 失败: {ErrorMessage}",
@@ -114,6 +164,7 @@ public partial class FileTransferItem : ObservableObject
     };
 
     public bool CanCancel => Status == TransferStatus.Transferring;
+    public bool CanRemove => Status != TransferStatus.Transferring;
     public bool CanOpenFile => Status == TransferStatus.Completed && !string.IsNullOrEmpty(FilePath) && File.Exists(FilePath);
     public bool CanOpenFolder => Status == TransferStatus.Completed && !string.IsNullOrEmpty(FilePath);
 
@@ -137,6 +188,7 @@ public partial class FileTransferItem : ObservableObject
         OnPropertyChanged(nameof(FormattedSpeed));
         OnPropertyChanged(nameof(FormattedSize));
         OnPropertyChanged(nameof(FormattedPercent));
+        OnPropertyChanged(nameof(FormattedRemainingTime));
         OnPropertyChanged(nameof(SpeedMBs));
     }
 
@@ -162,5 +214,6 @@ public partial class FileTransferItem : ObservableObject
         OnPropertyChanged(nameof(CanOpenFolder));
         OnPropertyChanged(nameof(FormattedPercent));
         OnPropertyChanged(nameof(FormattedSize));
+        OnPropertyChanged(nameof(FormattedRemainingTime));
     }
 }

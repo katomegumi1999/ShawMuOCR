@@ -6,6 +6,7 @@ public sealed class ScreenSelectionResult
 {
     public required OcrImage Image { get; init; }
     public required ScreenRect ScreenBounds { get; init; }
+    public ScreenPoint? StartPoint { get; init; }
 }
 
 public interface IScreenSelectionService

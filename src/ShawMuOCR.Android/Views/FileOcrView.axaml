@@ -1,0 +1,87 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="using:ShawMuOCR.Android.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="400" d:DesignHeight="700"
+             x:Class="ShawMuOCR.Android.Views.FileOcrView"
+             x:DataType="vm:FileOcrViewModel">
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+        <!-- 头部操作区 -->
+        <Border Grid.Row="0" Margin="12,12,12,6" Padding="14" CornerRadius="10" Background="{DynamicResource SystemChromeLowColor}">
+            <StackPanel Spacing="8">
+                <Button Command="{Binding PickAndRecognizeFileCommand}"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Padding="14"
+                        Classes="accent">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="📁" FontSize="18" VerticalAlignment="Center" />
+                        <TextBlock Text="选择图片或 PDF 进行识别" FontWeight="SemiBold" FontSize="16" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+
+                <!-- 文件摘要 -->
+                <TextBlock Text="{Binding FileSummary}" FontSize="13" Opacity="0.85" TextTrimming="CharacterEllipsis" />
+
+                <!-- PDF 分页控制栏 -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto,Auto" IsVisible="{Binding IsPdfDocument}">
+                    <Button Grid.Column="0" Content="◀ 上一页" Command="{Binding PreviousPageCommand}" Padding="8,4" />
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding CurrentPageIndex, StringFormat='第 {0} 页'}"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               FontWeight="SemiBold" />
+                    <Button Grid.Column="2" Content="下一页 ▶" Command="{Binding NextPageCommand}" Padding="8,4" Margin="4,0" />
+                    <Button Grid.Column="3" Content="识别全部" Command="{Binding RecognizeAllPdfPagesCommand}" Padding="8,4" />
+                </Grid>
+            </StackPanel>
+        </Border>
+
+        <!-- 状态与耗时指示 -->
+        <Border Grid.Row="1" Margin="12,2,12,6" Padding="10,6" CornerRadius="6" Background="{DynamicResource SystemChromeMediumColor}">
+            <Grid ColumnDefinitions="*,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="12" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                <TextBlock Grid.Column="1" Text="{Binding ExecutionTimeInfo}" FontSize="12" FontWeight="SemiBold" VerticalAlignment="Center" Margin="8,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- 内容区域：图像预览与文本输出 -->
+        <Grid Grid.Row="2" RowDefinitions="*,*" Margin="12,4">
+            <!-- 图像预览 -->
+            <Border Grid.Row="0" Margin="0,0,0,4" CornerRadius="8" ClipToBounds="True" Background="{DynamicResource SystemChromeLowColor}">
+                <Image Source="{Binding PreviewImage}" Stretch="Uniform" />
+            </Border>
+
+            <!-- 识别文本输出 -->
+            <Border Grid.Row="1" Margin="0,4,0,0" CornerRadius="8" Padding="8" Background="{DynamicResource SystemChromeLowColor}">
+                <TextBox Text="{Binding RecognizedText}"
+                         AcceptsReturn="True"
+                         TextWrapping="Wrap"
+                         IsReadOnly="False"
+                         PlaceholderText="OCR 识别文字将在此显示，可直接编辑修改..."
+                         VerticalAlignment="Stretch"
+                         HorizontalAlignment="Stretch" />
+            </Border>
+        </Grid>
+
+        <!-- 底部工具栏 -->
+        <Border Grid.Row="3" Margin="12,4,12,12" Padding="8">
+            <Grid ColumnDefinitions="*,*">
+                <Button Grid.Column="0" Command="{Binding CopyTextCommand}"
+                        Content="📋 复制全部文字"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Margin="0,0,6,0"
+                        Padding="10" />
+                <Button Grid.Column="1" Command="{Binding ClearTextCommand}"
+                        Content="🗑️ 清空结果"
+                        HorizontalAlignment="Stretch"
+                        HorizontalContentAlignment="Center"
+                        Margin="6,0,0,0"
+                        Padding="10" />
+            </Grid>
+        </Border>
+    </Grid>
+</UserControl>

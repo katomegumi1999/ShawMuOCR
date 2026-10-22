@@ -26,7 +26,7 @@ public sealed class CpuThrottleScheduler : IDisposable
     /// <param name="cpuLimitPercent">目标 CPU 利用率上限百分比（10 ~ 100）</param>
     public CpuThrottleScheduler(int maxCores, int cpuLimitPercent)
     {
-        _maxCores = Math.Clamp(maxCores, 1, Environment.ProcessorCount);
+        _maxCores = Math.Clamp(maxCores, 1, Math.Max(8, Environment.ProcessorCount));
         _cpuLimitPercent = Math.Clamp(cpuLimitPercent, 10, 100);
     }
 
@@ -69,7 +69,7 @@ public sealed class CpuThrottleScheduler : IDisposable
     {
         lock (_lock)
         {
-            _maxCores = Math.Clamp(maxCores, 1, Environment.ProcessorCount);
+            _maxCores = Math.Clamp(maxCores, 1, Math.Max(8, Environment.ProcessorCount));
             _cpuLimitPercent = Math.Clamp(cpuLimitPercent, 10, 100);
 
             // 若并发核心配额调大，立即唤醒排队等待的任务

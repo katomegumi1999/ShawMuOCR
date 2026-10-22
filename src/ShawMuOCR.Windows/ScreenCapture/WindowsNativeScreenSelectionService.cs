@@ -288,9 +288,15 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
         private int _curY;
         private OcrImage? _result;
         private ScreenRect _resultBounds;
+        private ScreenPoint? _resultStartPoint;
 
         public OcrImage? Result => _result;
-        public ScreenSelectionResult? ResultEx => _result != null ? new ScreenSelectionResult { Image = _result, ScreenBounds = _resultBounds } : null;
+        public ScreenSelectionResult? ResultEx => _result != null ? new ScreenSelectionResult
+        {
+            Image = _result,
+            ScreenBounds = _resultBounds,
+            StartPoint = _resultStartPoint
+        } : null;
 
         public OverlayWindowState(
             OcrImage fullScreenshot,
@@ -463,7 +469,11 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
                         if (selW >= 5 && selH >= 5)
                         {
                             var cropped = _fullScreenshot.Crop(selX, selY, selW, selH);
-                            CloseOverlay(hWnd, cropped, new ScreenRect(selX + _virtualBounds.X, selY + _virtualBounds.Y, selW, selH));
+                            CloseOverlay(
+                                hWnd,
+                                cropped,
+                                new ScreenRect(selX + _virtualBounds.X, selY + _virtualBounds.Y, selW, selH),
+                                new ScreenPoint(_startX + _virtualBounds.X, _startY + _virtualBounds.Y));
                         }
                         else
                         {
@@ -505,7 +515,7 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
             return User32.DefWindowProc(hWnd, msg, wParam, lParam);
         }
 
-        private void CloseOverlay(IntPtr hWnd, OcrImage? result, ScreenRect bounds = default)
+        private void CloseOverlay(IntPtr hWnd, OcrImage? result, ScreenRect bounds = default, ScreenPoint? startPoint = default)
         {
             if (_isDragging)
             {
@@ -514,6 +524,7 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
             }
             _result = result;
             _resultBounds = bounds;
+            _resultStartPoint = startPoint;
             SafeRestoreForegroundWindow(_previousForeground);
             User32.DestroyWindow(hWnd);
         }

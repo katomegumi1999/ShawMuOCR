@@ -10,12 +10,21 @@ namespace ShawMuOCR;
 
 sealed class Program
 {
+    public static bool IsClipStandaloneMode { get; private set; }
+
     // Initialization code. Don't use any Avalonia, third-party APIs or any
     // SynchronizationContext-reliant code before AppMain is called: things aren't initialized
     // yet and stuff might break.
     [STAThread]
     public static void Main(string[] args)
     {
+        string processName = AppDomain.CurrentDomain.FriendlyName;
+        if (Array.Exists(args, a => a.Equals("--clip", StringComparison.OrdinalIgnoreCase) || a.Equals("--muclip", StringComparison.OrdinalIgnoreCase))
+            || processName.Contains("MuClip", StringComparison.OrdinalIgnoreCase))
+        {
+            IsClipStandaloneMode = true;
+        }
+
         // 禁用 Sdcb.SimdPaddleOCR 2.0 默认请求的 VK_QUEUE_GLOBAL_PRIORITY_HIGH_KHR (需要 Windows 管理员 SeIncreaseBasePriorityPrivilege 权限)，
         // 防止非管理员模式下部分显卡驱动在拒绝高优先级 Vulkan 队列或二次重试 vkCreateDevice 时发生原生层崩溃退出
         if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("SIMD_OCR_VK_PRIORITY")))

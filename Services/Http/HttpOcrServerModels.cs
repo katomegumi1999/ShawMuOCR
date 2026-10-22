@@ -51,8 +51,30 @@ public sealed class HttpOcrRequest
     public string? Image { get; set; }
     public string? Base64 { get; set; }
     public string? ImageBase64 { get; set; }
+
+    /// <summary>
+    /// 【已禁用】原用于按服务端本地路径读取图片，等同于未授权的任意文件读取入口。
+    /// 保留字段仅为向旧客户端返回明确的 400 提示，服务端不会再读取任何本地路径。
+    /// </summary>
     public string? ImagePath { get; set; }
+
     public bool SplitColumns { get; set; }
+}
+
+/// <summary>
+/// 请求体超过服务端硬上限时抛出（映射为 HTTP 413 Payload Too Large）
+/// </summary>
+public sealed class PayloadTooLargeException : Exception
+{
+    public long MaxBytes { get; }
+    public long ReceivedBytes { get; }
+
+    public PayloadTooLargeException(long maxBytes, long receivedBytes)
+        : base($"请求体过大：服务端上限 {maxBytes / (1024 * 1024)} MB，当前已接收 {receivedBytes / (1024.0 * 1024.0):F1} MB。请压缩图片或降低分辨率后重试。")
+    {
+        MaxBytes = maxBytes;
+        ReceivedBytes = receivedBytes;
+    }
 }
 
 /// <summary>

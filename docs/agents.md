@@ -35,7 +35,7 @@ ShawMuOCR/
 │   ├── ShawMuOCR.Core/              # 核心业务接口与模型（IOcrEngine, ITranslationService, AppSettings 等）
 │   ├── ShawMuOCR.Windows/           # Win32 原生集成（RegisterHotKey 消息循环泵, GDI+ DPI 自适应截图）
 │   └── MuClip/                      # 局域网跨设备剪贴板同步子系统（纯 C# MVVM + Rust FFI）
-└── tests/ShawMuOCR.Tests/           # 单元测试工程（包含 174 项全绿自动化测试）
+└── tests/ShawMuOCR.Tests/           # 单元测试工程（包含 247 项全绿自动化测试）
 ```
 
 ---
@@ -94,6 +94,65 @@ ShawMuOCR/
   - 旧版的 `SyncSendPairRequest` 在底层原生库中已作为 stub 返回 -1，**不要在业务逻辑中依赖它**。
 - **双向解除配对**：只有在两端已建立网络心跳或活跃对端连接的前提下，调用 `RemovePairedDevice` 才会向对端发送 `UnpairNoticePayload` 并触发 `RemotePeerUnpaired`。
 
+### 3.7 单文件代码规模红线与高内聚服务/UI组件化规范
+为避免单个源文件代码膨胀（例如原先单文件接近 2000 行导致阅读困难、维护性降低与并发编辑冲突），项目全面推行高内聚模块化拆分规范：
+1. **单文件规模红线**：
+   - 业务逻辑文件（`.cs`）与 XAML 页面文件（`.axaml`）建议控制在 800 行以内，严禁无节制堆砌代码超过 1200 行。
+2. **大型服务领域分部类与契约下沉**：
+   - 对于职责丰富的大型核心服务（如 `MuClipService`），必须抽离细粒度接口契约（如 `IClipboardHistoryService`、`IClipboardPhraseService`、`IClipboardSyncService`、`IClipboardFileTransferService`），主服务接口（如 `IMuClipService`）继承所有子接口作为门面（Facade），确保对既有外部依赖注入调用 100% 零破坏兼容；
+   - 实现端采用 `partial class` 按业务领域物理拆分文件（例如 `MuClipService.cs`、`MuClipService.History.cs`、`MuClipService.Phrases.cs`、`MuClipService.Sync.cs`、`MuClipService.FileTransfer.cs`），共享原生引擎句柄与同步锁，消除各子功能间循环引用与多锁死锁隐患。
+3. **庞大 UI 视图的组件化抽离**：
+   - 包含多子 Tab、复杂二级配置或浮动面板的 View（如 `ClipboardView.axaml`），必须将独立的二级面板提取为独立的 `UserControl` 组件（置于 `Views/Components/` 目录，如 `ClipboardLanSyncPanel.axaml`、`ClipboardFileTransferPanel.axaml`）；
+   - 主视图直接通过 xmlns 命名空间引入并嵌入子组件标签，极大精简主视图树层级，提升 XAML 渲染性能与可视化维护体验。
+
+### 3.8 剪贴板纯中间层（Core）与主工程统一 UI/主题规范
+为了解决过去剪贴板独立分发导致的 UI 割裂、资源重复与循环引用问题，工程采用了**整洁分层架构（Clean Architecture）**：
+1. **MuClip 职责下沉为纯核心中间层**：
+   - `src/MuClip` 项目定位为纯 Class Library（`MuClip.Core`），仅承载 Rust `muclip_core.dll` 的原生互操作（P/Invoke）、数据模型契约、分部业务服务（History / Sync / FileTransfer）和无重型 UI 的 ViewModels；
+   - 移除 MuClip 中所有具体的 Window 窗体和视图实现，彻底解除 Avalonia UI 框架对核心逻辑的侵入。
+2. **UI 视图收归主工程与主题大一统**：
+   - 所有剪贴板视图统一归纳在主工程 `Views/Clipboard/`（包含 `ClipboardView`、`ClipboardQuickPanelWindow`、`PairRequestDialog` 等）；
+   - `ClipboardQuickPanelWindow` 直接复用主软件的 `ThemeService` 和 `AppSettings.ThemeFloatingWindowBackgroundColorHex`，与 `TranslateFloatingWindow` 同步换肤，完全消除了两套调色盘和各画各的割裂；
+3. **单程序自适应独立剪贴板模式**：
+   - 主程序 `Program.cs` 原生支持 `--clip` 或 `--muclip` 启动参数（或者 exe 改名为 `MuClip.exe`）；
+   - 命中时直接启动轻量剪贴板独立模式（仅驻留托盘 + 响应快捷键，不加载庞大的 PaddleOCR 模型，零多余内存开销），无需维护双重打包流水线。
+
+### 3.9 安全边界铁律（HTTP API / 凭据落盘 / 配置持久化）
+内置 HTTP 服务与本地凭据是外部可触达面，以下规则为**不可回退的硬约束**，改动相关代码前必须逐条对照：
+
+1. **禁止任何"由服务端按路径读取文件"的入参**。
+   - `?path=` 与 JSON 体 `imagePath` 已在 2026-10 移除，保留分支仅为返回明确的 400 提示；新增接口同样禁止接受文件路径、URL 或目录参数。
+   - 原因：这类入参会把接口变成未授权的任意文件读取入口，且浏览器页面可借 CORS 直接消费返回值。
+
+2. **CORS 仅放行本机来源**（`localhost` / `127.0.0.1` / `[::1]`），**禁止 `Access-Control-Allow-Origin: *`**。
+   - 非本机 `Origin` 一律 403 且不下发任何 CORS 响应头（防 DNS 重绑定与任意网页跨域调用）。
+   - 无 `Origin` 的直连客户端（curl / HttpClient）不受限制。
+
+3. **局域网暴露默认必须令牌鉴权，失败即关闭（Fail-Closed）**。
+   - `HttpOcrServer.StartAsync` 在 `allowRemote = true` 且令牌为空时直接抛异常，不允许"默认无鉴权的局域网暴露"。
+   - `HttpApiViewModel` 在用户勾选局域网访问时自动生成 48 位十六进制令牌并持久化到 `AppSettings.HttpApiAccessToken`。
+   - 令牌非空即全局强制 `Authorization: Bearer <token>`，比较使用 `CryptographicOperations.FixedTimeEquals`。
+   - **唯一例外**：用户显式勾选"允许局域网无令牌访问"（`HttpApiAllowAnonymousRemote = true` + `StartAsync(..., allowAnonymousRemote: true)`）时，允许空令牌开放局域网。该选项默认 `false`，仅在设置页可见于局域网开关打开后，且开启时令牌必须清空（两者互斥）。这是给"临时分享给同网段同事"留的口子，**不得改为默认行为**。
+   - 无令牌模式只放开鉴权，**不得**因此放宽第 1、2 条（路径参数与 CORS 限制照旧生效，见 `StartAsync_RemoteAnonymous_WorksWhenExplicitlyAllowed`）。
+
+4. **请求体必须有硬上限，并发必须有非阻塞准入**。
+   - 单请求体上限 `MaxRequestBodyBytes = 20MB`：先看 `ContentLength64`，读取过程中再累计校验，超出抛 `PayloadTooLargeException` → 413。
+   - 准入闸门 `SemaphoreSlim` 配额 = `max(2, MaxCores × 2)`，使用 `Wait(0)` 非阻塞获取，取不到直接 429；**严禁**把请求排进无界队列。
+   - 位图解码必须放在 `scheduler.ExecuteAsync(...)` **内部**，保证排队等待期间不持有解码后的位图内存。
+
+5. **所有云厂商凭据必须加密落盘**。
+   - 当前加密字段清单：`BaiduAppId`、`BaiduSecretKey`、`BaiduApiKey`、`GoogleApiKey`、`OpenAiApiKey`、`VolcengineAccessKey`、`VolcengineSecretKey`、`AliyunAccessKeyId`、`AliyunAccessKeySecret`、`HttpApiAccessToken`。
+   - **新增任何凭据字段时，必须同时加入 `JsonSettingsService.DecryptSensitiveFields` 与 `EncryptSensitiveFields` 两处**，否则就是明文落盘。
+   - 兼容规则：无 `enc:` 前缀的旧明文原样读入（下次保存自动加密升级）；`enc:` 密文解不开时（换机/换账户）内存返回空但**落盘原样写回**，绝不销毁用户凭据。
+
+6. **配置持久化必须原子写，失败不得静默**。
+   - 写入路径固定为「同目录 `.tmp` + `FileOptions.WriteThrough` + `File.Replace`」，禁止直接 `File.WriteAllText` 覆盖目标文件。
+   - 加载失败：设置 `LastLoadError`、备份为 `settings.json.bad-<时间戳>`、触发 `LoadFailed` 事件（`App.axaml.cs` 已接到日志）。
+   - 保存失败：设置 `LastSaveError` 并触发 `SaveFailed`，先回退 AppData，两处都失败时留痕而非静默吞掉。
+
+7. **回归测试位置**：`tests/ShawMuOCR.Tests/HttpOcrServerTests.cs`（路径参数拒绝 / CORS / 令牌 / 413 / 429）与
+   `SettingsPersistenceSecurityTests.cs`（原子写 / 凭据加密 / 旧明文升级 / 不可解密文保全 / 损坏配置备份）。**改动上述任一处逻辑必须同步维护这些用例**。
+
 ---
 
 ## 4. 常用构建与验证命令
@@ -104,7 +163,7 @@ ShawMuOCR/
 # 1. 编译全解决方案（必须 0 警告、0 错误）
 dotnet build
 
-# 2. 执行全量单元测试（必须全部 174 项测试通过）
+# 2. 执行全量单元测试（必须全部 247 项测试通过）
 dotnet test
 
 # 3. 运行特定模块测试（如仅测试模型选择或 MuClip 同步）
@@ -121,5 +180,5 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
 ## 5. 给后续 AI Agent 的行为守则
 
 1. **保持文档与注释完整性**：绝不随意删除既有的功能说明、架构注释与中英双语文档。
-2. **测试驱动安全**：若修改了核心逻辑，必须保证 `tests/ShawMuOCR.Tests` 中原有的 174 个测试 100% 保持通过，若引入新功能需补齐相应的 xUnit 单元测试。
+2. **测试驱动安全**：若修改了核心逻辑，必须保证 `tests/ShawMuOCR.Tests` 中原有的 247 个测试 100% 保持通过，若引入新功能需补齐相应的 xUnit 单元测试。
 3. **输出清晰的引用链接**：与用户交流时，涉及代码文件与符号时必须使用标准 Markdown 链接（如 `[OcrEngineFactory.cs](file:///c:/ShawMuOCR/OCR/OcrEngineFactory.cs)`）。

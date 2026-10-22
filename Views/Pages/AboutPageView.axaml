@@ -4,6 +4,24 @@
              x:Class="ShawMuOCR.Views.Pages.AboutPageView"
              x:DataType="vm:AboutViewModel">
 
+    <UserControl.Styles>
+        <Style Selector="Button.hyperlink">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <ContentPresenter Content="{TemplateBinding Content}" />
+                </ControlTemplate>
+            </Setter>
+        </Style>
+        <Style Selector="Button.hyperlink:pointerover TextBlock">
+            <Setter Property="TextDecorations" Value="Underline" />
+        </Style>
+    </UserControl.Styles>
+
+    <Panel>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="16">
             <!-- 头部软件信息 -->
@@ -12,22 +30,35 @@
                     BorderThickness="1"
                     CornerRadius="8"
                     Padding="20,16">
-                <StackPanel Orientation="Horizontal" Spacing="14" VerticalAlignment="Center">
-                    <Image Source="/Assets/logo.png" Width="44" Height="44" VerticalAlignment="Center" />
-                    <StackPanel VerticalAlignment="Center" Spacing="4">
-                        <StackPanel Orientation="Horizontal" Spacing="10">
-                            <TextBlock Text="小沐 OCR" FontSize="20" FontWeight="Bold" />
+                <StackPanel Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
+                    <!-- 可点击放大的高清 Logo (纯净透明底，无灰色背景与外框) -->
+                    <Button Command="{Binding ShowLogoModalCommand}"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="0"
+                            Padding="0"
+                            ToolTip.Tip="点击放大查看高清 Logo"
+                            Cursor="Hand">
+                        <Image Source="/Assets/logo.png" Width="76" Height="76"
+                               RenderOptions.BitmapInterpolationMode="HighQuality" />
+                    </Button>
+
+                    <StackPanel VerticalAlignment="Center" Spacing="5">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <TextBlock Text="小沐 OCR" FontSize="22" FontWeight="Bold" />
                             <Border Background="{DynamicResource AccentFillColorTertiaryBrush}"
                                     CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding AppVersion}"
                                            FontSize="11"
-                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                                           FontWeight="Medium" />
+                                           Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </Border>
                         </StackPanel>
                         <TextBlock Text="轻量、极速的 Windows 本地离线截屏识别工具"
-                                   FontSize="12"
+                                   FontSize="13"
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                        <TextBlock Text="💡 提示：点击左侧图标可放大查看高清 Logo"
+                                   FontSize="11"
+                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
@@ -47,17 +78,51 @@
                         </Border>
                     </Grid>
 
-                    <Grid ColumnDefinitions="85,*,Auto" RowDefinitions="Auto,Auto" Margin="0,4,0,0">
-                        <!-- GitHub 仓库 -->
-                        <TextBlock Grid.Row="0" Grid.Column="0" Text="开源仓库："
+                    <Grid ColumnDefinitions="85,*,Auto" RowDefinitions="Auto,Auto,Auto" Margin="0,4,0,0">
+                        <!-- 官方网站 -->
+                        <TextBlock Grid.Row="0" Grid.Column="0" Text="官方网站："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,6" />
-                        <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding GitHubRepoText}"
-                                   FontWeight="Medium" FontSize="13" VerticalAlignment="Center" Margin="0,6,12,6"
-                                   MinWidth="0"
-                                   ClipToBounds="True"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip.Tip="{Binding GitHubUrl}" />
+                        <Button Grid.Row="0" Grid.Column="1"
+                                Classes="hyperlink"
+                                Command="{Binding CopyWebsiteUrlCommand}"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Margin="0,6,12,6"
+                                ToolTip.Tip="点击复制官方网站链接">
+                            <TextBlock Text="{Binding WebsiteText}"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       FontSize="13"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Button>
                         <Button Grid.Row="0" Grid.Column="2"
+                                Content="🌐 访问官网"
+                                Command="{Binding OpenWebsiteCommand}"
+                                Width="96"
+                                Padding="0,4"
+                                HorizontalContentAlignment="Center"
+                                FontSize="12"
+                                VerticalAlignment="Center"
+                                Margin="0,4"
+                                ToolTip.Tip="在默认浏览器中访问小沐 OCR 官方网站 (并自动复制链接)" />
+
+                        <!-- GitHub 仓库 -->
+                        <TextBlock Grid.Row="1" Grid.Column="0" Text="开源仓库："
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,6" />
+                        <Button Grid.Row="1" Grid.Column="1"
+                                Classes="hyperlink"
+                                Command="{Binding CopyGitHubUrlCommand}"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Margin="0,6,12,6"
+                                ToolTip.Tip="点击复制 GitHub 仓库链接">
+                            <TextBlock Text="{Binding GitHubRepoText}"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       FontSize="13"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Button>
+                        <Button Grid.Row="1" Grid.Column="2"
                                 Content="🔗 访问仓库"
                                 Command="{Binding OpenGitHubCommand}"
                                 Width="96"
@@ -66,18 +131,25 @@
                                 FontSize="12"
                                 VerticalAlignment="Center"
                                 Margin="0,4"
-                                ToolTip.Tip="在默认浏览器中打开 GitHub 仓库" />
+                                ToolTip.Tip="在默认浏览器中打开 GitHub 仓库 (并自动复制链接)" />
 
                         <!-- 作者信息 -->
-                        <TextBlock Grid.Row="1" Grid.Column="0" Text="开发作者："
+                        <TextBlock Grid.Row="2" Grid.Column="0" Text="开发作者："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" VerticalAlignment="Center" Margin="0,6" />
-                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding AuthorText}"
-                                   FontWeight="Medium" FontSize="13" VerticalAlignment="Center" Margin="0,6,12,6"
-                                   MinWidth="0"
-                                   ClipToBounds="True"
-                                   TextTrimming="CharacterEllipsis"
-                                   ToolTip.Tip="{Binding BilibiliUrl}" />
-                        <Button Grid.Row="1" Grid.Column="2"
+                        <Button Grid.Row="2" Grid.Column="1"
+                                Classes="hyperlink"
+                                Command="{Binding CopyBilibiliUrlCommand}"
+                                HorizontalAlignment="Left"
+                                VerticalAlignment="Center"
+                                Margin="0,6,12,6"
+                                ToolTip.Tip="点击复制作者 B站主页链接">
+                            <TextBlock Text="{Binding AuthorText}"
+                                       Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                       FontSize="13"
+                                       VerticalAlignment="Center"
+                                       TextTrimming="CharacterEllipsis" />
+                        </Button>
+                        <Button Grid.Row="2" Grid.Column="2"
                                 Content="📺 访问 B站"
                                 Command="{Binding OpenBilibiliCommand}"
                                 Width="96"
@@ -86,7 +158,7 @@
                                 FontSize="12"
                                 VerticalAlignment="Center"
                                 Margin="0,4"
-                                ToolTip.Tip="在默认浏览器中访问作者 B站主页" />
+                                ToolTip.Tip="在默认浏览器中访问作者 B站主页 (并自动复制链接)" />
                     </Grid>
                 </StackPanel>
             </Border>
@@ -111,25 +183,25 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="Windows 版本："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding WindowsVersionText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+                                   FontSize="13" Margin="0,3" TextWrapping="Wrap" />
 
                         <!-- .NET 运行时版本 -->
                         <TextBlock Grid.Row="1" Grid.Column="0" Text=".NET 运行时版本："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding DotNetRuntimeText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+                                   FontSize="13" Margin="0,3" TextWrapping="Wrap" />
 
                         <!-- Avalonia 版本 -->
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="Avalonia 版本："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding AvaloniaVersionText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+                                   FontSize="13" Margin="0,3" TextWrapping="Wrap" />
 
                         <!-- SimdPaddleOCR 版本 -->
                         <TextBlock Grid.Row="3" Grid.Column="0" Text="SimdPaddleOCR 版本："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding SimdPaddleOcrVersionText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3"
+                                   FontSize="13" Margin="0,3"
                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" TextWrapping="Wrap" />
                     </Grid>
                 </StackPanel>
@@ -146,7 +218,7 @@
                         <TextBlock Text="OCR 模型状态" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
                         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <TextBlock Text="🟢" FontSize="11" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding ModelStatus}" FontSize="12" FontWeight="Medium" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding ModelStatus}" FontSize="12" VerticalAlignment="Center" />
                         </StackPanel>
                     </Grid>
 
@@ -155,7 +227,7 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="当前模型："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding ModelName}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3" />
+                                   FontSize="13" Margin="0,3" />
 
                         <!-- 模型权重尺寸 -->
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="模型权重大小："
@@ -183,7 +255,7 @@
                         <TextBlock Grid.Column="0" Text="硬件与推理加速" FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center" />
                         <Border Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding EffectiveBackendBadgeText}" FontSize="11" FontWeight="Medium"
+                            <TextBlock Text="{Binding EffectiveBackendBadgeText}" FontSize="11"
                                        Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
                         </Border>
                     </Grid>
@@ -193,19 +265,19 @@
                         <TextBlock Grid.Row="0" Grid.Column="0" Text="CPU 处理器："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding CpuHardwareText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+                                   FontSize="13" Margin="0,3" TextWrapping="Wrap" />
 
                         <!-- CPU 指令集 -->
                         <TextBlock Grid.Row="1" Grid.Column="0" Text="CPU 指令集："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding CpuInstructionSetText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+                                   FontSize="13" Margin="0,3" TextWrapping="Wrap" />
 
                         <!-- GPU 推理架构 -->
                         <TextBlock Grid.Row="2" Grid.Column="0" Text="GPU 推理架构："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding GpuArchitectureText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3" TextWrapping="Wrap" />
+                                   FontSize="13" Margin="0,3" TextWrapping="Wrap" />
 
                         <!-- 用户配置加速模式 -->
                         <TextBlock Grid.Row="3" Grid.Column="0" Text="配置加速模式："
@@ -217,7 +289,7 @@
                         <TextBlock Grid.Row="4" Grid.Column="0" Text="当前生效后端："
                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}" FontSize="13" Margin="0,3" />
                         <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding EffectiveBackendText}"
-                                   FontWeight="Medium" FontSize="13" Margin="0,3"
+                                   FontSize="13" Margin="0,3"
                                    Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" TextWrapping="Wrap" />
                     </Grid>
                 </StackPanel>
@@ -292,7 +364,7 @@
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel VerticalAlignment="Center">
                                     <TextBlock Text="Win32 GDI 资源句柄" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                    <TextBlock Text="{Binding GdiHandlesText}" FontSize="13" FontWeight="Medium" />
+                                    <TextBlock Text="{Binding GdiHandlesText}" FontSize="13" />
                                 </StackPanel>
                                 <TextBlock Grid.Column="1" Text="已杜绝句柄泄漏"
                                            FontSize="11"
@@ -330,4 +402,36 @@
             </Border>
         </StackPanel>
     </ScrollViewer>
+
+    <!-- Logo 高清放大查看弹窗遮罩 -->
+    <Panel IsVisible="{Binding IsLogoModalOpen}" Background="#90000000">
+        <Border HorizontalAlignment="Center" VerticalAlignment="Center"
+                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                BorderThickness="1"
+                CornerRadius="16"
+                Padding="28"
+                BoxShadow="0 16 48 0 #50000000"
+                MaxWidth="460">
+            <StackPanel Spacing="16" HorizontalAlignment="Center">
+                <Image Source="/Assets/logo.png" Width="260" Height="260"
+                       HorizontalAlignment="Center"
+                       RenderOptions.BitmapInterpolationMode="HighQuality" />
+
+                <StackPanel Spacing="4" HorizontalAlignment="Center">
+                    <TextBlock Text="小沐 OCR (ShawMuOCR)" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center" />
+                    <TextBlock Text="轻量 · 极速 · 离线 · 现代化的 Windows OCR 工具" FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                </StackPanel>
+
+                <Button Command="{Binding CloseLogoModalCommand}"
+                        Content="关闭 (✕)"
+                        Classes="accent"
+                        HorizontalAlignment="Center"
+                        Padding="28,8"
+                        FontSize="13" />
+            </StackPanel>
+        </Border>
+    </Panel>
+    </Panel>
 </UserControl>

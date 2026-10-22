@@ -14,6 +14,7 @@
 
     <Window.ContextMenu>
         <ContextMenu>
+            <MenuItem Header="✏️ 再次编辑该图" Click="OnEditImageClick" />
             <MenuItem Header="📋 复制图片" Click="OnCopyImageClick" />
             <MenuItem Header="🔍 恢复 100% 原始大小" Click="OnResetZoomClick" />
             <Separator />

@@ -1,0 +1,47 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net11.0-android37</TargetFramework>
+    <SupportedOSPlatformVersion>28.0</SupportedOSPlatformVersion>
+    <ApplicationId>com.shawmu.ocr</ApplicationId>
+    <ApplicationVersion>1</ApplicationVersion>
+    <ApplicationDisplayVersion>1.0.0</ApplicationDisplayVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- 仅针对 arm64-v8a 优化并精简打包 -->
+    <RuntimeIdentifiers>android-arm64</RuntimeIdentifiers>
+    <AndroidPackageFormat>apk</AndroidPackageFormat>
+    <AndroidUseDefaultAotProfile>true</AndroidUseDefaultAotProfile>
+    <!-- 开启标准 Android 裁剪，采用 partial 模式安全裁剪 BCL 并极大精简 APK 体积 -->
+    <PublishTrimmed>true</PublishTrimmed>
+    <TrimMode>partial</TrimMode>
+  </PropertyGroup>
+
+  <!-- 防裁剪保护：确保 Avalonia 样式与 SimdPaddleOCR 嵌入模型程序集不被裁剪 -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Avalonia.Themes.Fluent" />
+    <TrimmerRootAssembly Include="Avalonia.Fonts.Inter" />
+    <TrimmerRootAssembly Include="Sdcb.SimdPaddleOCR" />
+    <TrimmerRootAssembly Include="Sdcb.SimdPaddleOCR.Models.ChineseV6Small" />
+    <TrimmerRootAssembly Include="Sdcb.SimdPaddleOCR.Models.TextLineOrientation" />
+    <TrimmerRootAssembly Include="Sdcb.SimdPaddleOCR.ModelProvider" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Android" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+
+    <!-- SimdPaddleOCR 与 Small 内置模型包 -->
+    <PackageReference Include="Sdcb.SimdPaddleOCR" Version="2.0.0" />
+    <PackageReference Include="Sdcb.SimdPaddleOCR.Models.ChineseV6Small" Version="1.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ShawMuOCR.Core\ShawMuOCR.Core.csproj" />
+  </ItemGroup>
+</Project>

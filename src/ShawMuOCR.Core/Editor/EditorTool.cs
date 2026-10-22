@@ -6,5 +6,10 @@ public enum EditorTool
     Text,
     Line,
     Arrow,
-    Rectangle
+    Rectangle,
+    Ellipse,
+    Pen,
+    Mosaic,
+    Eraser,
+    Crop
 }
