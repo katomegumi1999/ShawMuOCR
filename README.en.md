@@ -33,7 +33,7 @@ Unlike traditional OCR software that relies on heavy dependencies like Python en
 - **Dual-Track CPU SIMD / GPU Vulkan Engine**: Supports both AVX2 instruction set memory-level inference and high-performance GPU compute shader inference, with smart detection and manual switching in multi-GPU environments;
 - **Zero-Copy Pipeline**: Screenshot pixels flow directly into neural network tensors via `Bgra32` with no intermediate format conversion or temporary bitmap buffers;
 - **Fully Offline & Privacy-Safe**: Text recognition, layout organization, and clipboard management all execute locally on your machine;
-- **Highly Integrated Ecosystem**: Deep integration with system-level quick screenshots, professional annotation editor, floating selection translation, batch OCR conversion, LAN HTTP API service, and a cross-device clipboard sync system (MuClip) powered by pure Rust.
+- **Highly Integrated Ecosystem**: Deep integration with system-level quick screenshots, professional annotation editor, floating selection translation, batch OCR conversion, LAN HTTP API service, and a cross-device clipboard sync system ([MuClip](https://github.com/katomegumi1999/MuClip)) powered by pure Rust.
 
 ---
 
@@ -70,11 +70,11 @@ Unlike traditional OCR software that relies on heavy dependencies like Python en
 - **Batch OCR Conversion**: Supports multi-file, multi-folder batch import of images and multi-page PDFs, supports queued parallel processing, exports TXT/JSON/Markdown or one-click copy;
 - **LAN HTTP API Service**: Built-in lightweight HTTP server, supports standard RESTful POST requests, easy integration with external scripts, automation workflows, or third-party software.
 
-### 5. 📋 Cross-Device Clipboard Sync & Collaboration (MuClip)
-- **Pure Rust High-Performance Low-Level Driver** (`Libs/x64/muclip_core.dll`);
-- **End-to-End Encrypted Secure Transfer**: Based on XChaCha20-Poly1305 strong encryption and Diffie-Hellman single-stream random key handshake pairing;
+### 5. 📋 Cross-Device Clipboard Sync & Collaboration ([MuClip](https://github.com/katomegumi1999/MuClip))
+- **Pure Rust High-Performance Core**: cross-device discovery, pairing and transfer are provided by [MuClip](https://github.com/katomegumi1999/MuClip), shipped as `Libs/x64/muclip_core.dll`;
+- **End-to-End Encrypted Transfer**: SPAKE2 password-authenticated handshake (the PIN never leaves the device) + XChaCha20-Poly1305, with a fresh forward-secret session key per connection;
 - **Quick Phrases Panel (`Ctrl+~`)**: Summon floating quick panel anytime, double-click to quickly input phrases;
-- **Large File Secure Chunked Transfer**: Supports 128KB dynamic slicing and breakpoint verification high-speed file transfer.
+- **Large File Transfer**: 128 KiB chunked streaming with a whole-file SHA-256 integrity check.
 
 ### 6. 🛡 Kernel-Level Global Hotkeys & Modern Design
 - **RegisterHotKey Kernel Mechanism**: Hotkeys maintained directly by Windows kernel, sleep-resistant, system-removal-proof, zero CPU usage, no false reports;
@@ -207,6 +207,7 @@ ShawMuOCR's creation would not be possible without the strong foundation of the 
 - [SkiaSharp](https://github.com/mono/SkiaSharp) - Powerful 2D vector graphics rendering cross-platform engine
 - [PdfPig](https://github.com/UglyToad/PdfPig) - Pure managed high-performance PDF document parsing tool
 - [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) - Simple and efficient modern MVVM toolkit
+- [MuClip](https://github.com/katomegumi1999/MuClip) - In-house pure-Rust cross-device clipboard sync & encrypted file transfer engine (open sourced)
 
 ---
 

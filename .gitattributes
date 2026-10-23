@@ -1,0 +1,37 @@
+# 统一行尾，避免 Windows(CRLF) / Linux / macOS 各自 checkout 后产生整文件 diff。
+# 仓库内已存储的 blob 均为 LF（长期 core.autocrlf=true 归一化的结果），
+# 本文件把这一事实固化为规则，不再依赖每个人本地的 git config。
+* text=auto eol=lf
+
+# 显式声明文本类型，避免 git 依赖启发式判断（文件含中文内容时启发式偶有失手）
+*.cs      text eol=lf
+*.axaml   text eol=lf
+*.xaml    text eol=lf
+*.csproj  text eol=lf
+*.slnx    text eol=lf
+*.sln     text eol=lf
+*.props   text eol=lf
+*.targets text eol=lf
+*.xml     text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
+.gitignore  text eol=lf
+*.manifest  text eol=lf
+
+# 批处理与 PowerShell 按 Windows 惯例保留 CRLF
+*.ps1  text eol=crlf
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+
+# 二进制：禁止换行转换与文本 diff
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.ico   binary
+*.gif   binary
+*.webp  binary
+*.dll   binary
+*.so    binary
+*.exe   binary
+*.pdb   binary
+*.zip   binary
