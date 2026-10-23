@@ -70,11 +70,11 @@
 - **批量 OCR 转换 (Batch OCR)**：支持多文件、多文件夹批量导入图片与多页 PDF，支持排队并行处理，导出 TXT/JSON/Markdown 或一键复制；
 - **局域网 HTTP API 服务 (Http Api Server)**：内置轻量 HTTP 服务器，支持标准 RESTful POST 请求，便于外部脚本、自动化流程或第三方软件联动调用；局域网模式强制 Bearer 令牌鉴权，单请求体 20MB 上限、并发超限快速 429，且不接受服务端本地文件路径。
 
-### 5. 📋 跨设备剪贴板同步与协同 (MuClip)
-- **纯 Rust 高性能底层驱动** (`Libs/x64/muclip_core.dll`)；
-- **端到端加密安全传输**：基于 XChaCha20-Poly1305 强加密与 Diffie-Hellman 单流随机密钥握手配对；
+### 5. 📋 跨设备剪贴板同步与协同 ([MuClip](https://github.com/katomegumi1999/MuClip))
+- **纯 Rust 高性能底层驱动**：由 [MuClip](https://github.com/katomegumi1999/MuClip) 提供跨设备发现、配对与传输，编译产物为 `Libs/x64/muclip_core.dll`；
+- **端到端加密安全传输**：SPAKE2 口令认证握手（PIN 不上线）+ XChaCha20-Poly1305，每条连接使用独立的前向保密会话密钥；
 - **常用语快捷面板 (`Ctrl+~`)**：随时随地呼出悬浮快捷面板，双击快速上屏常用语；
-- **大文件安全分片传输**：支持 128KB 动态切片与断点校验的高速文件传输。
+- **大文件安全分片传输**：128 KiB 分块流转 + 全文件 SHA-256 完整性校验。
 
 ### 6. 🛡 内核级全局热键与现代设计
 - **RegisterHotKey 内核机制**：热键由 Windows 内核直接维护，抗休眠、防系统拔除，零 CPU 占用，不误报；
@@ -207,6 +207,7 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
 - [SkiaSharp](https://github.com/mono/SkiaSharp) - 强大的 2D 矢量图形渲染跨平台引擎
 - [PdfPig](https://github.com/UglyToad/PdfPig) - 纯托管的高性能 PDF 文档解析利器
 - [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) - 简洁高效的现代化 MVVM 工具箱
+- [MuClip](https://github.com/katomegumi1999/MuClip) - 本项目自研的纯 Rust 跨设备剪贴板同步与加密文件互传引擎（已开源）
 
 ---
 
