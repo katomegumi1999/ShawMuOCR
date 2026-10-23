@@ -74,6 +74,7 @@ Unlike traditional OCR software that relies on heavy dependencies like Python en
 - **Pure Rust High-Performance Core**: cross-device discovery, pairing and transfer are provided by [MuClip](https://github.com/katomegumi1999/MuClip), shipped as `Libs/x64/muclip_core.dll`;
 - **End-to-End Encrypted Transfer**: SPAKE2 password-authenticated handshake (the PIN never leaves the device) + XChaCha20-Poly1305, with a fresh forward-secret session key per connection;
 - **Quick Phrases Panel (`Ctrl+~`)**: Summon floating quick panel anytime, double-click to quickly input phrases;
+- **Password-Protected Encrypted Backup & Restore (`.mubc`)**: XChaCha20-Poly1305 + PBKDF2-HMAC-SHA256 (100k rounds) packs history, phrases, conditional rules and settings into a single file, with a backup passphrase independent of the local DB key. Import supports both *merge & dedupe* and *full overwrite*, so migrating to a new machine needs no manual DB surgery;
 - **Large File Transfer**: 128 KiB chunked streaming with a whole-file SHA-256 integrity check.
 
 ### 6. 🛡 Kernel-Level Global Hotkeys & Modern Design
