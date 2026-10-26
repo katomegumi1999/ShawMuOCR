@@ -12,6 +12,7 @@ using Xunit.Abstractions;
 
 namespace ShawMuOCR.Tests;
 
+[Trait("Category", "Slow")]
 public class PaddleOcrV6EngineTests
 {
     private readonly ITestOutputHelper _output;

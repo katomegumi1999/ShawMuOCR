@@ -9,6 +9,13 @@ public sealed class AppSettings
     public bool AutoCopy { get; set; } = true;
 
     /// <summary>
+    /// 表格智能分列复制：自动复制前判断识别结果是否呈表格结构（多行多列、按检测框几何对齐），
+    /// 是则改用 TSV（制表符分列 + 换行分行）写入剪贴板，粘贴到 Excel / WPS 等表格软件时直接拆入单元格；
+    /// 非表格内容仍按原有纯文本写入，粘贴到聊天窗口、记事本不受影响。
+    /// </summary>
+    public bool AutoCopyTableAsCells { get; set; } = true;
+
+    /// <summary>
     /// 静默模式：开启后识别完成不再自动弹出主窗口
     /// </summary>
     public bool SilentMode { get; set; } = true;
@@ -228,6 +235,11 @@ public sealed class AppSettings
     public string PhrasesPanelHotkey { get; set; } = "Ctrl+1";
 
     /// <summary>
+    /// 长截图全局快捷键（默认 "Alt+L"）：框选区域后跟随用户手动滚动拼接成长图，结果写入剪贴板
+    /// </summary>
+    public string LongScreenshotHotkey { get; set; } = "Alt+L";
+
+    /// <summary>
     /// 快捷面板背景底色（十六进制颜色，默认 "#F4F4F6" 浅灰）
     /// </summary>
     public string ClipboardPanelBackground { get; set; } = "#F4F4F6";
@@ -354,12 +366,55 @@ public sealed class AppSettings
     /// </summary>
     public string LastActivePage { get; set; } = "Ocr";
 
+    /// <summary>
+    /// 录屏编码器偏好：默认 1 = GPU H.265 (HEVC)
+    /// 0=Auto, 1=GpuHevc, 2=GpuH264, 4=Soft, 5=GpuAv1
+    /// </summary>
+    public int RecordingEncoder { get; set; } = 1;
+
+    /// <summary>
+    /// 录屏默认帧率（默认 30）
+    /// </summary>
+    public uint RecordingFps { get; set; } = 30;
+
+    /// <summary>
+    /// 录屏默认码率 kbps（默认 8000）
+    /// </summary>
+    public uint RecordingBitrateKbps { get; set; } = 8000;
+
+    /// <summary>
+    /// 录屏是否显示区域边界高亮线（默认 true）
+    /// </summary>
+    public bool RecordingShowRegionBorder { get; set; } = true;
+
+    /// <summary>
+    /// 录屏自定义输出目录（可空，空则走系统默认视频目录）
+    /// </summary>
+    public string RecordingOutputDir { get; set; } = string.Empty;
+
+    private string _recordingFilePrefix = "MuRecorder";
+
+    /// <summary>
+    /// 录屏保存文件名前缀（默认 MuRecorder）
+    /// </summary>
+    public string RecordingFilePrefix
+    {
+        get => string.IsNullOrWhiteSpace(_recordingFilePrefix) ? "MuRecorder" : _recordingFilePrefix;
+        set => _recordingFilePrefix = string.IsNullOrWhiteSpace(value) ? "MuRecorder" : value.Trim();
+    }
+
+    /// <summary>
+    /// 录屏全局快捷键（默认 Alt+R）
+    /// </summary>
+    public string RecordingHotkey { get; set; } = "Alt+R";
+
     public AppSettings Clone() => new()
     {
         Hotkey = Hotkey,
         CaptureImageHotkey = CaptureImageHotkey,
         AnnotateHotkey = AnnotateHotkey,
         AutoCopy = AutoCopy,
+        AutoCopyTableAsCells = AutoCopyTableAsCells,
         SilentMode = SilentMode,
         SilentStartup = SilentStartup,
         ShowOcrNotification = ShowOcrNotification,
@@ -393,6 +448,7 @@ public sealed class AppSettings
         EnableClipboard = EnableClipboard,
         ClipboardPanelHotkey = ClipboardPanelHotkey,
         PhrasesPanelHotkey = PhrasesPanelHotkey,
+        LongScreenshotHotkey = LongScreenshotHotkey,
         ClipboardPanelBackground = ClipboardPanelBackground,
         TranslateProvider = TranslateProvider,
         TranslateSourceLang = TranslateSourceLang,
@@ -463,6 +519,13 @@ public sealed class AppSettings
         HttpApiSchedulerMode = HttpApiSchedulerMode,
         AnnotationStrokeWidth = AnnotationStrokeWidth,
         AnnotationFontSize = AnnotationFontSize,
-        LastActivePage = LastActivePage
+        LastActivePage = LastActivePage,
+        RecordingEncoder = RecordingEncoder,
+        RecordingFps = RecordingFps,
+        RecordingBitrateKbps = RecordingBitrateKbps,
+        RecordingShowRegionBorder = RecordingShowRegionBorder,
+        RecordingOutputDir = RecordingOutputDir,
+        RecordingFilePrefix = RecordingFilePrefix,
+        RecordingHotkey = RecordingHotkey
     };
 }

@@ -168,11 +168,69 @@
                             </StackPanel>
                         </Grid>
 
+                        <!-- 快捷键 4: 长截屏 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="长截屏全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="框选区域后滚动窗口连续拼接长图并自动复制到剪贴板（默认 Alt+L）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding LongScreenshotHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                        Command="{Binding StartRecordLongScreenshotHotkeyCommand}"
+                                        Padding="10,5" />
+                                <Button Content="✕"
+                                        ToolTip.Tip="清空此快捷键(禁用)"
+                                        Command="{Binding ClearLongScreenshotHotkeyCommand}"
+                                        Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 快捷键 5: 屏幕录制 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="屏幕录制全局快捷键" FontWeight="Medium" />
+                                <TextBlock Text="唤起录屏桌面悬浮控制条或框选区域开始录制（默认 Alt+R）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBox Text="{Binding RecordingHotkey}"
+                                         IsReadOnly="True"
+                                         Width="120"
+                                         HorizontalContentAlignment="Center"
+                                         VerticalAlignment="Center" />
+                                <Button Content="录制"
+                                        Command="{Binding StartRecordRecordingHotkeyCommand}"
+                                        Padding="10,5" />
+                                <Button Content="✕"
+                                        ToolTip.Tip="清空此快捷键(禁用)"
+                                        Command="{Binding ClearRecordingHotkeyCommand}"
+                                        Padding="8,5" />
+                            </StackPanel>
+                        </Grid>
+
                         <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
 
                         <!-- 行为开关 -->
                         <CheckBox Content="OCR 识别完成后自动复制文本到剪贴板"
                                   IsChecked="{Binding AutoCopy}" />
+
+                        <CheckBox Content="表格智能分列（识别到表格时，粘贴到 Excel / WPS 自动落入单元格）"
+                                  IsChecked="{Binding AutoCopyTableAsCells}"
+                                  IsEnabled="{Binding AutoCopy}"
+                                  Margin="26,0,0,0"
+                                  ToolTip.Tip="开启后，若识别结果呈表格结构（多行多列、各列按检测框垂直对齐），剪贴板会同时写入 HTML 表格与纯文本两种格式：粘贴到 Excel / WPS / Word 时还原为真正的单元格（空单元格留空、合并表头保留跨列、列不错位），粘贴到聊天窗口、记事本、搜索框时只得到干净的纯文本，不会出现制表符空档。关闭则一律使用原有空格分隔文本。" />
 
                         <CheckBox Content="静默模式（识别完成后不弹出主界面）"
                                   IsChecked="{Binding SilentMode}" />

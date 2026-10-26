@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Services;
@@ -22,10 +23,12 @@ public class FileOcrTests
         public event Action<OcrState, string?>? StateChanged { add { } remove { } }
         public event Action<OcrSession>? SessionCompleted { add { } remove { } }
 
+        public Action<ScreenRect>? RegionRecordingHandler { get; set; }
         public bool WasRunOcrCalled { get; private set; }
         public Task StartScreenCaptureAsync() => Task.CompletedTask;
         public Task StartCaptureImageAsync() => Task.CompletedTask;
         public Task StartAnnotateScreenshotAsync() => Task.CompletedTask;
+        public Task StartLongScreenshotAsync(ScreenRect? initialRegion = null) => Task.CompletedTask;
         public Task StartTranslateSelectionAsync() => Task.CompletedTask;
         public Task StartOcrPopupAsync() => Task.CompletedTask;
         public Task RunOcrAsync(OcrImage image)

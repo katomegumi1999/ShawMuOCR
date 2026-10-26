@@ -1,0 +1,36 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.CanvasBackdropWindow"
+        Title="MuRecorder 自由画布"
+        WindowDecorations="None"
+        Topmost="False"
+        ShowInTaskbar="False"
+        Background="#000000"
+        CanResize="False"
+        WindowStartupLocation="Manual">
+    <Panel Background="#000000">
+        <!-- 顶部温和提示气泡 -->
+        <Border HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,16,0,0"
+                Background="#EE16181D"
+                BorderBrush="#33FFFFFF"
+                BorderThickness="1"
+                CornerRadius="14"
+                Padding="16,6">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                <TextBlock Text="🎨 自由画布模式" Foreground="#4CC2FF" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Text="|" Foreground="#40FFFFFF" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock Text="仅所选窗口处于前景 · 其它背景窗口已隐蔽 · 按 ESC 或在悬浮窗退出" Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" />
+                <Button Name="ExitCanvasBtn"
+                        Content="退出画布"
+                        Classes="subtle"
+                        FontSize="11"
+                        Padding="8,2"
+                        CornerRadius="8"
+                        Background="#2BFFFFFF"
+                        Foreground="#FFFFFF" />
+            </StackPanel>
+        </Border>
+    </Panel>
+</Window>

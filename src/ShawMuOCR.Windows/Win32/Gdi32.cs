@@ -22,6 +22,21 @@ public static class Gdi32
     [DllImport("gdi32.dll", SetLastError = true)]
     public static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int cx, int cy);
 
+    /// <summary>
+    /// 创建与设备无关位图（DIB）并同时返回其像素内存指针。
+    /// 与 CreateCompatibleBitmap 的关键差异：像素内存由系统以「可直接读写」的方式映射，
+    /// BitBlt 绘制完成后无需 GetDIBits 再做一次整图转换拷贝，可直接零拷贝读取。
+    /// 返回的 ppvBits 生命周期与 hBitmap 绑定，必须在 DeleteObject(hBitmap) 之前使用完毕。
+    /// </summary>
+    [DllImport("gdi32.dll", SetLastError = true)]
+    public static extern IntPtr CreateDIBSection(
+        IntPtr hdc,
+        ref BITMAPINFO pbmi,
+        uint usage,
+        out IntPtr ppvBits,
+        IntPtr hSection,
+        uint offset);
+
     [DllImport("gdi32.dll", SetLastError = true)]
     public static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
 
@@ -110,6 +125,22 @@ public static class Gdi32
     {
         public BITMAPINFOHEADER bmiHeader;
         public uint bmiColors;
+    }
+
+    /// <summary>
+    /// 构造 32 位 BGRA、自顶向下（biHeight 为负）的位图信息头。
+    /// 自顶向下可避免图像上下颠倒，32bpp 且 BI_RGB 时行跨度必然等于 width * 4（无行对齐填充）。
+    /// </summary>
+    public static BITMAPINFO CreateTopDownBgraInfo(int width, int height)
+    {
+        var bmi = new BITMAPINFO();
+        bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<BITMAPINFOHEADER>();
+        bmi.bmiHeader.biWidth = width;
+        bmi.bmiHeader.biHeight = -height;
+        bmi.bmiHeader.biPlanes = 1;
+        bmi.bmiHeader.biBitCount = 32;
+        bmi.bmiHeader.biCompression = (uint)BI_RGB;
+        return bmi;
     }
 
     [DllImport("gdi32.dll", SetLastError = true)]

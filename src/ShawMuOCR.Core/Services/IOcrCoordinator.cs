@@ -1,3 +1,4 @@
+using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.OCR;
 
 namespace ShawMuOCR.Core.Services;
@@ -17,12 +18,15 @@ public interface IOcrCoordinator : IDisposable
     OcrSession? CurrentSession { get; }
     string? StatusMessage { get; }
 
+    Action<ScreenRect>? RegionRecordingHandler { get; set; }
+
     event Action<OcrState, string?>? StateChanged;
     event Action<OcrSession>? SessionCompleted;
 
     Task StartScreenCaptureAsync();
     Task StartCaptureImageAsync();
     Task StartAnnotateScreenshotAsync();
+    Task StartLongScreenshotAsync(ScreenRect? initialRegion = null);
     Task StartTranslateSelectionAsync();
     Task StartOcrPopupAsync();
     Task RunOcrAsync(OcrImage image);

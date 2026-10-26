@@ -1,0 +1,83 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.RecordingRegionBorderWindow"
+        Title="录屏区域边界"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        CanResize="False"
+        SizeToContent="Manual"
+        Focusable="False"
+        IsHitTestVisible="False"
+        WindowStartupLocation="Manual">
+
+    <Panel Name="RootPanel" IsHitTestVisible="False">
+        <!-- 呼吸辉光外边框 (参考钉图 FlashHintBorder 风格：#00B4FF 现代霓虹蓝 + 内外阴影双重光晕) -->
+        <Border Name="GlowBorder"
+                BorderBrush="#00B4FF"
+                BorderThickness="2.5"
+                CornerRadius="3"
+                Background="#0800B4FF"
+                BoxShadow="0 0 16 2 #9900B4FF, inset 0 0 10 1 #5000B4FF"
+                Margin="12"
+                IsHitTestVisible="False" />
+
+        <!-- 四个角落装饰直角标 (增强专业录屏/取景框感知) -->
+        <Border Name="CornerTopLeft"
+                HorizontalAlignment="Left" VerticalAlignment="Top"
+                Margin="12,12,0,0"
+                Width="16" Height="16"
+                BorderBrush="#FFFFFF"
+                BorderThickness="3,3,0,0"
+                IsHitTestVisible="False" />
+
+        <Border Name="CornerTopRight"
+                HorizontalAlignment="Right" VerticalAlignment="Top"
+                Margin="0,12,12,0"
+                Width="16" Height="16"
+                BorderBrush="#FFFFFF"
+                BorderThickness="0,3,3,0"
+                IsHitTestVisible="False" />
+
+        <Border Name="CornerBottomLeft"
+                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                Margin="12,0,0,12"
+                Width="16" Height="16"
+                BorderBrush="#FFFFFF"
+                BorderThickness="3,0,0,3"
+                IsHitTestVisible="False" />
+
+        <Border Name="CornerBottomRight"
+                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                Margin="0,0,12,12"
+                Width="16" Height="16"
+                BorderBrush="#FFFFFF"
+                BorderThickness="0,0,3,3"
+                IsHitTestVisible="False" />
+
+        <!-- 悬浮状态指示卡片 (参考钉图 ScaleBadge 风格) -->
+        <Border Name="StatusBadge"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="16,16,0,0"
+                Background="#DD1A1A1A"
+                BorderBrush="#00B4FF"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="8,3"
+                BoxShadow="0 4 12 #60000000"
+                IsHitTestVisible="False">
+            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                <Ellipse Name="RecIndicator" Width="8" Height="8" Fill="#FF3B30" VerticalAlignment="Center" IsVisible="False" />
+                <TextBlock Name="StatusText"
+                           Foreground="#EEEEEE"
+                           FontSize="11"
+                           FontWeight="Medium"
+                           Text="📐 录制区域: 1920 × 1080" />
+            </StackPanel>
+        </Border>
+    </Panel>
+</Window>

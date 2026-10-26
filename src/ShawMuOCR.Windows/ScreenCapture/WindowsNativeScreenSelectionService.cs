@@ -275,6 +275,11 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
         private IntPtr _hBmpDark;
         private IntPtr _hBmpBack;
 
+        // DIB Section 的像素内存指针：可写，初始化时直接往里填，省掉 SetDIBits 的整图转换
+        private IntPtr _bitsOrig;
+        private IntPtr _bitsDark;
+        private IntPtr _bitsBack;
+
         private IntPtr _hOldBmpOrig;
         private IntPtr _hOldBmpDark;
         private IntPtr _hOldBmpBack;
@@ -330,50 +335,20 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
             _hdcDark = Gdi32.CreateCompatibleDC(_hdcScreen);
             _hdcBack = Gdi32.CreateCompatibleDC(_hdcScreen);
 
-            _hBmpOrig = Gdi32.CreateCompatibleBitmap(_hdcScreen, w, h);
-            _hBmpDark = Gdi32.CreateCompatibleBitmap(_hdcScreen, w, h);
-            _hBmpBack = Gdi32.CreateCompatibleBitmap(_hdcScreen, w, h);
+            // 三块缓冲统一用 DIB Section：像素内存直接映射进进程地址空间，可写入可读取，
+            // 不再需要「先拼一份临时缓冲，再 SetDIBits 拷进去」这套两步走。
+            var bmi = Gdi32.CreateTopDownBgraInfo(w, h);
+            _hBmpOrig = Gdi32.CreateDIBSection(_hdcScreen, ref bmi, Gdi32.DIB_RGB_COLORS, out _bitsOrig, IntPtr.Zero, 0);
+            _hBmpDark = Gdi32.CreateDIBSection(_hdcScreen, ref bmi, Gdi32.DIB_RGB_COLORS, out _bitsDark, IntPtr.Zero, 0);
+            _hBmpBack = Gdi32.CreateDIBSection(_hdcScreen, ref bmi, Gdi32.DIB_RGB_COLORS, out _bitsBack, IntPtr.Zero, 0);
 
-            // 保存原始旧位图句柄，以便销毁时必须还原才能彻底释放显存
+            // 保存原始旧位图句柄，以便销毁时必须还原才能彻底释放内存
             _hOldBmpOrig = Gdi32.SelectObject(_hdcOrig, _hBmpOrig);
             _hOldBmpDark = Gdi32.SelectObject(_hdcDark, _hBmpDark);
             _hOldBmpBack = Gdi32.SelectObject(_hdcBack, _hBmpBack);
 
-            var bmi = new Gdi32.BITMAPINFO();
-            bmi.bmiHeader.biSize = (uint)Marshal.SizeOf<Gdi32.BITMAPINFOHEADER>();
-            bmi.bmiHeader.biWidth = w;
-            bmi.bmiHeader.biHeight = -h; // 自顶向下
-            bmi.bmiHeader.biPlanes = 1;
-            bmi.bmiHeader.biBitCount = 32;
-            bmi.bmiHeader.biCompression = (uint)Gdi32.BI_RGB;
-
-            IntPtr pixelsPtr = _fullScreenshot.Bitmap.GetPixels();
-            Gdi32.SetDIBits(_hdcOrig, _hBmpOrig, 0, (uint)h, pixelsPtr, ref bmi, Gdi32.DIB_RGB_COLORS);
-
-            // 预生成暗化底图：使用非托管内存 Marshal.AllocHGlobal，避免在托管堆(LOH)上分配几十兆的垃圾 byte[]
-            int totalBytes = w * h * 4;
-            IntPtr darkPixels = Marshal.AllocHGlobal(totalBytes);
-            try
-            {
-                unsafe
-                {
-                    byte* src = (byte*)pixelsPtr;
-                    byte* dst = (byte*)darkPixels;
-                    for (int i = 0; i < totalBytes; i += 4)
-                    {
-                        dst[i]     = (byte)((src[i]     * 120) >> 8); // B
-                        dst[i + 1] = (byte)((src[i + 1] * 120) >> 8); // G
-                        dst[i + 2] = (byte)((src[i + 2] * 120) >> 8); // R
-                        dst[i + 3] = 255;                              // A
-                    }
-                }
-
-                Gdi32.SetDIBits(_hdcDark, _hBmpDark, 0, (uint)h, darkPixels, ref bmi, Gdi32.DIB_RGB_COLORS);
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(darkPixels);
-            }
+            DibBufferPacker.CopyInto(_fullScreenshot.Bitmap, _bitsOrig, w, h);
+            DibBufferPacker.BuildDarkened(_bitsOrig, _bitsDark, w * h);
 
             // 预先将暗化底图拷贝到后台双缓冲中，保证任意首次绘制调用均能瞬间输出
             Gdi32.BitBlt(_hdcBack, 0, 0, w, h, _hdcDark, 0, 0, Gdi32.SRCCOPY);
@@ -597,7 +572,7 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
             if (_hBrushBlue != IntPtr.Zero) { Gdi32.DeleteObject(_hBrushBlue); }
             if (_hFont != IntPtr.Zero) { Gdi32.DeleteObject(_hFont); }
 
-            // 关键：必须先将位图从设备上下文中换出（还原 hOldBmp），DeleteObject 才会真正释放底层物理显存！
+            // 关键：必须先将位图从设备上下文中换出（还原 hOldBmp），DeleteObject 才会真正释放底层内存！
             if (_hdcOrig != IntPtr.Zero && _hOldBmpOrig != IntPtr.Zero) Gdi32.SelectObject(_hdcOrig, _hOldBmpOrig);
             if (_hdcDark != IntPtr.Zero && _hOldBmpDark != IntPtr.Zero) Gdi32.SelectObject(_hdcDark, _hOldBmpDark);
             if (_hdcBack != IntPtr.Zero && _hOldBmpBack != IntPtr.Zero) Gdi32.SelectObject(_hdcBack, _hOldBmpBack);
@@ -605,6 +580,11 @@ public sealed class WindowsNativeScreenSelectionService : IScreenSelectionServic
             if (_hBmpOrig != IntPtr.Zero) { Gdi32.DeleteObject(_hBmpOrig); _hBmpOrig = IntPtr.Zero; }
             if (_hBmpDark != IntPtr.Zero) { Gdi32.DeleteObject(_hBmpDark); _hBmpDark = IntPtr.Zero; }
             if (_hBmpBack != IntPtr.Zero) { Gdi32.DeleteObject(_hBmpBack); _hBmpBack = IntPtr.Zero; }
+
+            // DIB 像素指针随位图一起失效，必须清零，避免任何遗留引用变成野指针
+            _bitsOrig = IntPtr.Zero;
+            _bitsDark = IntPtr.Zero;
+            _bitsBack = IntPtr.Zero;
 
             if (_hdcOrig != IntPtr.Zero) { Gdi32.DeleteDC(_hdcOrig); _hdcOrig = IntPtr.Zero; }
             if (_hdcDark != IntPtr.Zero) { Gdi32.DeleteDC(_hdcDark); _hdcDark = IntPtr.Zero; }

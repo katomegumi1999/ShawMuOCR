@@ -73,6 +73,8 @@ public partial class ScreenshotEditorWindow : Window
     private readonly IClipboardService _clipboardService;
     private readonly Func<OcrImage, Task>? _ocrCallback;
     private readonly Func<OcrImage, ScreenRect, Task>? _translateCallback;
+    private readonly Func<ScreenRect, Task>? _longScreenshotCallback;
+    private readonly Func<ScreenRect, Task>? _regionRecordCallback;
     private readonly ISettingsService? _settingsService;
     private readonly ILoggerService? _logger;
     private readonly ScreenRect? _selectionBounds;
@@ -156,7 +158,9 @@ public partial class ScreenshotEditorWindow : Window
         ScreenRect? selectionBounds = null,
         OcrImage? fullScreenshot = null,
         ScreenPoint? cropOffset = null,
-        bool isPrewarm = false)
+        bool isPrewarm = false,
+        Func<ScreenRect, Task>? longScreenshotCallback = null,
+        Func<ScreenRect, Task>? regionRecordCallback = null)
     {
         ArgumentNullException.ThrowIfNull(image);
 
@@ -165,6 +169,8 @@ public partial class ScreenshotEditorWindow : Window
         _clipboardService = clipboardService ?? new WindowsClipboardService();
         _ocrCallback = ocrCallback;
         _translateCallback = translateCallback;
+        _longScreenshotCallback = longScreenshotCallback;
+        _regionRecordCallback = regionRecordCallback;
         _settingsService = settingsService;
         _logger = logger;
         _selectionBounds = selectionBounds;

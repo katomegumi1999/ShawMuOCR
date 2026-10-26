@@ -11,6 +11,7 @@ using Xunit;
 
 namespace ShawMuOCR.Tests;
 
+[Trait("Category", "Slow")]
 public class MuClipMemoryPoolTests
 {
     [Fact]

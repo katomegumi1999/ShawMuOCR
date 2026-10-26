@@ -176,7 +176,20 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 5. 文本翻译 -->
+                    <!-- 5. 屏幕录制 -->
+                    <Button Classes="nav"
+                            Classes.active="{Binding IsRecordingPage}"
+                            Command="{Binding NavigateToRecordingCommand}"
+                            ToolTip.Tip="屏幕录制（Rust 核心硬编码 H.264）">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                            <Image Source="avares://ShawMuOCR/Assets/icon-recording.png" Width="22" Height="22" VerticalAlignment="Center" Margin="1,0"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="屏幕录制" FontSize="14" VerticalAlignment="Center"
+                                       IsVisible="{Binding IsSidebarExpanded}" />
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 6. 文本翻译 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsTranslatePage}"
                             Command="{Binding NavigateToTranslateCommand}"
@@ -189,7 +202,7 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 6. 小沐剪贴板 -->
+                    <!-- 7. 小沐剪贴板 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsClipboardPage}"
                             Command="{Binding NavigateToClipboardCommand}"
@@ -203,7 +216,7 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 7. 个性主题 -->
+                    <!-- 8. 个性主题 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsThemePage}"
                             Command="{Binding NavigateToThemeCommand}"
@@ -216,7 +229,7 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 8. 系统设置 -->
+                    <!-- 9. 系统设置 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsSettingsPage}"
                             Command="{Binding NavigateToSettingsCommand}"
@@ -229,7 +242,7 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 9. 日志记录 (仅在开启本地运行日志记录后显示) -->
+                    <!-- 10. 日志记录 (仅在开启本地运行日志记录后显示) -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsLogPage}"
                             Command="{Binding NavigateToLogCommand}"
@@ -243,7 +256,7 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 10. 关于软件 -->
+                    <!-- 11. 关于软件 -->
                     <Button Classes="nav"
                             Classes.active="{Binding IsAboutPage}"
                             Command="{Binding NavigateToAboutCommand}"
@@ -340,6 +353,7 @@
                 <Panel Name="BatchPageHost" IsVisible="{Binding IsBatchPage}" />
                 <Panel Name="HttpApiPageHost" IsVisible="{Binding IsHttpApiPage}" />
                 <Panel Name="CapturePageHost" IsVisible="{Binding IsCapturePage}" />
+                <Panel Name="RecordingPageHost" IsVisible="{Binding IsRecordingPage}" />
                 <Panel Name="TranslatePageHost" IsVisible="{Binding IsTranslatePage}" />
                 <Panel Name="ClipboardPageHost" IsVisible="{Binding IsClipboardPage}" />
                 <Panel Name="ThemePageHost" IsVisible="{Binding IsThemePage}" />

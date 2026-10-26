@@ -5,6 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
@@ -25,12 +26,17 @@
     <ProjectReference Include="..\..\src\ShawMuOCR.Core\ShawMuOCR.Core.csproj" />
     <ProjectReference Include="..\..\src\ShawMuOCR.Windows\ShawMuOCR.Windows.csproj" />
     <ProjectReference Include="..\..\src\MuClip\MuClip.csproj" />
+    <ProjectReference Include="..\..\src\MuRecorder\MuRecorder.csproj" />
     <ProjectReference Include="..\..\ShawMuOCR.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="..\..\Libs\x64\muclip_core.dll">
       <Link>muclip_core.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="..\..\Libs\x64\recorder_core.dll">
+      <Link>recorder_core.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

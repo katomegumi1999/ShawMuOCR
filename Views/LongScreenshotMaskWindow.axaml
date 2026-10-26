@@ -1,0 +1,49 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.LongScreenshotMaskWindow"
+        Title="长截图遮罩"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        CanResize="False"
+        Focusable="False"
+        IsHitTestVisible="False"
+        WindowStartupLocation="Manual">
+
+    <Canvas Name="RootCanvas" Background="Transparent" IsHitTestVisible="False">
+        <!-- 4 块暗化遮罩（将选区周围整个屏幕半透明遮蔽） -->
+        <Border Name="TopMask" Background="#80000000" IsHitTestVisible="False" />
+        <Border Name="BottomMask" Background="#80000000" IsHitTestVisible="False" />
+        <Border Name="LeftMask" Background="#80000000" IsHitTestVisible="False" />
+        <Border Name="RightMask" Background="#80000000" IsHitTestVisible="False" />
+
+        <!-- 选区动态高亮取景框 -->
+        <Border Name="HighlightBorder"
+                BorderBrush="#00B4FF"
+                BorderThickness="2"
+                BoxShadow="0 0 16 2 #9900B4FF, inset 0 0 10 1 #5000B4FF"
+                IsHitTestVisible="False" />
+
+        <!-- 四角取景标 -->
+        <Border Name="CornerTopLeft" Width="14" Height="14" BorderBrush="#FFFFFF" BorderThickness="3,3,0,0" IsHitTestVisible="False" />
+        <Border Name="CornerTopRight" Width="14" Height="14" BorderBrush="#FFFFFF" BorderThickness="0,3,3,0" IsHitTestVisible="False" />
+        <Border Name="CornerBottomLeft" Width="14" Height="14" BorderBrush="#FFFFFF" BorderThickness="3,0,0,3" IsHitTestVisible="False" />
+        <Border Name="CornerBottomRight" Width="14" Height="14" BorderBrush="#FFFFFF" BorderThickness="0,0,3,3" IsHitTestVisible="False" />
+
+        <!-- 选区尺寸指示徽标 -->
+        <Border Name="BadgeBorder"
+                Background="#EE0078D4"
+                CornerRadius="4"
+                Padding="8,3"
+                IsHitTestVisible="False">
+            <TextBlock Name="BadgeText"
+                       Foreground="#FFFFFF"
+                       FontSize="11"
+                       FontWeight="SemiBold"
+                       Text="📜 长截图区域" />
+        </Border>
+    </Canvas>
+</Window>

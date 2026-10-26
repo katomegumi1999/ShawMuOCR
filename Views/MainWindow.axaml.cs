@@ -72,6 +72,10 @@ public partial class MainWindow : Window
                 if (CapturePageHost != null && CapturePageHost.Children.Count == 0)
                     CapturePageHost.Children.Add(new CapturePageView { DataContext = _viewModel });
                 break;
+            case AppNavPage.Recording:
+                if (RecordingPageHost != null && RecordingPageHost.Children.Count == 0)
+                    RecordingPageHost.Children.Add(new RecordingPageView { DataContext = _viewModel.RecordingVm });
+                break;
             case AppNavPage.Translate:
                 if (TranslatePageHost != null && TranslatePageHost.Children.Count == 0)
                     TranslatePageHost.Children.Add(new TranslatePageView { DataContext = _viewModel.TranslateVm });
@@ -255,6 +259,25 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 长截屏快捷键
+        if (HotkeyGesture.TryParse(vm.CurrentLongScreenshotHotkey, out var longShotGesture) &&
+            mod == longShotGesture.Modifiers && vk == longShotGesture.VirtualKey)
+        {
+            e.Handled = true;
+            vm.StartLongScreenshotCommand.Execute(null);
+            return;
+        }
+
+        // 屏幕录制快捷键
+        if (HotkeyGesture.TryParse(vm.CurrentRecordingHotkey, out var recGesture) &&
+            mod == recGesture.Modifiers && vk == recGesture.VirtualKey)
+        {
+            e.Handled = true;
+            ShawMuOCR.Views.RecordingFloatingWindow.ShowOverlay(vm.RecordingVm);
+            vm.RecordingVm.SelectRegionCommand.Execute(null);
+            return;
+        }
+
         // 选区翻译快捷键
         if (HotkeyGesture.TryParse(vm.CurrentTranslateHotkey, out var transGesture) &&
             mod == transGesture.Modifiers && vk == transGesture.VirtualKey)
@@ -298,6 +321,14 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingAnnotateHotkey)
             {
                 settingsVm.ClearAnnotateHotkeyCommand.Execute(null);
+            }
+            else if (settingsVm.IsRecordingLongScreenshotHotkey)
+            {
+                settingsVm.ClearLongScreenshotHotkeyCommand.Execute(null);
+            }
+            else if (settingsVm.IsRecordingRecordingHotkey)
+            {
+                settingsVm.ClearRecordingHotkeyCommand.Execute(null);
             }
             else if (settingsVm.IsRecordingTranslateHotkey)
             {
@@ -353,6 +384,14 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingAnnotateHotkey)
             {
                 settingsVm.OnAnnotateHotkeyRecorded(gesture);
+            }
+            else if (settingsVm.IsRecordingLongScreenshotHotkey)
+            {
+                settingsVm.OnLongScreenshotHotkeyRecorded(gesture);
+            }
+            else if (settingsVm.IsRecordingRecordingHotkey)
+            {
+                settingsVm.OnRecordingHotkeyRecorded(gesture);
             }
             else if (settingsVm.IsRecordingTranslateHotkey)
             {

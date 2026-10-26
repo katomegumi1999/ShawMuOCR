@@ -15,6 +15,7 @@ using ShawMuOCR.Core.Scheduling;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Sorting;
 using ShawMuOCR.ViewModels;
+using ShawMuOCR.Services.Pdf;
 using SkiaSharp;
 using UglyToad.PdfPig;
 
@@ -358,6 +359,40 @@ public sealed class BatchOcrProcessor
                             {
                                 // 单个内嵌图片解码容错，继续提取后续内容
                             }
+                        }
+                    }
+                    else if (string.IsNullOrEmpty(pageText))
+                    {
+                        // 既无文字层也无内嵌位图（GIS / CAD / 排版软件导出的矢量型、文字转路径型 PDF）：
+                        // 整页渲染成位图后再 OCR，否则整页都会是空白。
+                        var renderedPage = PdfPageRenderer.TryRenderPage(document, pageNum, out string? renderError);
+                        if (renderedPage != null)
+                        {
+                            using (renderedPage)
+                            {
+                                using var ocrImg = new OcrImage(renderedPage.Copy());
+                                var ocrSw = Stopwatch.StartNew();
+                                var ocrRes = await engine.RecognizeAsync(ocrImg, cancellationToken);
+                                ocrSw.Stop();
+
+                                await lease.ThrottleAsync(ocrSw.ElapsedMilliseconds, cancellationToken);
+
+                                if (ocrRes.IsSuccess)
+                                {
+                                    string renderedText = options.SplitColumnsByBlocks && ocrRes.Blocks.Count > 0
+                                        ? _textSorter.SortAndFormat(ocrRes.Blocks, separateColumns: true)
+                                        : (ocrRes.Text ?? string.Empty);
+
+                                    if (!string.IsNullOrWhiteSpace(renderedText))
+                                    {
+                                        sb.AppendLine(renderedText);
+                                    }
+                                }
+                            }
+                        }
+                        else
+                        {
+                            sb.AppendLine($"[该页无法渲染为图像：{renderError}]");
                         }
                     }
 

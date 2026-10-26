@@ -2,6 +2,8 @@ namespace ShawMuOCR.Core.Capture;
 
 public readonly record struct ScreenRect(int X, int Y, int Width, int Height)
 {
+    public static readonly ScreenRect Empty = default;
+
     public int Right => X + Width;
     public int Bottom => Y + Height;
 

@@ -69,11 +69,19 @@ public static class User32
         public UIntPtr dwExtraInfo;
     }
 
+    public const int GWL_EXSTYLE = -20;
+    public const int GWL_STYLE = -16;
     public const uint WS_POPUP = 0x80000000;
     public const uint WS_VISIBLE = 0x10000000;
     public const uint WS_EX_TOPMOST = 0x00000008;
+    public const uint WS_EX_TRANSPARENT = 0x00000020;
     public const uint WS_EX_TOOLWINDOW = 0x00000080;
+    public const uint WS_EX_LAYERED = 0x00080000;
     public const uint WS_EX_NOACTIVATE = 0x08000000;
+
+    public const uint WDA_NONE = 0x00000000;
+    public const uint WDA_MONITOR = 0x00000001;
+    public const uint WDA_EXCLUDEFROMCAPTURE = 0x00000011;
 
     public const uint CS_DBLCLKS = 0x0008;
     public const uint CS_HREDRAW = 0x0002;
@@ -143,6 +151,10 @@ public static class User32
         uint uFlags);
 
     [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
+    [DllImport("user32.dll", SetLastError = true)]
     public static extern int GetSystemMetrics(int nIndex);
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -200,6 +212,13 @@ public static class User32
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool IsClipboardFormatAvailable(uint format);
+
+    /// <summary>
+    /// 注册（或查询）自定义剪贴板格式 ID，如 "HTML Format"(CF_HTML)、"Rich Text Format"。
+    /// 返回 0 表示注册失败。
+    /// </summary>
+    [DllImport("user32.dll", EntryPoint = "RegisterClipboardFormatW", CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern uint RegisterClipboardFormat(string lpszFormat);
 
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -316,6 +335,10 @@ public static class User32
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsIconic(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -1,0 +1,371 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MuRecorder.ViewModels"
+             x:Class="ShawMuOCR.Views.Pages.RecordingPageView"
+             x:DataType="vm:RecordingViewModel">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16">
+
+            <!-- 核心缺失降级提示 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="#F0B429"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16"
+                    IsVisible="{Binding IsCoreUnavailable}">
+                <StackPanel Spacing="4">
+                    <TextBlock Text="⚠️ 录屏核心未就绪" FontSize="14" FontWeight="SemiBold" />
+                    <TextBlock Text="未检测到 recorder_core.dll（Libs\x64\）。请重新编译 Rust 核心（C:\Rust\MuRecorder，scripts\build.ps1 会自动拷贝 DLL），或从官方发行包补全该文件后重启程序。"
+                               FontSize="12"
+                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 头部说明卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="20,16">
+                <Grid ColumnDefinitions="Auto,*,Auto">
+                    <Image Source="avares://ShawMuOCR/Assets/icon-recording.png" Width="36" Height="36" VerticalAlignment="Center" Margin="0,0,16,0"
+                           RenderOptions.BitmapInterpolationMode="HighQuality" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
+                        <TextBlock Text="屏幕录制" FontSize="16" FontWeight="SemiBold" />
+                        <TextBlock Text="DXGI 桌面复制 + GPU/CPU 硬件加速编码 + MP4 faststart 流式封装，全部在 Rust 原生核心内闭环；界面只做来源选择与配置组装。"
+                                   FontSize="12"
+                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                   TextWrapping="Wrap" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button Content="✏️ 屏幕标注" Command="{Binding ToggleAnnotationCommand}"
+                                ToolTip.Tip="在屏幕上开启实时画笔、箭头与框选标注（录制视频可见，工具栏隐形）" VerticalAlignment="Center" Padding="12,6" />
+                        <Button Content="📌 录屏悬浮条" Command="{Binding ToggleFloatingBarCommand}"
+                                ToolTip.Tip="显示/隐藏录屏桌面悬浮栏（全局快捷键：Alt+R）" VerticalAlignment="Center" Padding="12,6" />
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <Grid ColumnDefinitions="*,*" Margin="0,4">
+
+                <!-- 左列：录制设置 -->
+                <Border Grid.Column="0" Margin="0,0,8,0"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16"
+                        IsEnabled="{Binding CanConfigure}">
+                    <StackPanel Spacing="14">
+
+                        <TextBlock Text="录制设置" FontSize="15" FontWeight="SemiBold" />
+
+                        <!-- 录制来源 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="录制来源" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <StackPanel Spacing="4" Orientation="Horizontal">
+                                <RadioButton GroupName="RecSource" IsChecked="{Binding IsSourceScreen}" Content="主显示器" />
+                                <RadioButton GroupName="RecSource" IsChecked="{Binding IsSourceMonitor}" Content="指定显示器" />
+                                <RadioButton GroupName="RecSource" IsChecked="{Binding IsSourceWindow}" Content="指定窗口" />
+                                <RadioButton GroupName="RecSource" IsChecked="{Binding IsSourceRegion}" Content="自定义区域" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- 显示器选择 -->
+                        <StackPanel Spacing="6" IsVisible="{Binding IsSourceMonitor}">
+                            <TextBlock Text="目标显示器" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding Monitors}"
+                                      SelectedItem="{Binding SelectedMonitor}"
+                                      HorizontalAlignment="Stretch" />
+                        </StackPanel>
+
+                        <!-- 窗口选择（支持多选合并） -->
+                        <StackPanel Spacing="6" IsVisible="{Binding IsSourceWindow}">
+                            <Grid ColumnDefinitions="*,Auto,Auto,Auto" ColumnSpacing="6">
+                                <TextBlock Grid.Column="0" Text="目标窗口（支持多选合并）" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="全选" FontSize="11" Padding="6,2"
+                                        Command="{Binding SelectAllWindowsCommand}" />
+                                <Button Grid.Column="2" Content="清空" FontSize="11" Padding="6,2"
+                                        Command="{Binding ClearSelectedWindowsCommand}" />
+                                <Button Grid.Column="3" Content="刷新" FontSize="11" Padding="6,2"
+                                        Command="{Binding RefreshSourcesCommand}" />
+                            </Grid>
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="2">
+                                <ListBox ItemsSource="{Binding Windows}"
+                                         MaxHeight="160"
+                                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:SelectableWindowItem">
+                                            <CheckBox IsChecked="{Binding IsSelected}"
+                                                      HorizontalAlignment="Stretch"
+                                                      Margin="2,1">
+                                                <Grid ColumnDefinitions="*,Auto">
+                                                    <TextBlock Grid.Column="0"
+                                                               Text="{Binding Window.Title}"
+                                                               TextTrimming="CharacterEllipsis"
+                                                               VerticalAlignment="Center"
+                                                               FontSize="12" />
+                                                    <TextBlock Grid.Column="1"
+                                                               Text="{Binding Window.ProcessName}"
+                                                               FontSize="10"
+                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                               Margin="8,0,0,0"
+                                                               VerticalAlignment="Center" />
+                                                </Grid>
+                                            </CheckBox>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </Border>
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="6" Padding="10,6">
+                                <TextBlock Text="{Binding SelectedWindowsSummary}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorPrimaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </Border>
+
+                            <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
+                                <Button Grid.Column="0"
+                                        Content="🎨 开启自由画布录制（黑底全屏）"
+                                        Command="{Binding EnterCanvasModeCommand}"
+                                        Classes="accent"
+                                        IsVisible="{Binding !IsCanvasModeActive}"
+                                        HorizontalAlignment="Left"
+                                        ToolTip.Tip="以纯黑底画布全屏覆盖桌面，仅置顶展示所选窗口，未选中的其它窗口与桌面杂物完全被遮蔽不会录入！" />
+                                <Button Grid.Column="0"
+                                        Content="⏹ 退出自由画布模式"
+                                        Command="{Binding ExitCanvasModeCommand}"
+                                        Classes="subtle"
+                                        Background="#33FF4D4F"
+                                        Foreground="#FF7875"
+                                        IsVisible="{Binding IsCanvasModeActive}"
+                                        HorizontalAlignment="Left" />
+                            </Grid>
+
+                            <TextBlock Text="提示：勾选多个窗口将自动计算并集合成外接矩形区域；开启【自由画布】可在纯黑背景下全屏录制，自动排除所有未选中的杂乱窗口。"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <!-- 自定义区域 -->
+                        <StackPanel Spacing="6" IsVisible="{Binding IsSourceRegion}">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="框选区域（物理像素）" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                <CheckBox Grid.Column="1" Content="显示区域边界线" IsChecked="{Binding ShowRegionBorder}" FontSize="12" />
+                            </Grid>
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="6" Padding="10,8">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding RegionText}" VerticalAlignment="Center" FontSize="12" />
+                                    <Button Grid.Column="1" Content="📐 框选并开始录制" Command="{Binding SelectRegionCommand}" Classes="accent" />
+                                </Grid>
+                            </Border>
+                            <TextBlock Text="点击后全屏暗化拖拽框选，松开即可自动开始录制（快捷键 Alt+R）；屏幕上将以辉光外边框标记录制边界（对录屏画面隐身，不影响录制视频内容）。"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <!-- 帧率 / 码率 -->
+                        <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+                            <StackPanel Grid.Column="0" Spacing="6">
+                                <TextBlock Text="帧率" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding FpsOptions}"
+                                          SelectedItem="{Binding SelectedFps}"
+                                          HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Spacing="6">
+                                <TextBlock Text="码率" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <ComboBox ItemsSource="{Binding BitrateOptions}"
+                                          SelectedItem="{Binding SelectedBitrate}"
+                                          HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </Grid>
+
+                        <!-- 编码器 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="编码器" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding EncoderOptions}"
+                                      SelectedItem="{Binding SelectedEncoder}"
+                                      HorizontalAlignment="Stretch" />
+                            <TextBlock Text="默认开启 GPU H.265 (HEVC) 显存零拷贝硬件加速；可选 GPU H.264 或 CPU 软编。若环境不支持硬编将自动安全降级。"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       TextWrapping="Wrap" />
+                        </StackPanel>
+
+                        <!-- 音频来源与设备选择 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="音频录制" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <ComboBox ItemsSource="{Binding AudioSourceOptions}"
+                                      SelectedItem="{Binding SelectedAudioSource}"
+                                      HorizontalAlignment="Stretch" />
+
+                            <!-- 具体音频硬件设备选择（扬声器内录或麦克风） -->
+                            <StackPanel Spacing="6" Margin="0,4,0,0" IsVisible="{Binding IsAudioDeviceSelectorVisible}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding AudioDeviceLabel}" FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                    <Button Grid.Column="1" Content="刷新设备" FontSize="11" Padding="6,2"
+                                            Command="{Binding RefreshAudioDevicesCommand}" />
+                                </Grid>
+                                <ComboBox ItemsSource="{Binding AudioDevices}"
+                                          SelectedItem="{Binding SelectedAudioDevice}"
+                                          HorizontalAlignment="Stretch" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- 文件名前缀 -->
+                        <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="文件名前缀" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="1" Text="默认：MuRecorder" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBox Text="{Binding FilePrefix}" PlaceholderText="MuRecorder" />
+                        </StackPanel>
+
+                        <!-- 输出路径 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="输出文件（.mp4）" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="6">
+                                <TextBox Grid.Column="0" Text="{Binding OutputPath}" PlaceholderText="保存路径" />
+                                <Button Grid.Column="1" Content="浏览…" Command="{Binding BrowseOutputCommand}" />
+                                <Button Grid.Column="2" Content="打开目录" Command="{Binding OpenOutputFolderCommand}" />
+                            </Grid>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 右列：控制台 + 实时统计 -->
+                <Border Grid.Column="1" Margin="8,0,0,0"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <Grid RowDefinitions="Auto,Auto,Auto,*">
+                        <TextBlock Grid.Row="0" Text="录制控制台" FontSize="15" FontWeight="SemiBold" />
+
+                        <!-- 开始 / 停止 / 区域录制 -->
+                        <StackPanel Grid.Row="1" Spacing="8" Margin="0,14,0,0">
+                            <Button Content="⏺  开始录制"
+                                    Command="{Binding StartRecordingCommand}"
+                                    Classes="accent"
+                                    IsEnabled="{Binding IsCoreAvailable}"
+                                    IsVisible="{Binding !IsRecording}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="12,10"
+                                    FontSize="14" />
+                            <Button Content="📐  区域录制"
+                                    Command="{Binding SelectRegionCommand}"
+                                    Classes="subtle"
+                                    IsEnabled="{Binding IsCoreAvailable}"
+                                    IsVisible="{Binding !IsRecording}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="12,9"
+                                    FontSize="13"
+                                    ToolTip.Tip="一键拖拽框选任意区域，松开鼠标即可立即自动开始录制（快捷键 Alt+R）" />
+                            <Button Content="⏹  停止录制"
+                                    Command="{Binding StopRecordingCommand}"
+                                    IsVisible="{Binding IsRecording}"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Center"
+                                    Padding="12,10"
+                                    FontSize="14" />
+
+                            <TextBlock Text="{Binding StatusMessage}"
+                                       FontSize="12"
+                                       HorizontalAlignment="Center"
+                                       TextWrapping="Wrap"
+                                       TextAlignment="Center" />
+
+                            <Border Background="#C42B1C11"
+                                    BorderBrush="#C42B1C"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="10,8"
+                                    IsVisible="{Binding ErrorMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                <TextBlock Text="{Binding ErrorMessage}"
+                                           FontSize="12"
+                                           Foreground="#C42B1C"
+                                           TextWrapping="Wrap" />
+                            </Border>
+                        </StackPanel>
+
+                        <!-- 实时统计 -->
+                        <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
+                            <TextBlock Text="实时统计" FontSize="13" FontWeight="SemiBold" />
+                            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="6">
+                                <TextBlock Grid.Row="0" Grid.Column="0" Text="帧率" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatFps}" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Row="1" Grid.Column="0" Text="码率" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding StatBitrate}" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Row="2" Grid.Column="0" Text="已编码帧数" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding StatFrames}" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Row="3" Grid.Column="0" Text="丢弃帧数" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding StatDropped}" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Row="4" Grid.Column="0" Text="编码积压" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding StatQueue}" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Row="5" Grid.Column="0" Text="已录制时长" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding StatElapsed}" FontSize="12" HorizontalAlignment="Right" />
+                                <TextBlock Grid.Row="6" Grid.Column="0" Text="编码器" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding StatEncoder}" FontSize="12" HorizontalAlignment="Right" />
+                            </Grid>
+                        </StackPanel>
+                    </Grid>
+                </Border>
+            </Grid>
+
+            <!-- 技术说明卡片 -->
+            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="16">
+                <StackPanel Spacing="10">
+                    <TextBlock Text="架构与质量说明" FontWeight="SemiBold" FontSize="14" />
+                    <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" ColumnSpacing="10" RowSpacing="8">
+                        <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="🧱 薄壳架构" FontWeight="SemiBold" FontSize="13" />
+                                <TextBlock Text="C# 仅负责枚举、选区、配置组装与状态展示；捕获、编码、封装、线程调度全部在 Rust 核心内闭环，FFI 只有控制命令与 200ms 统计快照。"
+                                           FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="⚙️ 四线程流水线" FontWeight="SemiBold" FontSize="13" />
+                                <TextBlock Text="捕获 / 编码 / 封装 / 统计各自独立线程，有界环形队列满即丢帧（绝不反压 UI），QPC 统一时钟配速。"
+                                           FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="📦 faststart MP4" FontWeight="SemiBold" FontSize="13" />
+                                <TextBlock Text="流式写入 mdat，停止时原位回填 moov（co64 64 位偏移，无 4GB 上限），停止即完整可播，异常中断也会尽力收尾。"
+                                           FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                        <Border Grid.Row="1" Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="12,10">
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="🛡️ 设备丢失自恢复" FontWeight="SemiBold" FontSize="13" />
+                                <TextBlock Text="分辨率切换 / 显卡驱动重置导致 DXGI 设备丢失时，自动重建捕获链（10 次 × 500ms），全过程不崩进程。"
+                                           FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </Border>
+                    </Grid>
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

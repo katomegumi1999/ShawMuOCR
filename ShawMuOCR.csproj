@@ -31,11 +31,17 @@
     <ProjectReference Include="src\ShawMuOCR.Core\ShawMuOCR.Core.csproj" />
     <ProjectReference Include="src\ShawMuOCR.Windows\ShawMuOCR.Windows.csproj" />
     <ProjectReference Include="src\MuClip\MuClip.csproj" />
+    <ProjectReference Include="src\MuRecorder\MuRecorder.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <None Include="Libs\x64\muclip_core.dll">
       <Link>muclip_core.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+    </None>
+    <None Include="Libs\x64\recorder_core.dll">
+      <Link>recorder_core.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
@@ -52,6 +58,7 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="PdfPig.Rendering.Skia" Version="0.1.17.1-alpha009" />
     <PackageReference Include="Sdcb.SimdPaddleOCR" Version="2.0.0" />
     <PackageReference Include="SkiaSharp" Version="4.156.0-preview.1.26512.10" />
     <PackageReference Include="PdfPig" Version="0.1.17-alpha-202610150035-3452b" />

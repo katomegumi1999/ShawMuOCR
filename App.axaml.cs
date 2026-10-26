@@ -22,6 +22,7 @@ using ShawMuOCR.Windows.Hotkey;
 using ShawMuOCR.Windows.ScreenCapture;
 using ShawMuOCR.Windows.Startup;
 using MuClip.Services;
+using MuRecorder.ViewModels;
 using ShawMuOCR.Views.Clipboard;
 
 namespace ShawMuOCR;
@@ -46,6 +47,8 @@ public partial class App : Application
     private const int HOTKEY_ID_PHRASES = 6;
     private const int HOTKEY_ID_OCR_POPUP = 7;
     private const int HOTKEY_ID_NOTE = 8;
+    private const int HOTKEY_ID_LONG_SCREENSHOT = 9;
+    private const int HOTKEY_ID_RECORDING = 10;
 
     private ISettingsService? _settingsService;
     private IStartupService? _startupService;
@@ -144,10 +147,21 @@ public partial class App : Application
                 _loggerService,
                 null,
                 _muClipService,
-                _engineFactory);
+                _engineFactory,
+                recordingVm: new RecordingViewModel(captureService, selectionService, _loggerService, _settingsService));
 
             _mainWindow = new MainWindow(_mainViewModel);
             _coordinator.RequestShowMainWindow += ShowMainWindow;
+            _coordinator.RegionRecordingHandler = rect =>
+            {
+                Dispatcher.UIThread.Post(async () =>
+                {
+                    var recVm = _mainViewModel?.RecordingVm;
+                    if (recVm == null) return;
+                    ShawMuOCR.Views.RecordingFloatingWindow.ShowOverlay(recVm);
+                    await recVm.StartRegionRecordingAsync(rect);
+                });
+            };
             desktop.Exit += OnDesktopExit;
 
             // 4. 根据静默启动配置或独立剪贴板模式决定是否呈现主界面
@@ -347,6 +361,26 @@ public partial class App : Application
             _hotkeyService.Unregister(HOTKEY_ID_ANNOTATE);
         }
 
+        bool longScreenshotSuccess = true;
+        if (!IsDisabledHotkey(settings.LongScreenshotHotkey))
+        {
+            if (HotkeyGesture.TryParse(settings.LongScreenshotHotkey, out var longShotGesture))
+            {
+                longScreenshotSuccess = _hotkeyService.Register(HOTKEY_ID_LONG_SCREENSHOT, longShotGesture, () =>
+                {
+                    _ = _coordinator.StartLongScreenshotAsync();
+                });
+            }
+            else
+            {
+                longScreenshotSuccess = false;
+            }
+        }
+        else
+        {
+            _hotkeyService.Unregister(HOTKEY_ID_LONG_SCREENSHOT);
+        }
+
         bool translateSuccess = true;
         if (!IsDisabledHotkey(settings.TranslateHotkey))
         {
@@ -449,9 +483,43 @@ public partial class App : Application
             _hotkeyService.Unregister(HOTKEY_ID_NOTE);
         }
 
+        bool recordingSuccess = true;
+        if (!IsDisabledHotkey(settings.RecordingHotkey))
+        {
+            if (HotkeyGesture.TryParse(settings.RecordingHotkey, out var recGesture))
+            {
+                recordingSuccess = _hotkeyService.Register(HOTKEY_ID_RECORDING, recGesture, () =>
+                {
+                    Dispatcher.UIThread.Post(async () =>
+                    {
+                        var recVm = _mainViewModel?.RecordingVm;
+                        if (recVm == null) return;
+                        if (recVm.IsRecording)
+                        {
+                            await recVm.StopRecordingCommand.ExecuteAsync(null);
+                        }
+                        else
+                        {
+                            // 触发桌面悬浮条并开始框选录制
+                            ShawMuOCR.Views.RecordingFloatingWindow.ShowOverlay(recVm);
+                            await recVm.SelectRegionCommand.ExecuteAsync(null);
+                        }
+                    });
+                });
+            }
+            else
+            {
+                recordingSuccess = false;
+            }
+        }
+        else
+        {
+            _hotkeyService.Unregister(HOTKEY_ID_RECORDING);
+        }
+
         if (_mainViewModel != null)
         {
-            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !translateSuccess && !ocrPopupSuccess && !clipboardSuccess && !noteSuccess)
+            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !longScreenshotSuccess && !translateSuccess && !ocrPopupSuccess && !clipboardSuccess && !noteSuccess && !recordingSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 快捷键注册失败，请检查冲突并重新设置";
             }
@@ -466,6 +534,10 @@ public partial class App : Application
             else if (!annotateSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 截图标注快捷键 {settings.AnnotateHotkey} 注册失败(可能被占用)";
+            }
+            else if (!longScreenshotSuccess)
+            {
+                _mainViewModel.StatusMessage = $"⚠️ 长截图快捷键 {settings.LongScreenshotHotkey} 注册失败(可能被占用)";
             }
             else if (!translateSuccess)
             {
@@ -568,6 +640,11 @@ public partial class App : Application
         _ = _coordinator?.StartAnnotateScreenshotAsync();
     }
 
+    private void OnTrayLongScreenshotClick(object? sender, EventArgs e)
+    {
+        _ = _coordinator?.StartLongScreenshotAsync();
+    }
+
     private void OnTrayTranslateClick(object? sender, EventArgs e)
     {
         _ = _coordinator?.StartTranslateSelectionAsync();
@@ -619,6 +696,16 @@ public partial class App : Application
 
     private void OnDesktopExit(object? sender, ControlledApplicationLifetimeExitEventArgs e)
     {
+        // 录屏收尾必须先于其他服务：停止录制才会回填 moov，退出前保证文件完整可播
+        try
+        {
+            _mainViewModel?.RecordingVm.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+        }
+        catch (Exception ex)
+        {
+            _loggerService?.Error("退出时释放录屏服务失败", ex);
+        }
+
         _mainViewModel?.HttpApiVm.Dispose();
         _muClipService?.Dispose();
         _idleSleepService?.Dispose();

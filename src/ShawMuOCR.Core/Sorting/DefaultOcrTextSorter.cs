@@ -87,15 +87,8 @@ public sealed class DefaultOcrTextSorter : IOcrTextSorter
                     }
                     else
                     {
-                        char lastChar = lineSb[^1];
-                        char firstChar = text[0];
-
                         // 如果两端都是中日韩字符，不加空格；若是西文字符，则增加空格分隔
-                        if (IsCjk(lastChar) && IsCjk(firstChar))
-                        {
-                            // 直接连接
-                        }
-                        else
+                        if (!(OcrCjkTextHelper.IsCjk(lineSb[^1]) && OcrCjkTextHelper.IsCjk(text[0])))
                         {
                             lineSb.Append(' ');
                         }
@@ -116,14 +109,5 @@ public sealed class DefaultOcrTextSorter : IOcrTextSorter
         }
 
         return sb.ToString();
-    }
-
-    private static bool IsCjk(char c)
-    {
-        // 简易 CJK 字符区间判断
-        return (c >= 0x4E00 && c <= 0x9FFF) ||
-               (c >= 0x3400 && c <= 0x4DBF) ||
-               (c >= 0x3000 && c <= 0x303F) || // 符号与标点
-               (c >= 0xFF00 && c <= 0xFFEF);   // 全角字符
     }
 }

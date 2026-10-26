@@ -72,6 +72,7 @@
                         <NativeMenuItem Header="截图 OCR" Click="OnTrayCaptureClick" />
                         <NativeMenuItem Header="截图复制" Click="OnTrayCaptureImageClick" />
                         <NativeMenuItem Header="截图标注" Click="OnTrayAnnotateClick" />
+                        <NativeMenuItem Header="长截图" Click="OnTrayLongScreenshotClick" />
                         <NativeMenuItem Header="选区翻译" Click="OnTrayTranslateClick" />
                         <NativeMenuItem Header="OCR 窗格" Click="OnTrayOcrPopupClick" />
                         <NativeMenuItem Header="随手便笺" Click="OnTrayQuickNoteClick" />

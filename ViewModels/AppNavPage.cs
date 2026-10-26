@@ -11,5 +11,6 @@ public enum AppNavPage
     Batch = 6,
     HttpApi = 7,
     Theme = 8,
-    Log = 9
+    Log = 9,
+    Recording = 10
 }

@@ -1,0 +1,226 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MuRecorder.ViewModels"
+        x:Class="ShawMuOCR.Views.RecordingFloatingWindow"
+        x:DataType="vm:RecordingViewModel"
+        Title="录屏桌面工具栏"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual">
+
+    <Border Name="RootBorder"
+            Background="#EE1E1E22"
+            BorderBrush="#4DFFFFFF"
+            BorderThickness="1"
+            CornerRadius="18"
+            BoxShadow="0 4 18 0 #70000000"
+            Padding="12,6"
+            Margin="8">
+        <StackPanel Spacing="6">
+            <Grid ColumnDefinitions="Auto,Auto,Auto" VerticalAlignment="Center">
+                <!-- 左侧状态区：拖拽把手与指示器 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="2,0,10,0">
+                    <!-- 录制中脉冲红点 -->
+                    <Ellipse Width="10" Height="10" Fill="#FF4D4F" VerticalAlignment="Center"
+                             IsVisible="{Binding IsRecording}" />
+                    <!-- 空闲状态摄像机标识 -->
+                    <Image Source="avares://ShawMuOCR/Assets/icon-recording.png" Width="16" Height="16" VerticalAlignment="Center"
+                           RenderOptions.BitmapInterpolationMode="HighQuality"
+                           IsVisible="{Binding !IsRecording}" />
+                    
+                    <!-- 录制时长 (录制中显现) -->
+                    <TextBlock Text="{Binding StatElapsed}"
+                               Foreground="#FFFFFF"
+                               FontWeight="SemiBold"
+                               FontSize="13"
+                               VerticalAlignment="Center"
+                               IsVisible="{Binding IsRecording}" />
+
+                    <!-- 实时帧率角标 -->
+                    <Border Background="#2BFFFFFF" CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
+                            IsVisible="{Binding IsRecording}">
+                        <TextBlock Text="{Binding StatFps}" Foreground="#E0E0E0" FontSize="10" />
+                    </Border>
+
+                    <!-- 画布模式指示徽标 -->
+                    <Border Background="#2B4CC2FF" CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
+                            IsVisible="{Binding IsCanvasModeActive}">
+                        <TextBlock Text="🎨 画布" Foreground="#4CC2FF" FontSize="10" FontWeight="SemiBold" />
+                    </Border>
+
+                    <!-- 未录制时的便携标题 -->
+                    <TextBlock Text="录屏控制台"
+                               Foreground="#E0E0E0"
+                               FontSize="12"
+                               VerticalAlignment="Center"
+                               IsVisible="{Binding !IsRecording}" />
+                </StackPanel>
+
+                <!-- 中间操作按钮区 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                    <!-- 录制中：停止录制按钮 -->
+                    <Button Content="⏹ 停止录制"
+                            Command="{Binding StopRecordingCommand}"
+                            Classes="accent"
+                            Background="#D32F2F"
+                            Foreground="#FFFFFF"
+                            CornerRadius="14"
+                            Padding="12,4"
+                            FontSize="12"
+                            IsVisible="{Binding IsRecording}" />
+
+                    <!-- 屏幕标注开关按钮 -->
+                    <Button Content="✏️ 标注"
+                            Command="{Binding ToggleAnnotationCommand}"
+                            Classes="subtle"
+                            Background="#254CC2FF"
+                            Foreground="#4CC2FF"
+                            CornerRadius="14"
+                            Padding="9,4"
+                            FontSize="11"
+                            ToolTip.Tip="展开/收起屏幕实时画笔与标注工具（录制时不录制本工具栏）" />
+
+                    <!-- 空闲状态：框选并录制 -->
+                    <Button Content="📐 框选录制"
+                            Command="{Binding SelectRegionCommand}"
+                            Classes="accent"
+                            CornerRadius="14"
+                            Padding="10,4"
+                            FontSize="12"
+                            IsVisible="{Binding !IsRecording}" />
+
+                    <!-- 空闲状态：全屏录制 -->
+                    <Button Content="⏺ 开始录制"
+                            Command="{Binding StartRecordingCommand}"
+                            CornerRadius="14"
+                            Padding="10,4"
+                            FontSize="12"
+                            IsVisible="{Binding !IsRecording}" />
+
+                    <!-- 退出画布模式快捷按钮 -->
+                    <Button Content="✕ 退出画布"
+                            Command="{Binding ExitCanvasModeCommand}"
+                            Classes="subtle"
+                            Background="#33FF4D4F"
+                            Foreground="#FF7875"
+                            CornerRadius="14"
+                            Padding="8,4"
+                            FontSize="11"
+                            IsVisible="{Binding IsCanvasModeActive}"
+                            ToolTip.Tip="退出黑底自由画布模式，恢复桌面" />
+                </StackPanel>
+
+                <!-- 右侧控制区：关闭/隐藏按钮 -->
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0">
+                    <Button Name="CloseButton"
+                            Content="✕"
+                            Classes="subtle"
+                            Foreground="#A0A0A0"
+                            FontSize="11"
+                            Padding="6,3"
+                            CornerRadius="10"
+                            ToolTip.Tip="隐藏悬浮栏（按 Alt+R 或在录屏页面点击【📌 录屏悬浮条】重新呼出）" />
+                </StackPanel>
+            </Grid>
+
+            <!-- 展开的屏幕标注子工具条 -->
+            <Border Background="#1CFFFFFF"
+                    CornerRadius="12"
+                    Padding="8,4"
+                    IsVisible="{Binding IsAnnotationActive}">
+                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                    <Button Content="✏️ 画笔"
+                            Command="{Binding SetAnnotationToolCommand}"
+                            CommandParameter="Pen"
+                            Classes="subtle"
+                            Padding="6,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="自由画笔" />
+                    <Button Content="↗️ 箭头"
+                            Command="{Binding SetAnnotationToolCommand}"
+                            CommandParameter="Arrow"
+                            Classes="subtle"
+                            Padding="6,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="引导箭头" />
+                    <Button Content="▢ 矩形"
+                            Command="{Binding SetAnnotationToolCommand}"
+                            CommandParameter="Rectangle"
+                            Classes="subtle"
+                            Padding="6,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="矩形边框" />
+                    <Button Content="◯ 椭圆"
+                            Command="{Binding SetAnnotationToolCommand}"
+                            CommandParameter="Ellipse"
+                            Classes="subtle"
+                            Padding="6,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="椭圆边框" />
+                    <Button Content="🔴 激光笔"
+                            Command="{Binding SetAnnotationToolCommand}"
+                            CommandParameter="Laser"
+                            Classes="subtle"
+                            Padding="6,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="激光笔重点引导" />
+
+                    <Rectangle Width="1" Height="14" Fill="#33FFFFFF" VerticalAlignment="Center" Margin="3,0" />
+
+                    <!-- 调色板快速切换 -->
+                    <Button Background="#FF4D4F" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FF4D4F"
+                            ToolTip.Tip="鲜艳红" />
+                    <Button Background="#FADB14" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FADB14"
+                            ToolTip.Tip="高亮黄" />
+                    <Button Background="#52C41A" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#52C41A"
+                            ToolTip.Tip="活力绿" />
+                    <Button Background="#1890FF" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#1890FF"
+                            ToolTip.Tip="科技蓝" />
+                    <Button Background="#FFFFFF" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FFFFFF"
+                            ToolTip.Tip="纯白色" />
+
+                    <Rectangle Width="1" Height="14" Fill="#33FFFFFF" VerticalAlignment="Center" Margin="3,0" />
+
+                    <!-- 撤销 / 清屏 / 穿透 -->
+                    <Button Content="↩️"
+                            Command="{Binding AnnotationUndoCommand}"
+                            Classes="subtle"
+                            Padding="6,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="撤销上一笔" />
+                    <Button Content="🧹"
+                            Command="{Binding AnnotationClearCommand}"
+                            Classes="subtle"
+                            Padding="6,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="清空所有标注" />
+                    <Button Content="🖱️ 穿透"
+                            Command="{Binding ToggleAnnotationClickThroughCommand}"
+                            Classes="subtle"
+                            Padding="7,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            ToolTip.Tip="点击穿透模式：开启后可直接操作底层桌面与应用，屏幕上的标注继续保留" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </Border>
+</Window>

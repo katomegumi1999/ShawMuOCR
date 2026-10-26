@@ -2,6 +2,7 @@
   <Project Path="src/ShawMuOCR.Core/ShawMuOCR.Core.csproj" />
   <Project Path="src/ShawMuOCR.Windows/ShawMuOCR.Windows.csproj" />
   <Project Path="src/MuClip/MuClip.csproj" />
+  <Project Path="src/MuRecorder/MuRecorder.csproj" />
   <Project Path="src/ShawMuOCR.Android/ShawMuOCR.Android.csproj" />
   <Project Path="ShawMuOCR.csproj" />
   <Project Path="tests/ShawMuOCR.Tests/ShawMuOCR.Tests.csproj" />

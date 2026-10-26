@@ -1,0 +1,14 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.RecordingAnnotationWindow"
+        Title="屏幕实时标注"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="#01000000"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        CanResize="False"
+        WindowStartupLocation="Manual">
+    <Panel Name="RootPanel" Background="#01000000" />
+</Window>

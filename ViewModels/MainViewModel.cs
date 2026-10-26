@@ -15,10 +15,13 @@ using ShawMuOCR.Core.Services;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.Views;
+using ShawMuOCR.Windows.ScreenCapture;
 using ShawMuOCR.Windows.Win32;
 using MuClip.Services;
 using MuClip.ViewModels;
+using MuRecorder.ViewModels;
 using ShawMuOCR.Services;
+using ShawMuOCR.Services.Pdf;
 using SkiaSharp;
 using UglyToad.PdfPig;
 
@@ -41,6 +44,7 @@ public partial class MainViewModel : ViewModelBase
     public ClipboardViewModel? ClipboardVm { get; private set; }
     public ThemeViewModel ThemeVm { get; }
     public LogViewModel LogVm { get; }
+    public RecordingViewModel RecordingVm { get; }
     private readonly IThemeService _themeService;
     private IMuClipService? _muClipService;
 
@@ -58,6 +62,7 @@ public partial class MainViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsAboutPage))]
     [NotifyPropertyChangedFor(nameof(IsThemePage))]
     [NotifyPropertyChangedFor(nameof(IsLogPage))]
+    [NotifyPropertyChangedFor(nameof(IsRecordingPage))]
     [NotifyPropertyChangedFor(nameof(CurrentPageTitle))]
     [NotifyPropertyChangedFor(nameof(AppTitleText))]
     [NotifyPropertyChangedFor(nameof(WindowTitle))]
@@ -107,6 +112,7 @@ public partial class MainViewModel : ViewModelBase
     public bool IsAboutPage => CurrentPage == AppNavPage.About;
     public bool IsThemePage => CurrentPage == AppNavPage.Theme;
     public bool IsLogPage => CurrentPage == AppNavPage.Log;
+    public bool IsRecordingPage => CurrentPage == AppNavPage.Recording;
 
     public bool IsClipboardEnabled => _settingsService.Current.EnableClipboard;
     public bool IsLoggingEnabled => _settingsService.Current.EnableLogging;
@@ -123,6 +129,7 @@ public partial class MainViewModel : ViewModelBase
         AppNavPage.Settings => "系统设置",
         AppNavPage.About => "关于软件",
         AppNavPage.Log => "日志记录",
+        AppNavPage.Recording => "屏幕录制",
         _ => "小沐 OCR"
     };
 
@@ -227,13 +234,23 @@ public partial class MainViewModel : ViewModelBase
     private string _currentOcrPopupHotkey = "Alt+D";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasLongScreenshotHotkey))]
+    private string _currentLongScreenshotHotkey = "Alt+L";
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasRecordingHotkey))]
+    private string _currentRecordingHotkey = "Alt+R";
+
+    [ObservableProperty]
     private string _currentModel = "PP-OCRv6_small";
 
     public bool HasHotkey => !string.IsNullOrWhiteSpace(CurrentHotkey) && CurrentHotkey != "无" && CurrentHotkey != "None";
     public bool HasCaptureImageHotkey => !string.IsNullOrWhiteSpace(CurrentCaptureImageHotkey) && CurrentCaptureImageHotkey != "无" && CurrentCaptureImageHotkey != "None";
     public bool HasAnnotateHotkey => !string.IsNullOrWhiteSpace(CurrentAnnotateHotkey) && CurrentAnnotateHotkey != "无" && CurrentAnnotateHotkey != "None";
+    public bool HasLongScreenshotHotkey => !string.IsNullOrWhiteSpace(CurrentLongScreenshotHotkey) && CurrentLongScreenshotHotkey != "无" && CurrentLongScreenshotHotkey != "None";
     public bool HasTranslateHotkey => !string.IsNullOrWhiteSpace(CurrentTranslateHotkey) && CurrentTranslateHotkey != "无" && CurrentTranslateHotkey != "None";
     public bool HasOcrPopupHotkey => !string.IsNullOrWhiteSpace(CurrentOcrPopupHotkey) && CurrentOcrPopupHotkey != "无" && CurrentOcrPopupHotkey != "None";
+    public bool HasRecordingHotkey => !string.IsNullOrWhiteSpace(CurrentRecordingHotkey) && CurrentRecordingHotkey != "无" && CurrentRecordingHotkey != "None";
 
     public int CharCount => RecognizedText?.Length ?? 0;
     public bool HasResult => !string.IsNullOrEmpty(RecognizedText);
@@ -251,7 +268,8 @@ public partial class MainViewModel : ViewModelBase
         BatchOcrViewModel? batchVm = null,
         HttpApiViewModel? httpApiVm = null,
         IThemeService? themeService = null,
-        ThemeViewModel? themeVm = null)
+        ThemeViewModel? themeVm = null,
+        RecordingViewModel? recordingVm = null)
     {
         _coordinator = coordinator;
         _clipboardService = clipboardService;
@@ -296,12 +314,19 @@ public partial class MainViewModel : ViewModelBase
         var transService = translationService ?? (coordinator is ShawMuOCR.Services.OcrCoordinator oc ? oc.TranslationService : new TranslationService(settingsService));
         TranslateVm = new TranslateViewModel(transService, settingsService, clipboardService, coordinator);
         LogVm = new LogViewModel(logger, _settingsService);
+        RecordingVm = recordingVm ?? new RecordingViewModel(
+            new ShawMuOCR.Windows.ScreenCapture.WindowsScreenCaptureService(),
+            new ShawMuOCR.Windows.ScreenCapture.WindowsNativeScreenSelectionService(),
+            logger,
+            _settingsService);
 
         _currentHotkey = _settingsService.Current.Hotkey;
         _currentCaptureImageHotkey = _settingsService.Current.CaptureImageHotkey;
         _currentAnnotateHotkey = _settingsService.Current.AnnotateHotkey;
+        _currentLongScreenshotHotkey = _settingsService.Current.LongScreenshotHotkey;
         _currentTranslateHotkey = _settingsService.Current.TranslateHotkey;
         _currentOcrPopupHotkey = _settingsService.Current.OcrPopupHotkey;
+        _currentRecordingHotkey = _settingsService.Current.RecordingHotkey;
         _currentModel = _settingsService.Current.Model;
         _isSidebarExpanded = _settingsService.Current.IsSidebarExpanded;
 
@@ -397,8 +422,10 @@ public partial class MainViewModel : ViewModelBase
             CurrentHotkey = settings.Hotkey;
             CurrentCaptureImageHotkey = settings.CaptureImageHotkey;
             CurrentAnnotateHotkey = settings.AnnotateHotkey;
+            CurrentLongScreenshotHotkey = settings.LongScreenshotHotkey;
             CurrentTranslateHotkey = settings.TranslateHotkey;
             CurrentOcrPopupHotkey = settings.OcrPopupHotkey;
+            CurrentRecordingHotkey = settings.RecordingHotkey;
             CurrentModel = settings.Model;
             OnPropertyChanged(nameof(IsClipboardEnabled));
             OnPropertyChanged(nameof(IsLoggingEnabled));
@@ -432,6 +459,13 @@ public partial class MainViewModel : ViewModelBase
     {
         User32.AllowSetForegroundWindow(User32.ASFW_ANY);
         await _coordinator.StartAnnotateScreenshotAsync();
+    }
+
+    [RelayCommand]
+    private async Task StartLongScreenshotAsync()
+    {
+        User32.AllowSetForegroundWindow(User32.ASFW_ANY);
+        await _coordinator.StartLongScreenshotAsync();
     }
 
     [RelayCommand]
@@ -572,6 +606,11 @@ public partial class MainViewModel : ViewModelBase
         {
             LogVm?.Refresh();
         }
+        else if (page == AppNavPage.Recording)
+        {
+            // 窗口开合变化后回到录屏页时刷新来源列表（保留仍有效的旧选择）
+            RecordingVm.RefreshSourcesCommand.Execute(null);
+        }
     }
 
     [RelayCommand]
@@ -617,6 +656,9 @@ public partial class MainViewModel : ViewModelBase
         }
         Navigate(AppNavPage.Log);
     }
+
+    [RelayCommand]
+    private void NavigateToRecording() => Navigate(AppNavPage.Recording);
 
     public event Action? RequestOpenFilePicker;
 
@@ -751,6 +793,35 @@ public partial class MainViewModel : ViewModelBase
                             {
                                 // 容错处理单张图像解析异常
                             }
+                        }
+                    }
+                    else if (string.IsNullOrEmpty(pageText))
+                    {
+                        // 既无文字层、也无内嵌位图：典型是矢量型 / 文字转路径型 PDF（GIS、CAD、排版软件导出）。
+                        // 直接把整页渲染成位图再 OCR，否则这一页会「什么都认不出来」。
+                        var renderedPage = PdfPageRenderer.TryRenderPage(document, pageNum, out string? renderError);
+                        if (renderedPage != null)
+                        {
+                            using (renderedPage)
+                            {
+                                if (firstPagePreview == null)
+                                {
+                                    firstPagePreview = CreateAvaloniaBitmap(renderedPage);
+                                    SetCurrentBitmap(renderedPage);
+                                }
+
+                                using var ocrImg = new OcrImage(renderedPage.Copy());
+                                var ocrRes = await _coordinator.RecognizeDirectAsync(ocrImg);
+                                if (ocrRes.IsSuccess && !string.IsNullOrWhiteSpace(ocrRes.Text))
+                                {
+                                    sb.AppendLine(ocrRes.Text);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            sb.AppendLine($"[该页无法渲染为图像：{renderError}]");
+                            _logger?.Warn($"PDF 第 {pageNum} 页渲染失败: {renderError}");
                         }
                     }
 

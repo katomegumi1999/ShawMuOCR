@@ -46,6 +46,20 @@ public partial class SettingsViewModel : ViewModelBase
     private bool _isRecordingAnnotateHotkey;
 
     [ObservableProperty]
+    private string _longScreenshotHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
+    private bool _isRecordingLongScreenshotHotkey;
+
+    [ObservableProperty]
+    private string _recordingHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
+    private bool _isRecordingRecordingHotkey;
+
+    [ObservableProperty]
     private string _translateHotkey;
 
     [ObservableProperty]
@@ -92,7 +106,7 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
     private bool _isRecordingPhrasesPanelHotkey;
 
-    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingTranslateHotkey || IsRecordingOcrPopupHotkey || IsRecordingQuickNoteHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
+    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingLongScreenshotHotkey || IsRecordingRecordingHotkey || IsRecordingTranslateHotkey || IsRecordingOcrPopupHotkey || IsRecordingQuickNoteHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
 
     // ==========================================
     // 翻译服务配置属性
@@ -198,6 +212,12 @@ public partial class SettingsViewModel : ViewModelBase
 
     [ObservableProperty]
     private bool _autoCopy;
+
+    /// <summary>
+    /// 表格智能分列复制：识别到表格时，剪贴板改用 TSV 写入，粘贴到 Excel/WPS 自动拆入单元格
+    /// </summary>
+    [ObservableProperty]
+    private bool _autoCopyTableAsCells = true;
 
     [ObservableProperty]
     private bool _silentMode;
@@ -486,7 +506,10 @@ public partial class SettingsViewModel : ViewModelBase
         _hotkey = current.Hotkey;
         _captureImageHotkey = current.CaptureImageHotkey;
         _annotateHotkey = current.AnnotateHotkey;
+        _longScreenshotHotkey = current.LongScreenshotHotkey;
+        _recordingHotkey = current.RecordingHotkey;
         _autoCopy = current.AutoCopy;
+        _autoCopyTableAsCells = current.AutoCopyTableAsCells;
         _silentMode = current.SilentMode;
         _silentStartup = current.SilentStartup;
         _showOcrNotification = current.ShowOcrNotification;
@@ -820,12 +843,62 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void StartRecordLongScreenshotHotkey()
+    {
+        _hotkeyService.IsPaused = true;
+        CancelRecordingInternal();
+        IsRecordingLongScreenshotHotkey = true;
+        StatusMessage = "请按下【长截屏】快捷键 (默认 Alt+L，按 Backspace 清空，按 Esc 取消)...";
+    }
+
+    public void OnLongScreenshotHotkeyRecorded(HotkeyGesture gesture)
+    {
+        IsRecordingLongScreenshotHotkey = false;
+        _hotkeyService.IsPaused = false;
+        LongScreenshotHotkey = gesture.ToString();
+        StatusMessage = $"✓ 已设置长截屏快捷键: {LongScreenshotHotkey}";
+    }
+
+    [RelayCommand]
+    private void ClearLongScreenshotHotkey()
+    {
+        IsRecordingLongScreenshotHotkey = false;
+        _hotkeyService.IsPaused = false;
+        LongScreenshotHotkey = "无";
+        StatusMessage = "长截屏快捷键已清空(已禁用)";
+    }
+
+    [RelayCommand]
+    private void StartRecordRecordingHotkey()
+    {
+        _hotkeyService.IsPaused = true;
+        CancelRecordingInternal();
+        IsRecordingRecordingHotkey = true;
+        StatusMessage = "请按下【屏幕录制】快捷键 (默认 Alt+R，按 Backspace 清空，按 Esc 取消)...";
+    }
+
+    public void OnRecordingHotkeyRecorded(HotkeyGesture gesture)
+    {
+        IsRecordingRecordingHotkey = false;
+        _hotkeyService.IsPaused = false;
+        RecordingHotkey = gesture.ToString();
+        StatusMessage = $"✓ 已设置屏幕录制快捷键: {RecordingHotkey}";
+    }
+
+    [RelayCommand]
+    private void ClearRecordingHotkey()
+    {
+        IsRecordingRecordingHotkey = false;
+        _hotkeyService.IsPaused = false;
+        RecordingHotkey = "无";
+        StatusMessage = "屏幕录制快捷键已清空(已禁用)";
+    }
+
+    [RelayCommand]
     private void StartRecordTranslateHotkey()
     {
         _hotkeyService.IsPaused = true;
-        IsRecordingHotkey = false;
-        IsRecordingCaptureImageHotkey = false;
-        IsRecordingAnnotateHotkey = false;
+        CancelRecordingInternal();
         IsRecordingTranslateHotkey = true;
         StatusMessage = "请按下【选区翻译】快捷键 (按 Backspace 清空，按 Esc 取消)...";
     }
@@ -1010,16 +1083,24 @@ public partial class SettingsViewModel : ViewModelBase
         StatusMessage = "已重置阿里云机器翻译当月已用字符计数";
     }
 
-    [RelayCommand]
-    public void CancelRecording()
+    private void CancelRecordingInternal()
     {
         IsRecordingHotkey = false;
         IsRecordingCaptureImageHotkey = false;
         IsRecordingAnnotateHotkey = false;
+        IsRecordingLongScreenshotHotkey = false;
+        IsRecordingRecordingHotkey = false;
         IsRecordingTranslateHotkey = false;
         IsRecordingOcrPopupHotkey = false;
+        IsRecordingQuickNoteHotkey = false;
         IsRecordingClipboardPanelHotkey = false;
         IsRecordingPhrasesPanelHotkey = false;
+    }
+
+    [RelayCommand]
+    public void CancelRecording()
+    {
+        CancelRecordingInternal();
         _hotkeyService.IsPaused = false;
         StatusMessage = "已取消快捷键录制";
     }
@@ -1122,6 +1203,7 @@ public partial class SettingsViewModel : ViewModelBase
         {
             // 即时自动保存：开关项、下拉项、快捷键
             case nameof(AutoCopy):
+            case nameof(AutoCopyTableAsCells):
             case nameof(SilentMode):
             case nameof(SilentStartup):
             case nameof(ShowOcrNotification):
@@ -1146,6 +1228,8 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(Hotkey):
             case nameof(CaptureImageHotkey):
             case nameof(AnnotateHotkey):
+            case nameof(LongScreenshotHotkey):
+            case nameof(RecordingHotkey):
             case nameof(TranslateHotkey):
             case nameof(OcrPopupHotkey):
             case nameof(EnableClipboard):
@@ -1206,6 +1290,8 @@ public partial class SettingsViewModel : ViewModelBase
         if (!IsDisabledHotkey(Hotkey)) activeHotkeys.Add(("截图 OCR", Hotkey));
         if (!IsDisabledHotkey(CaptureImageHotkey)) activeHotkeys.Add(("截图复制", CaptureImageHotkey));
         if (!IsDisabledHotkey(AnnotateHotkey)) activeHotkeys.Add(("截图标注", AnnotateHotkey));
+        if (!IsDisabledHotkey(LongScreenshotHotkey)) activeHotkeys.Add(("长截屏", LongScreenshotHotkey));
+        if (!IsDisabledHotkey(RecordingHotkey)) activeHotkeys.Add(("屏幕录制", RecordingHotkey));
         if (!IsDisabledHotkey(TranslateHotkey)) activeHotkeys.Add(("选区翻译", TranslateHotkey));
         if (!IsDisabledHotkey(OcrPopupHotkey)) activeHotkeys.Add(("OCR 窗格", OcrPopupHotkey));
         if (!IsDisabledHotkey(QuickNoteHotkey)) activeHotkeys.Add(("随手便笺", QuickNoteHotkey));
@@ -1243,6 +1329,16 @@ public partial class SettingsViewModel : ViewModelBase
             StatusMessage = "⚠️ 截图标注快捷键格式无效！";
             return false;
         }
+        if (!IsDisabledHotkey(LongScreenshotHotkey) && !HotkeyGesture.TryParse(LongScreenshotHotkey, out _))
+        {
+            StatusMessage = "⚠️ 长截屏快捷键格式无效！";
+            return false;
+        }
+        if (!IsDisabledHotkey(RecordingHotkey) && !HotkeyGesture.TryParse(RecordingHotkey, out _))
+        {
+            StatusMessage = "⚠️ 屏幕录制快捷键格式无效！";
+            return false;
+        }
         if (!IsDisabledHotkey(TranslateHotkey) && !HotkeyGesture.TryParse(TranslateHotkey, out _))
         {
             StatusMessage = "⚠️ 选区翻译快捷键格式无效！";
@@ -1278,6 +1374,8 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.Hotkey = Hotkey;
         newSettings.CaptureImageHotkey = CaptureImageHotkey;
         newSettings.AnnotateHotkey = AnnotateHotkey;
+        newSettings.LongScreenshotHotkey = LongScreenshotHotkey;
+        newSettings.RecordingHotkey = RecordingHotkey;
         newSettings.TranslateHotkey = TranslateHotkey;
         newSettings.OcrPopupHotkey = OcrPopupHotkey;
         newSettings.QuickNoteHotkey = QuickNoteHotkey;
@@ -1319,6 +1417,7 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.AliyunUsedCount = AliyunUsedCount;
 
         newSettings.AutoCopy = AutoCopy;
+        newSettings.AutoCopyTableAsCells = AutoCopyTableAsCells;
         newSettings.SilentMode = SilentMode;
         newSettings.SilentStartup = SilentStartup;
         newSettings.ShowOcrNotification = ShowOcrNotification;
@@ -1460,6 +1559,8 @@ public partial class SettingsViewModel : ViewModelBase
             Hotkey = current.Hotkey;
             CaptureImageHotkey = current.CaptureImageHotkey;
             AnnotateHotkey = current.AnnotateHotkey;
+            LongScreenshotHotkey = current.LongScreenshotHotkey;
+            RecordingHotkey = current.RecordingHotkey;
             TranslateHotkey = current.TranslateHotkey;
             OcrPopupHotkey = current.OcrPopupHotkey;
             QuickNoteHotkey = current.QuickNoteHotkey;
@@ -1468,6 +1569,7 @@ public partial class SettingsViewModel : ViewModelBase
             PhrasesPanelHotkey = current.PhrasesPanelHotkey;
             ClipboardPanelBackground = current.ClipboardPanelBackground;
             AutoCopy = current.AutoCopy;
+            AutoCopyTableAsCells = current.AutoCopyTableAsCells;
             SilentMode = current.SilentMode;
             SilentStartup = current.SilentStartup;
             ShowOcrNotification = current.ShowOcrNotification;

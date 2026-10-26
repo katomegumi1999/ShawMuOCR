@@ -13,6 +13,7 @@
 - **图形与排版**：SkiaSharp (高性能 2D 绘图与位图操作), PdfPig (纯托管多页 PDF 解析)
 - **OCR 推理底座**：`Sdcb.SimdPaddleOCR 2.0.0` (支持 x64 AVX2/SIMD 纯 C# 神经网络计算与 Vulkan GPU 着色器加速推理)
 - **剪贴板同步底座 (MuClip)**：C# P/Invoke + 纯 Rust 高性能多线程引擎 (`Libs/x64/muclip_core.dll`)
+- **屏幕录制底座 (MuRecorder)**：C# P/Invoke + Rust 引擎（DXGI 桌面复制 / OpenH264 / MP4 封装，`Libs/x64/recorder_core.dll`），Rust 工程独立在 `C:\Rust\MuRecorder`
 - **构建目标**：支持 Native AOT 提前编译，零未裁剪运行时依赖，毫秒级冷启动。
 
 ---
@@ -31,11 +32,13 @@ ShawMuOCR/
 ├── Views/                           # 主窗口与各个功能页 View (XAML / C#)
 ├── Models/                          # 默认 OCR 运行模型目录（包含 PP-OCRv6_small/tiny/medium, cls, dict）
 ├── Libs/x64/muclip_core.dll         # 【唯一权威】原生 64 位 Rust 动态链接库，禁止在根目录冗余复制
+├── Libs/x64/recorder_core.dll       # 【唯一权威】录屏引擎原生库（由 C:\Rust\MuRecorder 构建产出）
 ├── src/
 │   ├── ShawMuOCR.Core/              # 核心业务接口与模型（IOcrEngine, ITranslationService, AppSettings 等）
 │   ├── ShawMuOCR.Windows/           # Win32 原生集成（RegisterHotKey 消息循环泵, GDI+ DPI 自适应截图）
+│   ├── MuRecorder/                  # 录屏子系统（Interop / Services / ViewModels / Views，原生活全在 Rust 侧）
 │   └── MuClip/                      # 局域网跨设备剪贴板同步子系统（纯 C# MVVM + Rust FFI）
-└── tests/ShawMuOCR.Tests/           # 单元测试工程（包含 247 项全绿自动化测试）
+└── tests/ShawMuOCR.Tests/           # 单元测试工程（包含 351 项自动化测试，其中 36 项标记 Category=Slow）
 ```
 
 ---
@@ -153,32 +156,102 @@ ShawMuOCR/
 7. **回归测试位置**：`tests/ShawMuOCR.Tests/HttpOcrServerTests.cs`（路径参数拒绝 / CORS / 令牌 / 413 / 429）与
    `SettingsPersistenceSecurityTests.cs`（原子写 / 凭据加密 / 旧明文升级 / 不可解密文保全 / 损坏配置备份）。**改动上述任一处逻辑必须同步维护这些用例**。
 
+### 3.10 录屏引擎（MuRecorder）构建约定与桌面复制语义
+
+1. **DLL 只能由脚本产出**，禁止手工拷贝：
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File C:\Rust\MuRecorder\scripts\build.ps1 -Configuration release
+   ```
+   脚本用**绝对路径** `-ShawMuOCRDir`（默认 `C:\ShawMuOCR`）定位目标，并在复制后比对 SHA256。
+   历史坑：早期用 `..\ShawMuOCR` 相对路径推算，静默复制到 `C:\Rust\ShawMuOCR` 影子目录，
+   真正的 `Libs/x64` 一直留旧 DLL，表现为「测试全是 0 帧」的假故障。**怀疑产物没生效时先比哈希**：
+   `Get-FileHash target\release\recorder_core.dll` vs `Get-FileHash Libs\x64\recorder_core.dll`。
+2. **DXGI 桌面复制只在画面变化时交付帧**：完全静止的桌面连首帧都没有，光标移动也不算变化
+   （光标不在复制帧内）。因此 `capture/gdi.rs` 保留一条 GDI 首帧兜底（启动 300ms 无帧时触发），
+   之后用「重发上一帧副本」维持 CFR。**改动采集循环时不要删掉这两条保命逻辑**。
+3. **不要写依赖真实桌面活动的测试**：进程内自建窗口在本机（无桌面 VM）不会出现在被捕获的桌面上。
+   「编码 → 封装」的确定性覆盖在 Rust `recorder::tests::pipeline_encodes_synthetic_frames_into_valid_mp4`
+   （合成帧驱动真实 encode/mux 线程）；C# 侧 `RecordingServiceIntegrationTests` 的真实录制项做成双路径
+   （有帧校验产物结构 / 无帧校验「失败并清理残留文件」）。
+
 ---
 
 ## 4. 常用构建与验证命令
 
-在修改任何代码后，请按以下顺序执行验证：
+验证分**快档**与**全量**两档。**不要每次改动都跑全量** —— 全量约 2 分钟，而其中 98% 的耗时来自真实推理/内存池测试，其余纯逻辑测试只需 4 秒。
 
-```powershell
-# 1. 编译全解决方案（必须 0 警告、0 错误）
+### 4.1 改动期间：快档（约 4 秒 / 315 项）
+
+```bash
+# 1. 编译（必须 0 警告、0 错误）
 dotnet build
 
-# 2. 执行全量单元测试（必须全部 247 项测试通过）
-dotnet test
-
-# 3. 运行特定模块测试（如仅测试模型选择或 MuClip 同步）
-dotnet test --filter "FullyQualifiedName~ModelSelectionTests"
-dotnet test --filter "FullyQualifiedName~PaddleOcrV6EngineTests"
-dotnet test --filter "FullyQualifiedName~MuClipMemoryPoolTests"
-
-# 4. 验证 Native AOT 发布（可选，用于检查裁剪与依赖）
-dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
+# 2. 跳过慢测试跑一遍，确认没伤到别处
+dotnet test --filter "Category!=Slow"
 ```
+
+迭代更快的做法是按 4.2 的映射表**只跑受影响的那部分**：
+
+```bash
+dotnet test --filter "FullyQualifiedName~OcrTableLayout"
+dotnet test --filter "FullyQualifiedName~TableLineDetector"
+```
+
+`--filter` 支持 `~`（包含）、`!~`（不包含）与 `&`/`|` 组合，例如 `--filter "FullyQualifiedName~OcrCoordinator&Category!=Slow"`。
+
+### 4.2 改动区域 → 应跑的测试
+
+| 改动位置 | 必跑测试类 |
+| --- | --- |
+| `src/ShawMuOCR.Core/Sorting/` | `OcrTableLayoutBuilderTests`、`OcrTableLayoutHtmlTests`、`TableLineDetectorTests`、`OcrTableLayoutLineAwareTests`、`DefaultOcrTextSorterTests` |
+| `src/ShawMuOCR.Core/Clipboard/`、`src/ShawMuOCR.Windows/Clipboard/` | `CfHtmlBuilderTests`、`OcrCoordinatorTableCopyTests`、`OcrCoordinatorSelectionTests` |
+| `src/ShawMuOCR.Core/Settings/`、`ViewModels/SettingsViewModel.cs` | `SettingsAndLoggingPathTests`、`SettingsAutoSaveTests`、`SettingsPersistenceSecurityTests` |
+| `Services/OcrCoordinator.cs` | `OcrCoordinatorTableCopyTests`、`OcrCoordinatorSelectionTests` |
+| `Services/Pdf/`、PDF 分支 | `PdfPageRendererTests`（慢）、`FileOcrTests` |
+| `Services/Batch/` | `BatchOcrTests`、`BatchExportHelperTests`、`CpuThrottleSchedulerTests` |
+| `OCR/`、`src/ShawMuOCR.Core/OCR/` | `PaddleOcrV6EngineTests`（慢）、`ModelSelectionTests`、`ExternalApiOcrEngineTests` |
+| `Services/Http/`、HTTP 服务端 | `HttpOcrServerTests` |
+| 翻译相关 | `TranslationServiceTests`、`PhraseReorderAndConditionalRuleTests` |
+| MuClip 同步 | `MuClipMemoryPoolTests`（慢） |
+| `src/ShawMuOCR.Windows/ScreenCapture/`、`src/ShawMuOCR.Windows/Win32/` | `ScreenCaptureServiceTests`、`DibBufferPackerTests`、`ScreenRectTests`（含 GDI 句柄泄漏校验，需真实桌面会话） |
+| 长截图（位移估计 / 拼接 / 采集循环） | `LongScreenshotStitcherTests`、`LongScreenshotCapturerTests`、`OcrCoordinatorLongScreenshotTests` |
+| `.axaml` / 纯样式 | 只需 `dotnet build`；行为改动再看对应 ViewModel 的测试 |
+
+### 4.3 收尾：全量（约 2 分钟 / 345 项）
+
+以下三种情况**必须**跑全量 `dotnet test`：
+
+1. `dotnet publish` 发布前；
+2. 提交 / 合并前；
+3. 改动了跨模块公共契约（`IClipboardService`、`OcrTextBlock`、`OcrResult`、`AppSettings`、`ISettingsService` 等）或测试工程配置。
+
+### 4.4 慢测试清单（`Category=Slow`）
+
+| 测试类 | 项数 | 耗时 | 慢的原因 |
+| --- | --- | --- | --- |
+| `PaddleOcrV6EngineTests` | 9 | ~84s | 真实 onnx 模型加载 + 推理 |
+| `MuClipMemoryPoolTests` | 18 | ~19s | 大块内存分配与 GC 压力测试 |
+| `PdfPageRendererTests` | 2 | ~4s | PDF 栅格化 + 真实 OCR |
+| `OcrTableLayoutRealOcrTests` | 4 | ~2s | 真实 OCR 端到端 |
+| `OcrTableLayoutLineAwareTests.RecognizeAsync_*` | 1 | ~0.6s | 真实 OCR 端到端 |
+
+**新增测试如果单次超过 1 秒，必须打上 `[Trait("Category", "Slow")]`**（可以打在类上，也可以只打在某个方法上），否则快档会逐渐退化成全量。
+
+### 4.5 验证 Native AOT 发布（发布前）
+
+```bash
+dotnet publish ShawMuOCR.csproj -c Release -r win-x64
+```
+
+发布前若 `ShawMuOCR.exe` 正在运行会报 `MSB3027`（文件被占用），需先关闭该进程。
 
 ---
 
 ## 5. 给后续 AI Agent 的行为守则
 
 1. **保持文档与注释完整性**：绝不随意删除既有的功能说明、架构注释与中英双语文档。
-2. **测试驱动安全**：若修改了核心逻辑，必须保证 `tests/ShawMuOCR.Tests` 中原有的 247 个测试 100% 保持通过，若引入新功能需补齐相应的 xUnit 单元测试。
+2. **测试门禁（分层执行，不要每次全量）**：
+   - 改动期间跑 `dotnet test --filter "Category!=Slow"`（约 3 秒），或按 4.2 映射表只跑受影响的类；
+   - 发布 / 提交前跑全量 `dotnet test`（约 2 分钟）；
+   - 引入新功能需补齐对应的 xUnit 单元测试，耗时超过 1 秒的记得打 `Category=Slow`。
 3. **输出清晰的引用链接**：与用户交流时，涉及代码文件与符号时必须使用标准 Markdown 链接（如 `[OcrEngineFactory.cs](file:///c:/ShawMuOCR/OCR/OcrEngineFactory.cs)`）。

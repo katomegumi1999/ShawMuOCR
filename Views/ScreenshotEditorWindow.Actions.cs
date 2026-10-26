@@ -269,6 +269,66 @@ public partial class ScreenshotEditorWindow
         }
     }
 
+    private async void OnLongScreenshotClick(object? sender, RoutedEventArgs e)
+    {
+        if (_isProcessingAction) return;
+        _isProcessingAction = true;
+
+        try
+        {
+            var bounds = GetEffectiveSelectionBounds();
+            Close();
+
+            if (_longScreenshotCallback != null)
+            {
+                await _longScreenshotCallback(bounds);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("截图标注启动长截图失败", ex);
+        }
+    }
+
+    private async void OnRegionRecordClick(object? sender, RoutedEventArgs e)
+    {
+        if (_isProcessingAction) return;
+        _isProcessingAction = true;
+
+        try
+        {
+            var bounds = GetEffectiveSelectionBounds();
+            Close();
+
+            if (_regionRecordCallback != null)
+            {
+                await _regionRecordCallback(bounds);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("截图标注启动区域录屏失败", ex);
+        }
+    }
+
+    private ScreenRect GetEffectiveSelectionBounds()
+    {
+        if (_selectionBounds.HasValue)
+        {
+            return new ScreenRect(
+                _selectionBounds.Value.X,
+                _selectionBounds.Value.Y,
+                _doc.OriginalImage.Width,
+                _doc.OriginalImage.Height);
+        }
+
+        return new ScreenRect(
+            (int)Position.X,
+            (int)Position.Y,
+            _doc.OriginalImage.Width,
+            _doc.OriginalImage.Height);
+    }
+
     private void OnCloseClick(object? sender, RoutedEventArgs e)
     {
         Close();

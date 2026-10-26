@@ -26,6 +26,7 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
     private static string? s_lastHandledText;
     private static long s_lastHandledTick;
     private static WindowsClipboardService? s_activeListener;
+    private static uint s_htmlClipboardFormat;
 
     private Thread? _listenerThread;
     private IntPtr _hwnd;
@@ -33,6 +34,9 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
     private bool _disposed;
 
     public bool IsListening => _hwnd != IntPtr.Zero && _listenerThread is { IsAlive: true };
+
+    /// <inheritdoc />
+    public bool LastWriteIncludedHtml { get; private set; }
 
     public event Action<string>? ExternalTextChanged;
     public event Action? HotkeyTriggered;
@@ -86,6 +90,37 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
             Thread.Sleep(25 * (attempt + 1));
         }
         return false;
+    }
+
+    /// <summary>
+    /// 同时写入纯文本 (CF_UNICODETEXT) 与 HTML (CF_HTML) 两种格式：
+    /// - Excel / WPS / Word / 腾讯文档等富文本目标会优先采用 HTML，把内容还原为真正的表格；
+    /// - 聊天窗口、搜索框、记事本等纯文本目标只会读到 <paramref name="text"/>，不受 HTML 影响。
+    /// HTML 写入失败时自动退化为纯文本写入，保证剪贴板始终可用。
+    /// </summary>
+    public async Task<bool> SetTextWithHtmlAsync(string text, string? html)
+    {
+        text ??= string.Empty;
+        LastWriteIncludedHtml = false;
+
+        if (string.IsNullOrWhiteSpace(html))
+        {
+            return await SetTextAsync(text).ConfigureAwait(false);
+        }
+
+        for (int attempt = 0; attempt < 5; attempt++)
+        {
+            if (TrySetTextAndHtmlOnce(text, html, out bool htmlWritten))
+            {
+                LastWriteIncludedHtml = htmlWritten;
+                return true;
+            }
+            await Task.Delay(25 * (attempt + 1)).ConfigureAwait(false);
+        }
+
+        // 富文本通道不可用时至少保住纯文本
+        LastWriteIncludedHtml = false;
+        return await SetTextAsync(text).ConfigureAwait(false);
     }
 
     public Task<string?> GetTextAsync()
@@ -376,6 +411,130 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// 一次原子写入：先放纯文本，再放 HTML。EmptyClipboard 之后若 HTML 写入失败，
+    /// 剪贴板仍保留可用的纯文本，不会出现「粘不出东西」的坏体验。
+    /// <paramref name="htmlWritten"/> 回传 HTML 是否真正落盘，供调用方如实报告结果，
+    /// 避免「界面显示已分列、粘出来却是一格」的假成功。
+    /// </summary>
+    private static unsafe bool TrySetTextAndHtmlOnce(string text, string html, out bool htmlWritten)
+    {
+        htmlWritten = false;
+
+        uint htmlFormat = s_htmlClipboardFormat;
+        if (htmlFormat == 0)
+        {
+            htmlFormat = User32.RegisterClipboardFormat("HTML Format");
+            if (htmlFormat == 0)
+            {
+                return false;
+            }
+            s_htmlClipboardFormat = htmlFormat;
+        }
+
+        byte[] htmlBytes = CfHtmlBuilder.WrapToUtf8Bytes(html);
+
+        lock (s_clipboardLock)
+        {
+            if (!User32.OpenClipboard(IntPtr.Zero))
+            {
+                return false;
+            }
+
+            try
+            {
+                User32.EmptyClipboard();
+
+                if (!SetUnicodeTextBlock(text))
+                {
+                    return false;
+                }
+
+                // HTML 格式属于增强项：即便写入失败，纯文本已经可用，无需让整次写入失败
+                htmlWritten = SetRawBytesBlock(htmlFormat, htmlBytes);
+                return true;
+            }
+            finally
+            {
+                User32.CloseClipboard();
+            }
+        }
+    }
+
+    private static unsafe bool SetUnicodeTextBlock(string text)
+    {
+        int byteCount = (text.Length + 1) * sizeof(char);
+        IntPtr hGlobal = Kernel32.GlobalAlloc(Kernel32.GMEM_MOVEABLE, (nuint)byteCount);
+        if (hGlobal == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr targetPtr = Kernel32.GlobalLock(hGlobal);
+        if (targetPtr == IntPtr.Zero)
+        {
+            Kernel32.GlobalFree(hGlobal);
+            return false;
+        }
+
+        try
+        {
+            if (text.Length > 0)
+            {
+                fixed (char* srcChars = text)
+                {
+                    Buffer.MemoryCopy(srcChars, (void*)targetPtr, byteCount, text.Length * sizeof(char));
+                }
+            }
+            Marshal.WriteInt16(targetPtr, text.Length * sizeof(char), 0);
+        }
+        finally
+        {
+            Kernel32.GlobalUnlock(hGlobal);
+        }
+
+        if (User32.SetClipboardData(User32.CF_UNICODETEXT, hGlobal) == IntPtr.Zero)
+        {
+            Kernel32.GlobalFree(hGlobal);
+            return false;
+        }
+
+        return true;
+    }
+
+    private static unsafe bool SetRawBytesBlock(uint format, byte[] payload)
+    {
+        IntPtr hGlobal = Kernel32.GlobalAlloc(Kernel32.GMEM_MOVEABLE, (nuint)payload.Length);
+        if (hGlobal == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr targetPtr = Kernel32.GlobalLock(hGlobal);
+        if (targetPtr == IntPtr.Zero)
+        {
+            Kernel32.GlobalFree(hGlobal);
+            return false;
+        }
+
+        try
+        {
+            Marshal.Copy(payload, 0, targetPtr, payload.Length);
+        }
+        finally
+        {
+            Kernel32.GlobalUnlock(hGlobal);
+        }
+
+        if (User32.SetClipboardData(format, hGlobal) == IntPtr.Zero)
+        {
+            Kernel32.GlobalFree(hGlobal);
+            return false;
+        }
+
+        return true;
     }
 
     private static bool TryGetTextOnce(out string? text, out bool formatUnavailable)

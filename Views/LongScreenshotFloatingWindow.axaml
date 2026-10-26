@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ShawMuOCR.Views.LongScreenshotFloatingWindow"
+        Title="长截屏控制台"
+        WindowDecorations="None"
+        Topmost="True"
+        ShowInTaskbar="False"
+        Background="Transparent"
+        TransparencyBackgroundFallback="Transparent"
+        TransparencyLevelHint="Transparent"
+        CanResize="False"
+        SizeToContent="WidthAndHeight"
+        WindowStartupLocation="Manual">
+
+    <Border Name="RootBorder"
+            Background="#F21E1E22"
+            BorderBrush="#4DFFFFFF"
+            BorderThickness="1"
+            CornerRadius="18"
+            BoxShadow="0 6 22 0 #80000000"
+            Padding="14,7"
+            Margin="8">
+        <Grid ColumnDefinitions="Auto,Auto,Auto" VerticalAlignment="Center">
+            <!-- 左侧状态区 -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="2,0,12,0">
+                <TextBlock Text="📜" FontSize="14" VerticalAlignment="Center" />
+                <TextBlock Text="长截屏进行中"
+                           Foreground="#FFFFFF"
+                           FontWeight="SemiBold"
+                           FontSize="12"
+                           VerticalAlignment="Center" />
+                <TextBlock Name="StatusTextBlock"
+                           Text="请滚动目标窗口..."
+                           Foreground="#B0B0B0"
+                           FontSize="11"
+                           VerticalAlignment="Center"
+                           MaxWidth="260"
+                           TextTrimming="CharacterEllipsis" />
+            </StackPanel>
+
+            <!-- 中间按钮区 -->
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                <Button Name="FinishButton"
+                        Content="✓ 完成截取"
+                        Background="#0078D4"
+                        Foreground="#FFFFFF"
+                        FontWeight="SemiBold"
+                        CornerRadius="14"
+                        Padding="14,4"
+                        FontSize="12"
+                        ToolTip.Tip="立即完成并保存已滚动的长截图到剪贴板 (或再次按 Alt+L)" />
+
+                <Button Name="CancelButton"
+                        Content="✕ 取消"
+                        Background="#2BFFFFFF"
+                        Foreground="#CCCCCC"
+                        CornerRadius="14"
+                        Padding="10,4"
+                        FontSize="12"
+                        ToolTip.Tip="取消本次长截屏 (Esc)" />
+            </StackPanel>
+
+            <!-- 右侧拖拽/提示区 -->
+            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="10,0,2,0">
+                <TextBlock Text="⋮⋮" Foreground="#555555" FontSize="12" VerticalAlignment="Center" ToolTip.Tip="按住可拖动位置" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

@@ -23,10 +23,12 @@ ShawMuOCR.slnx
 │   ├── Views/                      # 窗口与视图控件 (MainWindow, ScreenshotEditor, TranslateFloatingWindow 等)
 │   │   └── Clipboard/              # 统一收归的剪贴板视图 (ClipboardView, QuickPanelWindow, Components)
 │   ├── Assets/                     # 图标、Logo、矢量资源与样式字典
+│   ├── Services/Pdf/               # PDF 整页栅格化回退 (PdfPageRenderer)：矢量型/文字转路径 PDF 先渲染再 OCR
 │   └── Libs/x64/muclip_core.dll    # 统一托管的 64 位原生动态库
 │
 ├── 🧠 src/ShawMuOCR.Core            # 核心业务抽象与跨平台逻辑
 │   ├── OCR/                        # IOcrEngine 契约、PaddleOcrV6Engine、OcrModelProvider 模型扫描与解析
+│   ├── Sorting/                    # 阅读顺序排序 (DefaultOcrTextSorter)、表格行列还原与 HTML/TSV 生成 (OcrTableLayoutBuilder)、表格竖线检测 (TableLineDetector)
 │   ├── Translation/                # 多源翻译 Provider (百度大模型、Google NMT、OpenAI 兼容)、额度管控
 │   ├── Capture/                    # 截图与标注领域模型 (ScreenRect, AnnotationLayer)
 │   ├── Hotkey/                     # 快捷键解析与抽象数据结构
@@ -44,7 +46,7 @@ ShawMuOCR.slnx
 │   └── Models/                     # 剪贴板条目、配对设备模型、分片文件传输模型
 │
 └── 🧪 tests/ShawMuOCR.Tests         # 自动化测试套件
-    └── 247 项涵盖 OCR 推理、GPU/CPU 引擎、翻译额度拦截、截图标注、MuClip 握手配对等全绿测试
+    └── 345 项涵盖 OCR 推理、GPU/CPU 引擎、表格线检测与分列还原、CF_HTML 包装、PDF 整页栅格化、翻译额度拦截、截图标注、MuClip 握手配对等全绿测试
 ```
 
 ---

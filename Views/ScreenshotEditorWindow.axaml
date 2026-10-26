@@ -419,6 +419,18 @@
                         <Separator Classes="ToolSep" />
 
                         <!-- 动作按钮 -->
+                        <Button Name="LongScreenshotBtn"
+                                Classes="ActionBtn"
+                                Content="📜 长截图"
+                                ToolTip.Tip="在当前选定区域直接开始长截屏"
+                                Click="OnLongScreenshotClick" />
+
+                        <Button Name="RegionRecordBtn"
+                                Classes="ActionBtn"
+                                Content="🎥 区域录制"
+                                ToolTip.Tip="在当前选定区域直接开始录屏"
+                                Click="OnRegionRecordClick" />
+
                         <Button Name="OcrBtn"
                                 Classes="ActionBtn"
                                 Content="🔤 OCR"

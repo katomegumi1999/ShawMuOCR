@@ -85,6 +85,14 @@ public partial class SettingsWindow : Window
             {
                 vm.ClearAnnotateHotkeyCommand.Execute(null);
             }
+            else if (vm.IsRecordingLongScreenshotHotkey)
+            {
+                vm.ClearLongScreenshotHotkeyCommand.Execute(null);
+            }
+            else if (vm.IsRecordingRecordingHotkey)
+            {
+                vm.ClearRecordingHotkeyCommand.Execute(null);
+            }
             else if (vm.IsRecordingTranslateHotkey)
             {
                 vm.ClearTranslateHotkeyCommand.Execute(null);
@@ -131,6 +139,14 @@ public partial class SettingsWindow : Window
             else if (vm.IsRecordingAnnotateHotkey)
             {
                 vm.OnAnnotateHotkeyRecorded(gesture);
+            }
+            else if (vm.IsRecordingLongScreenshotHotkey)
+            {
+                vm.OnLongScreenshotHotkeyRecorded(gesture);
+            }
+            else if (vm.IsRecordingRecordingHotkey)
+            {
+                vm.OnRecordingHotkeyRecorded(gesture);
             }
             else if (vm.IsRecordingTranslateHotkey)
             {

@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using Avalonia;
 using Avalonia.Threading;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
@@ -6,8 +7,10 @@ using ShawMuOCR.Core.Logging;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Services;
 using ShawMuOCR.Core.Settings;
+using ShawMuOCR.Core.Sorting;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.Views;
+using ShawMuOCR.Windows.ScreenCapture;
 
 namespace ShawMuOCR.Services;
 
@@ -33,6 +36,11 @@ public sealed class OcrCoordinator : IOcrCoordinator
     private TranslateFloatingWindow? _activeOcrPopupWindow;
     private CancellationTokenSource? _translateCts;
     private string _lastTranslateOcrText = string.Empty;
+
+    public Action<ScreenRect>? RegionRecordingHandler { get; set; }
+
+    /// <summary>当前正在跑的长截图采集器；非采集期间为 null。用于「再次按热键提前收尾」。</summary>
+    private LongScreenshotCapturer? _longScreenshotCapturer;
 
     public OcrState CurrentState => _currentState;
     public OcrSession? CurrentSession => _currentSession;
@@ -348,6 +356,148 @@ public sealed class OcrCoordinator : IOcrCoordinator
         }
     }
 
+    /// <summary>
+    /// 长截图：框选一块区域后跟随用户手动滚动连续抓帧拼接，结果写入剪贴板并作为预览会话展示。
+    /// 采集中再次触发则提前收尾。支持传入初始预设选区（如截图标注选区一键转入长截屏）。
+    /// </summary>
+    public async Task StartLongScreenshotAsync(ScreenRect? initialRegion = null)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        // 采集中再次按下热键 = 立即收尾，而不是开新任务
+        if (_longScreenshotCapturer is { IsRunning: true } active)
+        {
+            active.RequestStop();
+            SetState(OcrState.Recognizing, "长截图正在收尾...");
+            return;
+        }
+
+        lock (_stateLock)
+        {
+            if (_currentState is OcrState.Selecting or OcrState.Recognizing)
+            {
+                return;
+            }
+            SetState(OcrState.Selecting, "正在框选长截图区域...");
+        }
+
+        ScreenRect targetBounds;
+        var virtualBounds = _captureService.GetVirtualScreenBounds();
+
+        try
+        {
+            // 立即销毁未消失的气泡通知，避免二次截屏时被截入画面或阻挡框选视线
+            ToastNotificationWindow.Dismiss();
+
+            if (initialRegion.HasValue && !initialRegion.Value.IsEmpty && initialRegion.Value.Width >= 10 && initialRegion.Value.Height >= 10)
+            {
+                targetBounds = initialRegion.Value;
+            }
+            else
+            {
+                // 1. 抓取物理全屏用于框选遮罩
+                var fullScreenshot = _captureService.CaptureVirtualScreen();
+
+                // 2. 框选，顺便拿到选区的物理屏幕坐标（采集器要按坐标反复重抓这一块）
+                var selection = await _selectionService.SelectRegionExAsync(fullScreenshot, virtualBounds);
+
+                fullScreenshot.Dispose();
+
+                if (selection == null)
+                {
+                    SetState(OcrState.Idle, "长截图已取消");
+                    return;
+                }
+
+                // 选区图只是框选那一刻的静态快照，采集器会自己重新抓帧，这里立即释放
+                selection.Image.Dispose();
+                targetBounds = selection.ScreenBounds;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("长截图选区准备失败", ex);
+            SetState(OcrState.Failed, $"长截图启动异常：{ex.Message}");
+            return;
+        }
+
+        var capturer = new LongScreenshotCapturer(_captureService);
+        _longScreenshotCapturer = capturer;
+
+        SetState(OcrState.Recognizing, "长截图进行中，请滚动目标窗口");
+
+        // 唤起遮罩层与悬浮面板（无头单元测试环境下 Application.Current 为空时安全跳过）
+        LongScreenshotOverlayController? overlay = null;
+        if (Application.Current != null)
+        {
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                overlay = LongScreenshotOverlayController.Show(
+                    targetBounds,
+                    virtualBounds,
+                    onStop: () => capturer.RequestStop(),
+                    onCancel: () => capturer.RequestCancel());
+            });
+        }
+
+        try
+        {
+            // 采集循环跑在线程池上，状态回调必须切回 UI 线程再改状态
+            var result = await capturer.RunAsync(
+                targetBounds,
+                message => Dispatcher.UIThread.Post(() =>
+                {
+                    SetState(OcrState.Recognizing, message);
+                    overlay?.UpdateStatus(message);
+                }));
+
+            if (result.Image is null)
+            {
+                SetState(OcrState.Idle, result.Status);
+                if (_settingsService.Current.ShowCaptureImageNotification)
+                {
+                    ToastNotificationWindow.Show(result.Status, TimeSpan.Zero, "长截图未完成");
+                }
+                return;
+            }
+
+            // 拼接器返回的是裸位图，包一层 OcrImage 后才好复用剪贴板与会话（所有权随之移交）
+            var longImage = new OcrImage(result.Image);
+
+            // 3. 长图写入剪贴板
+            bool copied = await _clipboardService.SetImageAsync(longImage);
+
+            // 4. 更新当前会话供主窗口预览（图片所有权移交会话）
+            _currentSession?.Dispose();
+            _currentSession = new OcrSession(longImage, OcrResult.Empty());
+
+            string status = copied
+                ? $"✓ 长截图已复制到剪贴板（{result.FrameCount} 帧 / {result.Height} 像素高）"
+                : $"✕ 长截图已生成但写入剪贴板失败（{result.Height} 像素高）";
+            SetState(copied ? OcrState.Success : OcrState.Failed, status);
+
+            if (_settingsService.Current.ShowCaptureImageNotification)
+            {
+                ToastNotificationWindow.Show(status, TimeSpan.Zero, "长截图完成");
+            }
+
+            SessionCompleted?.Invoke(_currentSession);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("长截图流程失败", ex);
+            SetState(OcrState.Failed, $"长截图错误: {ex.Message}");
+        }
+        finally
+        {
+            _longScreenshotCapturer = null;
+            if (overlay != null)
+            {
+                await Dispatcher.UIThread.InvokeAsync(() => overlay.Close());
+            }
+        }
+    }
+
     public async Task StartAnnotateScreenshotAsync()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -402,7 +552,14 @@ public sealed class OcrCoordinator : IOcrCoordinator
                     _logger,
                     selection.ScreenBounds,
                     fullScreenshot: fullScreenshot,
-                    cropOffset: cropOffset);
+                    cropOffset: cropOffset,
+                    isPrewarm: false,
+                    longScreenshotCallback: async bounds => await StartLongScreenshotAsync(bounds),
+                    regionRecordCallback: bounds =>
+                    {
+                        RegionRecordingHandler?.Invoke(bounds);
+                        return Task.CompletedTask;
+                    });
                 editor.Show();
                 editor.Activate();
             }
@@ -542,11 +699,37 @@ public sealed class OcrCoordinator : IOcrCoordinator
             // 如果休眠唤醒时的后台预热尚未完成，平滑等待就绪，避免并发重入冲突
             await AwaitWarmupAsync();
 
+            // 表格线检测只读像素、与 OCR 结果无关，因此和推理并行执行：
+            // 5~15ms 的扫描耗时被数百毫秒的推理完全掩盖，相当于零额外成本。
+            // 并发安全：推理侧对 image.Bitmap 只做 GetPixelSpan 只读访问或 DrawBitmap 拷贝，
+            // 线检测侧也只 ReadPixel，双方都不会修改源位图。
+            bool wantTableSplit = _settingsService.Current.AutoCopyTableAsCells;
+            Task<(List<(int Left, int Right)>? Columns, string Info)>? lineTask = null;
+            if (wantTableSplit)
+            {
+                lineTask = Task.Run<(List<(int Left, int Right)>? Columns, string Info)>(() =>
+                    TableLineDetector.TryDetectColumns(image.Bitmap, out var detectedColumns, out string info)
+                        ? (detectedColumns, info)
+                        : (null, info));
+            }
+
             // 执行后台推理
-            var result = await Task.Run(async () =>
+            var ocrTask = Task.Run(async () =>
             {
                 return await _ocrEngine.RecognizeAsync(image);
             });
+
+            List<(int Left, int Right)>? lineColumns = null;
+            string lineInfo = string.Empty;
+
+            if (lineTask is not null)
+            {
+                await Task.WhenAll(ocrTask, lineTask);
+                lineColumns = lineTask.Result.Columns;
+                lineInfo = lineTask.Result.Info;
+            }
+
+            var result = await ocrTask;
 
             // 释放旧会话中的图片
             _currentSession?.Dispose();
@@ -554,14 +737,68 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
             if (result.IsSuccess)
             {
-                bool copied = false;
-                if (_settingsService.Current.AutoCopy && !string.IsNullOrWhiteSpace(result.Text))
+                // 表格智能分列：识别结果若呈表格结构（多行多列、检测框按几何对齐），
+                // 剪贴板同时写入 HTML 表格（CF_HTML）与纯文本（CF_UNICODETEXT）两种格式：
+                // - Excel / WPS / Word 等富文本目标优先采用 HTML，粘贴后直接落成单元格，合并表头保留 colspan；
+                // - 聊天窗口、搜索框、记事本等纯文本目标只读纯文本，不会出现制表符造成的怪异空档。
+                // 非表格内容仍只写纯文本，与改动前完全一致。
+                string clipboardText = result.Text;
+                string? clipboardHtml = null;
+                int tableRowCount = 0;
+                int tableColumnCount = 0;
+
+                if (wantTableSplit && result.Blocks.Count > 0)
                 {
-                    copied = await _clipboardService.SetTextAsync(result.Text);
+                    // 线检测结果已在推理期间并行算好：有竖线按线分列（像素级稳定），无竖线才退回投影法
+                    var layout = OcrTableLayoutBuilder.TryBuildWithColumns(result.Blocks, lineColumns, out string? tableReason);
+
+                    if (!string.IsNullOrEmpty(lineInfo))
+                    {
+                        _logger?.Info($"[表格线] {lineInfo}");
+                    }
+                    if (layout != null)
+                    {
+                        clipboardHtml = layout.ToHtmlTable();
+                        tableRowCount = layout.RowCount;
+                        tableColumnCount = layout.ColumnCount;
+                    }
+
+                    if (!string.IsNullOrEmpty(tableReason))
+                    {
+                        _logger?.Info($"[表格分列] {tableReason}");
+                    }
+                }
+
+                bool htmlApplied = false;
+                bool copied = false;
+
+                if (_settingsService.Current.AutoCopy && !string.IsNullOrWhiteSpace(clipboardText))
+                {
+                    if (clipboardHtml != null)
+                    {
+                        copied = await _clipboardService.SetTextWithHtmlAsync(clipboardText, clipboardHtml);
+                        // 以剪贴板实际写入结果为准，避免「界面说已分列、粘出来还是一格」的假成功
+                        htmlApplied = copied && _clipboardService.LastWriteIncludedHtml;
+
+                        if (htmlApplied)
+                        {
+                            _logger?.Info($"[表格分列] 剪贴板已写入 CF_UNICODETEXT + HTML Format ({tableRowCount} 行 × {tableColumnCount} 列)");
+                        }
+                        else if (copied)
+                        {
+                            _logger?.Warn("[表格分列] HTML 格式写入剪贴板失败，已降级为纯文本；粘贴到 Excel / WPS 仍会挤在单个单元格。若反复出现请检查剪贴板是否被其他程序占用。");
+                        }
+                    }
+                    else
+                    {
+                        copied = await _clipboardService.SetTextAsync(clipboardText);
+                    }
                 }
 
                 string status = copied
-                    ? $"✓ 已自动复制 (耗时 {result.Elapsed.TotalMilliseconds:F0} ms)"
+                    ? (htmlApplied
+                        ? $"✓ 已自动复制·表格已分列 ({tableRowCount} 行 × {tableColumnCount} 列, 耗时 {result.Elapsed.TotalMilliseconds:F0} ms)"
+                        : $"✓ 已自动复制 (耗时 {result.Elapsed.TotalMilliseconds:F0} ms)")
                     : $"✓ 识别完成 (耗时 {result.Elapsed.TotalMilliseconds:F0} ms)";
 
                 SetState(OcrState.Success, status);
@@ -934,6 +1171,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
             _activeTranslateWindow = null;
             _activeOcrPopupWindow?.Close();
             _activeOcrPopupWindow = null;
+            // 长截图采集循环是自持的，退出时必须显式叫停，否则会一直抓屏到帧数上限
+            _longScreenshotCapturer?.RequestStop();
             _currentSession?.Dispose();
             _ocrEngine.Dispose();
         }

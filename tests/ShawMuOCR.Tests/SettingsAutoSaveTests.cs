@@ -133,6 +133,85 @@ public class SettingsAutoSaveTests
     }
 
     [Fact]
+    public void SettingsViewModel_LongScreenshotHotkey_DefaultAndRecording_AutoSaves()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        // 默认值应为 Alt+L
+        Assert.Equal("Alt+L", vm.LongScreenshotHotkey);
+        Assert.Equal("Alt+L", settingsService.Current.LongScreenshotHotkey);
+
+        // 录制新快捷键 Ctrl+Alt+L
+        int initialSaveCalls = settingsService.SaveCallCount;
+        var gesture = new HotkeyGesture(HotkeyModifiers.Ctrl | HotkeyModifiers.Alt, 0x4C); // Ctrl+Alt+L
+        vm.OnLongScreenshotHotkeyRecorded(gesture);
+
+        Assert.True(settingsService.SaveCallCount > initialSaveCalls);
+        Assert.Equal("Ctrl+Alt+L", settingsService.Current.LongScreenshotHotkey);
+        Assert.Contains("Ctrl+Alt+L", vm.StatusMessage);
+
+        // 清空快捷键
+        vm.ClearLongScreenshotHotkeyCommand.Execute(null);
+        Assert.Equal("无", vm.LongScreenshotHotkey);
+        Assert.Equal("无", settingsService.Current.LongScreenshotHotkey);
+    }
+
+    [Fact]
+    public void SettingsViewModel_RecordingHotkey_DefaultAndRecording_AutoSaves()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        // 默认值应为 Alt+R
+        Assert.Equal("Alt+R", vm.RecordingHotkey);
+        Assert.Equal("Alt+R", settingsService.Current.RecordingHotkey);
+
+        // 录制新快捷键 Ctrl+Alt+R
+        int initialSaveCalls = settingsService.SaveCallCount;
+        var gesture = new HotkeyGesture(HotkeyModifiers.Ctrl | HotkeyModifiers.Alt, 0x52); // Ctrl+Alt+R
+        vm.OnRecordingHotkeyRecorded(gesture);
+
+        Assert.True(settingsService.SaveCallCount > initialSaveCalls);
+        Assert.Equal("Ctrl+Alt+R", settingsService.Current.RecordingHotkey);
+        Assert.Contains("Ctrl+Alt+R", vm.StatusMessage);
+
+        // 清空快捷键
+        vm.ClearRecordingHotkeyCommand.Execute(null);
+        Assert.Equal("无", vm.RecordingHotkey);
+        Assert.Equal("无", settingsService.Current.RecordingHotkey);
+    }
+
+    [Fact]
+    public void SettingsViewModel_LongScreenshotAndRecordingHotkey_Conflict_RejectsSave()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        // 将录屏快捷键改成与长截屏相同的 Alt+L
+        var conflictGesture = new HotkeyGesture(HotkeyModifiers.Alt, 0x4C); // Alt+L
+        vm.OnRecordingHotkeyRecorded(conflictGesture);
+
+        // 保存应被拒绝，并提示冲突
+        bool saveSuccess = vm.SaveCommand.CanExecute(null);
+        vm.SaveCommand.Execute(null);
+
+        Assert.Contains("快捷键冲突", vm.StatusMessage);
+    }
+
+    [Fact]
     public void SettingsViewModel_FlushAutoSave_SavesPendingChanges()
     {
         var settingsService = new FakeSettingsService();

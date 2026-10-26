@@ -1,0 +1,39 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MuRecorder</RootNamespace>
+    <OutputType>Library</OutputType>
+    <ProduceReferenceAssembly>true</ProduceReferenceAssembly>
+    <TargetFramework>net11.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationIcon>..\..\Assets\logo.ico</ApplicationIcon>
+    <!-- 纯逻辑库（无 XAML 预览需求）：禁用 Avalonia 构建期统计采集器。
+         其驻留进程会加载上一轮输出的 obj DLL，导致 CompileAvaloniaXaml 的
+         CopyAndTouch 偶发文件锁失败（"used by another process"）。 -->
+    <UsedAvaloniaProducts></UsedAvaloniaProducts>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>ShawMuOCR.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ShawMuOCR.Core\ShawMuOCR.Core.csproj" />
+    <ProjectReference Include="..\ShawMuOCR.Windows\ShawMuOCR.Windows.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="12.1.4" />
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\Libs\x64\recorder_core.dll">
+      <Link>recorder_core.dll</Link>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
