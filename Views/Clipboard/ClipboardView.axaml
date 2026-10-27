@@ -368,7 +368,7 @@
                                 <Flyout Placement="BottomEdgeAlignedRight">
                                     <StackPanel Spacing="10" Width="230" Margin="4">
                                         <TextBlock Text="🎨 快捷面板底色" FontWeight="SemiBold" FontSize="13" />
-                                        <TextBlock Text="设置 Ctrl+~ 呼出的悬浮快捷面板背景色："
+                                        <TextBlock Text="设置 Alt+Q 呼出的悬浮快捷面板背景色："
                                                    FontSize="11"
                                                    Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                                    TextWrapping="Wrap" />

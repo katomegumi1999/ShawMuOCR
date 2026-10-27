@@ -992,7 +992,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingOcrPopupHotkey = false;
         IsRecordingClipboardPanelHotkey = true;
         IsRecordingPhrasesPanelHotkey = false;
-        StatusMessage = "请按下【剪贴板快捷面板】快捷键 (默认 Ctrl+~，按 Backspace 清空，按 Esc 取消)...";
+        StatusMessage = "请按下【剪贴板快捷面板】快捷键 (默认 Alt+Q，按 Backspace 清空，按 Esc 取消)...";
     }
 
     public void OnClipboardPanelHotkeyRecorded(HotkeyGesture gesture)
@@ -1023,7 +1023,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingOcrPopupHotkey = false;
         IsRecordingClipboardPanelHotkey = false;
         IsRecordingPhrasesPanelHotkey = true;
-        StatusMessage = "请按下【常用语快捷呼出】快捷键 (默认 Ctrl+1，按 Backspace 清空，按 Esc 取消)...";
+        StatusMessage = "请按下【常用语快捷呼出】快捷键 (默认 Alt+W，按 Backspace 清空，按 Esc 取消)...";
     }
 
     public void OnPhrasesPanelHotkeyRecorded(HotkeyGesture gesture)

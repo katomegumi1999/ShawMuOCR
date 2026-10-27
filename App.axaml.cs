@@ -689,6 +689,9 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            RecordingFloatingWindow.HideOverlay();
+            RecordingAnnotationWindow.HideOverlay();
+            _activeNoteWindow?.Close();
             _mainWindow?.ExplicitExit();
             desktop.Shutdown();
         }
@@ -699,7 +702,14 @@ public partial class App : Application
         // 录屏收尾必须先于其他服务：停止录制才会回填 moov，退出前保证文件完整可播
         try
         {
-            _mainViewModel?.RecordingVm.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(5));
+            // 放到线程池后台等待，彻底脱离 UI 线程同步上下文，杜绝死锁与退出卡顿
+            Task.Run(async () =>
+            {
+                if (_mainViewModel?.RecordingVm != null)
+                {
+                    await _mainViewModel.RecordingVm.DisposeAsync().ConfigureAwait(false);
+                }
+            }).Wait(TimeSpan.FromSeconds(2));
         }
         catch (Exception ex)
         {

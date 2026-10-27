@@ -89,7 +89,12 @@ public partial class RecordingPageView : UserControl
                     ?? (_currentVm?.Monitors.FirstOrDefault(m => m.IsPrimary) ?? _currentVm?.Monitors.FirstOrDefault())?.Bounds
                     ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
             }
-            RecordingAnnotationWindow.ShowOverlay(bounds);
+            RecordingAnnotationWindow.ShowOverlay(bounds, _currentVm);
+            if (_currentVm != null)
+            {
+                RecordingFloatingWindow.ShowOverlay(_currentVm);
+                RecordingFloatingWindow.BringToFront();
+            }
         }
         else
         {

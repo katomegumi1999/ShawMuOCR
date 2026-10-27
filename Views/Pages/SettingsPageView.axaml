@@ -348,7 +348,7 @@
                         <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding EnableClipboard}">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
                                 <TextBlock Text="小沐剪贴板全局快捷键" FontWeight="Medium" />
-                                <TextBlock Text="在当前光标键入位置直接呼出无边框悬浮快捷面板（默认 Ctrl+~）"
+                                <TextBlock Text="在当前光标键入位置直接呼出无边框悬浮快捷面板（默认 Alt+Q）"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />
@@ -374,7 +374,7 @@
                         <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding EnableClipboard}">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
                                 <TextBlock Text="常用语快捷呼出键" FontWeight="Medium" />
-                                <TextBlock Text="直接呼出常用语列面板，快速选用常用语句（默认 Ctrl+1）"
+                                <TextBlock Text="直接呼出常用语列面板，快速选用常用语句（默认 Alt+W）"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />

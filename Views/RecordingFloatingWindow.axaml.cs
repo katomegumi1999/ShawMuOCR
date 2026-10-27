@@ -27,6 +27,7 @@ public partial class RecordingFloatingWindow : Window
         else
         {
             s_instance.DataContext = vm;
+            s_instance.AttachVm(vm);
         }
         return s_instance;
     }
@@ -42,6 +43,26 @@ public partial class RecordingFloatingWindow : Window
     public static void HideOverlay()
     {
         s_instance?.Hide();
+    }
+
+    /// <summary>
+    /// 将录屏悬浮工具栏置于所有最前端窗口顶层（包括透明屏幕标注层）。
+    /// </summary>
+    public static void BringToFront()
+    {
+        if (s_instance != null && s_instance.IsVisible)
+        {
+            s_instance.Topmost = false;
+            s_instance.Topmost = true;
+            s_instance.Activate();
+
+            var handle = s_instance.TryGetPlatformHandle();
+            if (handle != null)
+            {
+                User32.SetWindowPos(handle.Handle, User32.HWND_TOPMOST, 0, 0, 0, 0,
+                    User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_SHOWWINDOW);
+            }
+        }
     }
 
     public static void ToggleOverlay(RecordingViewModel vm)
@@ -68,9 +89,71 @@ public partial class RecordingFloatingWindow : Window
         CloseButton.Click += (_, _) => Hide();
     }
 
+    private RecordingViewModel? _attachedVm;
+
+    private void AttachVm(RecordingViewModel vm)
+    {
+        if (ReferenceEquals(_attachedVm, vm)) return;
+        _attachedVm = vm;
+
+        vm.AnnotationToggleRequested += (s, active) =>
+        {
+            if (active)
+            {
+                var bounds = vm.CurrentTargetBounds;
+                if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+                {
+                    bounds = vm.SelectedMonitor?.Bounds
+                        ?? (vm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? vm.Monitors.FirstOrDefault())?.Bounds
+                        ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
+                }
+                RecordingAnnotationWindow.ShowOverlay(bounds, vm);
+                BringToFront();
+            }
+            else
+            {
+                RecordingAnnotationWindow.HideOverlay();
+            }
+        };
+
+        vm.AnnotationToolChangeRequested += (s, tool) =>
+        {
+            var screenTool = tool switch
+            {
+                "Pen" => ScreenAnnotationTool.Pen,
+                "Arrow" => ScreenAnnotationTool.Arrow,
+                "Rectangle" => ScreenAnnotationTool.Rectangle,
+                "Ellipse" => ScreenAnnotationTool.Ellipse,
+                "Laser" => ScreenAnnotationTool.Laser,
+                _ => ScreenAnnotationTool.Pen
+            };
+            RecordingAnnotationWindow.SetTool(screenTool);
+            BringToFront();
+        };
+
+        vm.AnnotationColorChangeRequested += (s, hex) =>
+        {
+            if (Avalonia.Media.Color.TryParse(hex, out var col))
+            {
+                RecordingAnnotationWindow.SetColor(col);
+            }
+            BringToFront();
+        };
+
+        vm.AnnotationClickThroughChangeRequested += (s, clickThrough) =>
+        {
+            RecordingAnnotationWindow.SetClickThrough(clickThrough);
+            BringToFront();
+        };
+
+        vm.AnnotationUndoRequested += (s, e) => RecordingAnnotationWindow.Undo();
+        vm.AnnotationClearRequested += (s, e) => RecordingAnnotationWindow.Clear();
+    }
+
     public RecordingFloatingWindow(RecordingViewModel vm) : this()
     {
         DataContext = vm;
+        AttachVm(vm);
     }
 
     private void OnOpened(object? sender, EventArgs e)

@@ -31,6 +31,7 @@ public sealed class ScreenAnnotationStroke
 public partial class RecordingAnnotationWindow : Window
 {
     private static RecordingAnnotationWindow? s_sharedOverlay;
+    private static MuRecorder.ViewModels.RecordingViewModel? s_vm;
 
     private readonly AnnotationCanvasControl _canvas;
     private ScreenAnnotationTool _currentTool = ScreenAnnotationTool.Pen;
@@ -57,11 +58,33 @@ public partial class RecordingAnnotationWindow : Window
         }
 
         Opened += OnOpened;
+        KeyDown += OnWindowKeyDown;
+        Closing += OnWindowClosing;
     }
 
     private void OnOpened(object? sender, EventArgs e)
     {
         ApplyWindowStyles();
+    }
+
+    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Escape)
+        {
+            ExitAnnotation();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Z && (e.KeyModifiers & KeyModifiers.Control) != 0)
+        {
+            Undo();
+            e.Handled = true;
+        }
+    }
+
+    private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
+    {
+        e.Cancel = true;
+        ExitAnnotation();
     }
 
     private void ApplyWindowStyles()
@@ -70,17 +93,17 @@ public partial class RecordingAnnotationWindow : Window
         if (handle == null) return;
 
         var exStyle = User32.GetWindowLongPtr(handle.Handle, User32.GWL_EXSTYLE);
-        long newExStyle = exStyle.ToInt64()
-            | User32.WS_EX_TOOLWINDOW
-            | User32.WS_EX_NOACTIVATE;
+        long newExStyle = exStyle.ToInt64() | User32.WS_EX_TOOLWINDOW;
 
         if (_isClickThrough)
         {
-            newExStyle |= User32.WS_EX_TRANSPARENT;
+            // 穿透模式：设置透明与不激活，鼠标与键盘直接穿透到底层窗口
+            newExStyle |= (User32.WS_EX_TRANSPARENT | User32.WS_EX_NOACTIVATE);
         }
         else
         {
-            newExStyle &= ~User32.WS_EX_TRANSPARENT;
+            // 绘制模式：移除穿透与不激活，允许接收键盘 Esc/快捷键与鼠标绘制事件
+            newExStyle &= ~(User32.WS_EX_TRANSPARENT | User32.WS_EX_NOACTIVATE);
         }
 
         User32.SetWindowLongPtr(handle.Handle, User32.GWL_EXSTYLE, new IntPtr(newExStyle));
@@ -89,8 +112,13 @@ public partial class RecordingAnnotationWindow : Window
     /// <summary>
     /// 显示并定位透明屏幕标注层。
     /// </summary>
-    public static void ShowOverlay(ScreenRect bounds)
+    public static void ShowOverlay(ScreenRect bounds, MuRecorder.ViewModels.RecordingViewModel? vm = null)
     {
+        if (vm != null)
+        {
+            s_vm = vm;
+        }
+
         if (s_sharedOverlay == null)
         {
             s_sharedOverlay = new RecordingAnnotationWindow();
@@ -106,6 +134,8 @@ public partial class RecordingAnnotationWindow : Window
             s_sharedOverlay.Show();
         }
 
+        s_sharedOverlay.Activate();
+        s_sharedOverlay.Focus();
         s_sharedOverlay.ApplyWindowStyles();
     }
 
@@ -118,6 +148,20 @@ public partial class RecordingAnnotationWindow : Window
         {
             s_sharedOverlay.Hide();
             Clear();
+        }
+    }
+
+    /// <summary>
+    /// 安全退出屏幕标注模式并同步 ViewModel 状态。
+    /// </summary>
+    public static void ExitAnnotation()
+    {
+        HideOverlay();
+        if (s_vm != null)
+        {
+            s_vm.IsAnnotationActive = false;
+            s_vm.IsAnnotationClickThrough = false;
+            s_vm.StatusMessage = "已退出屏幕标注模式";
         }
     }
 
@@ -201,6 +245,17 @@ public partial class RecordingAnnotationWindow : Window
         {
             base.OnPointerPressed(e);
             if (_owner._isClickThrough) return;
+
+            var ptProps = e.GetCurrentPoint(this).Properties;
+            if (ptProps.IsRightButtonPressed)
+            {
+                // 鼠标右键单击：快速退出屏幕标注模式，一键恢复普通桌面鼠标操作
+                ExitAnnotation();
+                e.Handled = true;
+                return;
+            }
+
+            if (!ptProps.IsLeftButtonPressed) return;
 
             var pt = e.GetPosition(this);
             e.Pointer.Capture(this);

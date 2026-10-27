@@ -73,7 +73,7 @@ Unlike traditional OCR software that relies on heavy dependencies like Python en
 ### 5. 📋 Cross-Device Clipboard Sync & Collaboration ([MuClip](https://github.com/katomegumi1999/MuClip))
 - **Pure Rust High-Performance Core**: cross-device discovery, pairing and transfer are provided by [MuClip](https://github.com/katomegumi1999/MuClip), shipped as `Libs/x64/muclip_core.dll`;
 - **End-to-End Encrypted Transfer**: SPAKE2 password-authenticated handshake (the PIN never leaves the device) + XChaCha20-Poly1305, with a fresh forward-secret session key per connection;
-- **Quick Phrases Panel (`Ctrl+~`)**: Summon floating quick panel anytime, double-click to quickly input phrases;
+- **Quick Phrases Panel (`Alt+W`)**: Summon floating quick panel anytime, double-click to quickly input phrases;
 - **Password-Protected Encrypted Backup & Restore (`.mubc`)**: XChaCha20-Poly1305 + PBKDF2-HMAC-SHA256 (100k rounds) packs history, phrases, conditional rules and settings into a single file, with a backup passphrase independent of the local DB key. Import supports both *merge & dedupe* and *full overwrite*, so migrating to a new machine needs no manual DB surgery;
 - **Large File Transfer**: 128 KiB chunked streaming with a whole-file SHA-256 integrity check.
 
@@ -89,11 +89,15 @@ Unlike traditional OCR software that relies on heavy dependencies like Python en
 | Function | Default Hotkey | Description |
 | :--- | :---: | :--- |
 | **Screenshot OCR** | `Alt + Z` | Full-screen selection, auto extract text, copy and show notification |
-| **Screenshot Copy** | `Alt + X` | Full-screen selection, directly copy selected image to clipboard |
-| **Screenshot Annotation** | `Alt + C` | Open annotation editor, doodle, save or pin to desktop |
+| **Screenshot Copy** | `Alt + C` | Full-screen selection, directly copy selected image to clipboard |
+| **Screenshot Annotation** | `Alt + X` | Open annotation editor, doodle, save or pin to desktop |
+| **Long Screenshot** | `Alt + L` | Select region, scroll to capture long image, copies to clipboard automatically |
+| **Screen Recording** | `Alt + R` | Summon desktop floating bar or start recording (Rust core hardware accelerated) |
 | **Selection Translation** | `Alt + T` | Select screen paragraph, floating window translates in place |
-| **OCR Popup** | `Alt + D` | Select screen area, show OCR results in floating window without auto-copy |
-| **Quick Phrases Panel** | `Ctrl + ~` | Summon MuClip phrases panel, click or press key to paste |
+| **OCR Popup** | `Alt + V` | Select screen area, show OCR results in floating window without auto-copy |
+| **Quick Note** | `Alt + N` | Floating quick note window for spontaneous memo and inspiration |
+| **MuClip Clipboard** | `Alt + Q` | Summon floating clipboard panel, real-time history search and paste |
+| **Quick Phrases Panel** | `Alt + W` | Summon MuClip phrases panel, click or press key to paste |
 
 > 💡 **Tip**: All hotkeys can be freely modified or cleared in [System Settings] (press `Backspace` to clear).
 

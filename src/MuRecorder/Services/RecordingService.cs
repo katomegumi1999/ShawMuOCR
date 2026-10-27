@@ -148,26 +148,26 @@ public sealed class RecordingService : IAsyncDisposable
         lock (_gate)
         {
             handle = _handle;
+            _handle = null;
+            _isRecording = false;
         }
         if (handle is null)
         {
             return;
         }
 
-        int rc = RecorderNative.recorder_stop(handle);
-        if (rc != (int)MuRecorder.Interop.RecorderResult.Ok)
+        try
         {
-            var ex = NewException(rc, handle);
-            lock (_gate)
+            int rc = RecorderNative.recorder_stop(handle);
+            if (rc != (int)MuRecorder.Interop.RecorderResult.Ok)
             {
-                _isRecording = false;
+                var ex = NewException(rc, handle);
+                throw ex;
             }
-            throw ex;
         }
-
-        lock (_gate)
+        finally
         {
-            _isRecording = false;
+            handle.Dispose();
         }
     }
 

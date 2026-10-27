@@ -219,6 +219,14 @@
                             CornerRadius="8"
                             FontSize="11"
                             ToolTip.Tip="点击穿透模式：开启后可直接操作底层桌面与应用，屏幕上的标注继续保留" />
+                    <Button Content="✕ 退出"
+                            Command="{Binding ToggleAnnotationCommand}"
+                            Classes="subtle"
+                            Padding="7,3"
+                            CornerRadius="8"
+                            FontSize="11"
+                            Foreground="#FF7875"
+                            ToolTip.Tip="退出屏幕标注模式 (按 Esc 或鼠标右键亦可退出)" />
                 </StackPanel>
             </Border>
         </StackPanel>

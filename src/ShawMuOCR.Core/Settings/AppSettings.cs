@@ -225,14 +225,14 @@ public sealed class AppSettings
     public bool EnableClipboard { get; set; } = false;
 
     /// <summary>
-    /// 极速剪贴板快捷面板全局快捷键（默认 "Ctrl+~"）
+    /// 极速剪贴板快捷面板全局快捷键（默认 "Alt+Q"）
     /// </summary>
-    public string ClipboardPanelHotkey { get; set; } = "Ctrl+~";
+    public string ClipboardPanelHotkey { get; set; } = "Alt+Q";
 
     /// <summary>
-    /// 常用语快捷呼出键（默认 "Ctrl+1"）
+    /// 常用语快捷呼出键（默认 "Alt+W"）
     /// </summary>
-    public string PhrasesPanelHotkey { get; set; } = "Ctrl+1";
+    public string PhrasesPanelHotkey { get; set; } = "Alt+W";
 
     /// <summary>
     /// 长截图全局快捷键（默认 "Alt+L"）：框选区域后跟随用户手动滚动拼接成长图，结果写入剪贴板

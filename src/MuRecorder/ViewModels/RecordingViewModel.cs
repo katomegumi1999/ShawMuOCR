@@ -1126,7 +1126,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         {
             if (IsRecording)
             {
-                await _service.StopAsync();
+                await _service.StopAsync().ConfigureAwait(false);
             }
         }
         catch (Exception ex)
@@ -1135,7 +1135,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         }
 
         _poller.Dispose();
-        await _service.DisposeAsync();
+        await _service.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }
 }
