@@ -33,7 +33,7 @@
 - **CPU SIMD / GPU Vulkan 双轨引擎**：既支持 AVX2 指令集内存级推理，也支持基于 Vulkan 计算着色器的 GPU 高速推理，并在多显卡环境下支持智能识别与手动切换；
 - **全链路零拷贝直通**：截图像素通过 `Bgra32` 直通神经网络张量，无中间格式转换与临时位图缓冲；
 - **纯离线隐私安全**：文字识别、排版整理及剪贴板管理完全在本地物理机执行；
-- **高集成生态**：深度整合系统级快速截图、专业截图标注编辑器、随动选区即时翻译、批量 OCR 转换、局域网 HTTP API 服务，以及基于纯 Rust 底层驱动的跨设备剪贴板同步系统（[MuClip](https://github.com/katomegumi1999/MuClip)）。
+- **高集成生态**：深度整合系统级快速截图、专业截图标注编辑器、自主控速长截屏、高性能屏幕录制（[MuRecorder](https://github.com/katomegumi1999/MuRecorder)）、随动选区即时翻译、批量 OCR 转换、局域网 HTTP API 服务，以及基于纯 Rust 底层驱动的跨设备剪贴板同步系统（[MuClip](https://github.com/katomegumi1999/MuClip)）。
 
 ---
 
@@ -48,38 +48,53 @@
 - **模型开箱即用与动态扫描**：直接以同级 `models/` 目录为模型库，默认 `PP-OCRv6_small`，支持 `PP-OCRv6_tiny`、`PP-OCRv6_medium` 及任意自定义 Paddle 模型，提供一键 🔄 刷新与 📂 打开目录。
 - **开箱即用与增量发布**：发布时采用 `<CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>` 策略，目标目录已有相同模型文件时自动跳过重复拷贝，既避免模型被发布清理误删，又保持极速增量发布。
 
-### 2. ✂️ 全场景截图与标注生态
+### 2. ✂️ 全场景截图与长截屏生态
 - **截图 OCR 识别 (`Alt+Z`)**：全屏高分屏 1:1 物理像素无损裁剪 ➔ 自动提取文字 ➔ 自动复制到剪贴板 ➔ 屏幕底部轻量气泡卡片提醒；
-- **表格智能分列**：识别到表格时，剪贴板同时写入 HTML 表格与纯文本两种格式——Excel / WPS / Word 粘贴即还原为真正的单元格（空单元格留空、合并表头保留跨列、列不错位），聊天窗口、搜索框、记事本则只拿到干净的纯文本，无制表符副作用。分列优先按图像中的**表格竖线**切分，没有竖线时才回退到检测框投影推断，因此紧凑排版、长数字并排的坐标表也能稳定分列，不会出现"同一张图有时分有时不分"；非表格内容行为完全不变，可随时在设置页关闭。写入结果以剪贴板实际状态为准，HTML 格式未落盘时状态栏不会显示"表格已分列"，日志会记录 `[表格分列]` 诊断行，便于区分「写入失败」与「目标程序不认 CF_HTML」；
-- **快速截图复制 (`Alt+X`)**：媲美系统级剪贴体验，框选后直接将图像写入系统剪贴板；
-- **长截图 (`Alt+L`)**：框选一块区域后照着平时习惯自己滚就行——程序连续抓帧、逐帧算出内容上移多少像素，把新露出的部分接到长图末尾，停止滚动约 0.7 秒自动收尾并写入剪贴板。不注入滚动事件、不抢焦点，滚多快由你决定；往回滚不会被误当成结束；
-- **高级截图标注编辑器 (`Alt+C`)**：
+- **表格智能分列**：识别到表格时，剪贴板同时写入 HTML 表格与纯文本两种格式——Excel / WPS / Word 粘贴即还原为真正的单元格（空单元格留空、合并表头保留跨列、列不错位），聊天窗口、搜索框、记事本则只拿到干净的纯文本，无制表符副作用。分列优先按图像中的**表格竖线**切分，没有竖线时才回退到检测框投影推断，紧凑排版、长数字并排的坐标表也能稳定分列；
+- **快速截图复制 (`Alt+C`)**：媲美系统级剪贴体验，框选后直接将图像写入系统剪贴板；
+- **高级截图标注编辑器 (`Alt+X`)**：
   - 支持矩形、椭圆、箭头、自由画笔、荧光笔、文本输入、序号徽章（递增气泡）、马赛克与高斯模糊；
+  - 标注选区工具条集成 **长截屏** 与 **区域录制** 快捷按钮，支持从当前框选区域无缝启动；
   - 支持无损撤销/重做、贴图置顶（钉在屏幕桌面）、一键保存（PNG/JPG/WEBP/BMP，自定义画质与缩放比例）、一键送检翻译；
+- **自主控速长截图 (`Alt+L`)**：
+  - 框选区域后照平时习惯平滑滚动页面，采用**动态对比度特征带嗅探与零位移优先匹配**算法，逐帧无缝拼接；
+  - 非侵入式采集：不注入任何滚动事件，不强行抢占窗口焦点，静止时不误增像素；
+  - **完全由用户自主停止**：取消倒计时自动截断，中途可随时暂停阅读，支持浮窗点击【✓ 完成】、按 <kbd>Enter</kbd>/<kbd>Space</kbd> 或再次按下快捷键快速完成并写入系统剪贴板；
 - **贴图置顶细节**：1:1 纯净无缝贴图，精准还原至截图物理坐标；贴图瞬间触发电光蓝定位提示，平时零边框、零遮挡；
 - **跨 DPI 严密对齐**：完整适配 Windows 多显示器、混杂 DPI 缩放环境，彻底杜绝模糊与错位。
 
-### 3. 🌐 选区随动即时翻译与多源大模型接入
+### 3. 🎥 高性能屏幕录制 ([MuRecorder](https://github.com/katomegumi1999/MuRecorder))
+- **纯 Rust 硬件加速录屏引擎**：由自研的 [MuRecorder](https://github.com/katomegumi1999/MuRecorder) 核心提供超轻量、低延迟的音视频录制支持（编译产物为 `Libs/x64/recorder_core.dll`）；
+- **全屏与自定义区域录制 (`Alt+R`)**：支持全屏幕捕获与框选局部任意矩形录制，并可直接从截图标注选区一键转入区域录屏；
+- **多音频设备平铺勾选与智能预设**：
+  - 平铺遍历全量系统输入输出音频设备（扬声器/耳机/麦克风），采用 100% Native AOT 兼容的 Win32 Direct COM VTable 枚举；
+  - 支持设备独立多选勾选（不勾选即静音录制）；
+  - 提供「静音 / 仅系统声音 / 仅麦克风 / 系统声音+麦克风」预设模式，并与设备勾选状态实时双向智能联动；
+- **极简悬浮录制控制栏**：半透明流光控制条、实时录制计时器、支持录制中随时展开荧光笔涂鸦标注。
+
+### 4. 🌐 选区随动即时翻译与多源大模型接入
 - **随动翻译浮窗 (`Alt+T`)**：框选屏幕任意段落，翻译浮窗就地停靠展开，OCR 提取与翻译单向流水线推送，零闪烁、不遮挡视线；
 - **浮窗位置自锁**：浮窗调整后自动保持坐标不跳动；支持悬浮 Hover 展开原文与一键复制；
 - **多翻译提供商深度适配**：
+  - **阿里云翻译 (Aliyun)**：接入阿里云机器翻译 (Alibaba Cloud MT)，支持自定义 API Endpoint 与 AccessKey 签名鉴权；
+  - **火山引擎 (Volcengine)**：接入字节跳动火山引擎机器翻译 API，支持多可用区部署与 HMAC-SHA256 签名校验；
   - **百度翻译**：全面支持最新百度大模型翻译 (`aiTextTranslate`) 与通用文本翻译；
   - **谷歌翻译**：接入 Google Cloud NMT v2，自动处理 HTML 实体转义编码；
   - **OpenAI 兼容接口**：兼容 GPT-4o-mini、DeepSeek、Qwen、通义千问、Kimi 等各种兼容端点；
 - **月度额度保护硬拦截**：本地精确统计字符与 Token 消耗，超限即时拦截，绝不多发一次云端调用。
 
-### 4. 🚀 批量 OCR 转换与 HTTP API 服务
+### 5. 🚀 批量 OCR 转换与 HTTP API 服务
 - **批量 OCR 转换 (Batch OCR)**：支持多文件、多文件夹批量导入图片与多页 PDF，支持排队并行处理，导出 TXT/JSON/Markdown 或一键复制；PDF 兼容三种形态——带文字层的直接取文本、扫描件提取内嵌位图、矢量型/文字转路径型（GIS、CAD 导出）整页栅格化后识别，不再出现"整页空白"；
 - **局域网 HTTP API 服务 (Http Api Server)**：内置轻量 HTTP 服务器，支持标准 RESTful POST 请求，便于外部脚本、自动化流程或第三方软件联动调用；局域网模式强制 Bearer 令牌鉴权，单请求体 20MB 上限、并发超限快速 429，且不接受服务端本地文件路径。
 
-### 5. 📋 跨设备剪贴板同步与协同 ([MuClip](https://github.com/katomegumi1999/MuClip))
+### 6. 📋 跨设备剪贴板同步与协同 ([MuClip](https://github.com/katomegumi1999/MuClip))
 - **纯 Rust 高性能底层驱动**：由 [MuClip](https://github.com/katomegumi1999/MuClip) 提供跨设备发现、配对与传输，编译产物为 `Libs/x64/muclip_core.dll`；
 - **端到端加密安全传输**：SPAKE2 口令认证握手（PIN 不上线）+ XChaCha20-Poly1305，每条连接使用独立的前向保密会话密钥；
-- **常用语快捷面板 (`Alt+W`)**：随时随地呼出悬浮快捷面板，双击快速上屏常用语；
+- **极速剪贴板面板 (`Alt+Q`)** 与 **常用语快捷面板 (`Alt+W`)**：随时随地呼出悬浮快捷面板，实时历史检索，双击快速上屏常用语；
 - **独立口令的加密备份与还原 (`.mubc`)**：XChaCha20-Poly1305 + PBKDF2-HMAC-SHA256（10 万轮）把历史记录、常用语、条件规则与配置归档为单个文件，口令与本地库密钥分离；导入支持「增量合并去重」与「完全覆盖」两种模式，换机迁移不必手动搬数据库；
 - **大文件安全分片传输**：128 KiB 分块流转 + 全文件 SHA-256 完整性校验。
 
-### 6. 🛡 内核级全局热键与现代设计
+### 7. 🛡 内核级全局热键与现代设计
 - **RegisterHotKey 内核机制**：热键由 Windows 内核直接维护，抗休眠、防系统拔除，零 CPU 占用，不误报；
 - **Fluent 现代磨砂界面**：基于 Avalonia 12 Fluent 主题，支持深色/浅色自适应与彩色 Emoji 字体栈；
 - **静默自动保存 (Auto-Save)**：任何配置修改后台即刻防抖落盘，不抢焦点，绝不打断当前工作流。
@@ -92,10 +107,10 @@
 | :--- | :---: | :--- |
 | **截图 OCR 识别** | `Alt + Z` | 唤起全屏框选，自动提取文字、复制并弹出通知 |
 | **截图复制** | `Alt + C` | 唤起全屏框选，直接将选中截图复制入剪贴板 |
-| **截图标注** | `Alt + X` | 唤起截图标注编辑器，涂鸦批注、保存或钉在桌面 |
-| **长截图** | `Alt + L` | 框选区域后跟随手动滚动拼接长图，停止滚动自动完成并写入剪贴板 |
-| **屏幕录制** | `Alt + R` | 唤起录屏桌面悬浮栏或开始录制（Rust 核心硬件加速） |
-| **选区翻译** | `Alt + T` | 框选屏幕段落，唤起随动浮窗就地进行双语翻译 |
+| **截图标注** | `Alt + X` | 唤起截图标注编辑器，涂鸦批注、保存或钉在桌面（支持直接发起长截屏与录屏） |
+| **长截图** | `Alt + L` | 框选区域后平滑滚动自主拼接，浮窗按钮、Enter 键或再次按快捷键完成并复制 |
+| **屏幕录制** | `Alt + R` | 唤起录屏桌面悬浮栏或开始录制（MuRecorder 硬件加速核心，支持选区/全屏/音频多选） |
+| **选区翻译** | `Alt + T` | 框选屏幕段落，唤起随动浮窗就地进行多源双语翻译 |
 | **OCR 窗格** | `Alt + V` | 框选屏幕区域，识别结果在悬浮窗格中展示，不自动复制 |
 | **随手便笺** | `Alt + N` | 呼出随手便笺浮窗，随时记录临时笔记与灵感 |
 | **小沐剪贴板** | `Alt + Q` | 呼出极速悬浮剪贴板面板，实时历史检索与一键粘贴 |
@@ -116,19 +131,24 @@ ShawMuOCR
 │   ├── Views/               # MainWindow, SettingsWindow, ScreenshotEditorWindow, Pages 等
 │   ├── OCR/                 # OcrEngineFactory, OcrModelProvider 模型解析与管理
 │   ├── Assets/              # 图标、Logo、矢量资源与样式字典
-│   └── Libs/x64/            # muclip_core.dll 唯一权威原生依赖
+│   └── Libs/x64/            # muclip_core.dll 与 recorder_core.dll 唯一权威原生依赖
 │
 ├── src/ShawMuOCR.Core (核心领域模型与通用服务抽象)
 │   ├── OCR/                 # IOcrEngine 契约、PaddleOcrV6Engine 推理、几何网格拓扑排序
-│   ├── Translation/         # ITranslationService、百度/谷歌/OpenAI 翻译 Provider、额度管理
-│   ├── Capture/             # 截屏契约、ScreenRect 物理边界、图片文档模型
+│   ├── Translation/         # ITranslationService、阿里云/火山引擎/百度/谷歌/OpenAI 翻译 Provider、额度管理
+│   ├── Capture/             # 截屏契约、ScreenRect 物理边界、长截图 VerticalShiftEstimator
 │   ├── Hotkey/              # 跨平台快捷键手势与解析定义
 │   └── Settings/            # AppSettings 配置模型与 JsonSettingsService
 │
 ├── src/ShawMuOCR.Windows (Windows 原生底层集成)
-│   ├── ScreenCapture/       # Win32 GDI+ 原生截图、多屏 DPI 自适应捕获
+│   ├── ScreenCapture/       # Win32 GDI+ 原生截图、LongScreenshotCapturer 自适应长截屏
 │   ├── Hotkey/              # Win32 RegisterHotKey 内核级全局热键与消息循环线程
 │   └── Clipboard/           # 托管与 Win32 原生剪贴板通信服务
+│
+├── src/MuRecorder (高性能硬件加速屏幕录制系统)
+│   ├── Interop/             # Rust 原生 FFI 绑定 (recorder_core.dll)
+│   ├── Audio/               # 纯 Win32 Direct COM VTable 音频设备枚举与选择模型
+│   └── ViewModels/ & Views/ # 录屏配置界面、悬浮控制条与屏幕标注涂鸦层
 │
 ├── src/MuClip (局域网跨设备剪贴板与文件同步系统)
 │   ├── Interop/             # Rust 原生 FFI 绑定 (MuClipNative, MuClipSync, BinarySpanReader)
@@ -140,7 +160,7 @@ ShawMuOCR
 │   └── agents.md            # AI 协同开发与代码维护指南 (必读)
 │
 └── tests/ShawMuOCR.Tests (自动化单元测试套件)
-    └── 345 项涵盖 OCR 推理、GPU/CPU 引擎、翻译拦截、截图标注图层、自动保存与 MuClip 握手等全绿测试
+    └── 涵盖 OCR 推理、GPU/CPU 引擎、长截屏位移估计、音频枚举、翻译拦截、截图标注图层与 MuClip 握手等全绿测试
 ```
 
 ---
@@ -167,13 +187,13 @@ dotnet run -c Release
 
 ### 3. 执行自动化单元测试
 ```bash
-# 日常改动用快档：跳过真实推理与内存池压力测试，约 3 秒
+# 日常改动用快档：跳过真实推理与内存池压力测试，约 4 秒
 dotnet test --filter "Category!=Slow"
 
 # 只跑受影响的模块（示例）
-dotnet test --filter "FullyQualifiedName~OcrTableLayout"
+dotnet test --filter "FullyQualifiedName~LongScreenshot|FullyQualifiedName~AudioDeviceEnumerator"
 
-# 发布 / 提交前跑全量 345 项（含推理速度基准与网络配对测试，约 2 分钟）
+# 发布 / 提交前跑全量（含推理速度基准与网络配对测试，约 2 分钟）
 dotnet test
 ```
 
@@ -206,7 +226,7 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
 ## 🤝 贡献与开发者文档
 
 - 开发者与 AI 协作规范请参阅：**[docs/agents.md](docs/agents.md)**
-- 欢迎提交 Issue 与 Pull Request！请确保提交前执行 `dotnet test` 并保证 345 项测试全部通过。
+- 欢迎提交 Issue 与 Pull Request！请确保提交前执行测试门禁并保证用例全部通过。
 
 ---
 
@@ -221,6 +241,7 @@ dotnet publish ShawMuOCR.csproj -c Release -r win-x64 --self-contained
 - [PdfPig](https://github.com/UglyToad/PdfPig) - 纯托管的高性能 PDF 文档解析利器
 - [CommunityToolkit.Mvvm](https://github.com/CommunityToolkit/dotnet) - 简洁高效的现代化 MVVM 工具箱
 - [MuClip](https://github.com/katomegumi1999/MuClip) - 本项目自研的纯 Rust 跨设备剪贴板同步与加密文件互传引擎（已开源）
+- [MuRecorder](https://github.com/katomegumi1999/MuRecorder) - 本项目自研的纯 Rust 高性能硬件加速桌面屏幕录制引擎（已开源）
 
 ---
 
