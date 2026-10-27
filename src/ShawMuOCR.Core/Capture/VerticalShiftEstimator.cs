@@ -94,26 +94,54 @@ public static class VerticalShiftEstimator
             return ShiftEstimate.Rejected("帧过小，无法估计位移");
         }
 
-        int bandTop = (int)(height * BandTopRatio);
         int bandHeight = Math.Max(4, (int)(height * BandHeightRatio));
-        if (bandTop + bandHeight > height)
-        {
-            bandTop = Math.Max(0, height - bandHeight);
-        }
-
         int maxCandidateTop = height - bandHeight;
         if (maxCandidateTop <= 0)
         {
             return ShiftEstimate.Rejected("帧高不足一个模板带");
         }
 
+        // 尝试在 0.35 ~ 0.75 帧高范围内挑选最具特征（亮度对比度最大）的模板带
+        // 优先在下半部分（0.65），若该区域为纯白/纯色留白则向上寻找具有文本/边缘的带
+        int defaultBandTop = Math.Clamp((int)(height * BandTopRatio), 0, maxCandidateTop);
+        int bestBandTop = defaultBandTop;
+        int bestBandContrast = -1;
+        byte[]? bestPreviousBandProfile = null;
+
+        int[] trialTops = new[]
+        {
+            defaultBandTop,
+            Math.Clamp((int)(height * 0.50), 0, maxCandidateTop),
+            Math.Clamp((int)(height * 0.35), 0, maxCandidateTop),
+            Math.Clamp((int)(height * 0.70), 0, maxCandidateTop)
+        };
+
+        foreach (int trial in trialTops)
+        {
+            byte[] prof = RowProfile(previous, ProfileStepX, trial, bandHeight);
+            int minP = 255, maxP = 0;
+            for (int i = 0; i < prof.Length; i++)
+            {
+                if (prof[i] < minP) minP = prof[i];
+                if (prof[i] > maxP) maxP = prof[i];
+            }
+            int contrast = maxP - minP;
+            if (contrast > bestBandContrast)
+            {
+                bestBandContrast = contrast;
+                bestBandTop = trial;
+                bestPreviousBandProfile = prof;
+                if (contrast >= 20) break; // 已经有足够明显的文本/边缘对比度
+            }
+        }
+
+        int bandTop = bestBandTop;
+        byte[] previousBandProfile = bestPreviousBandProfile ?? RowProfile(previous, ProfileStepX, bandTop, bandHeight);
+
         byte[] nextProfile;
-        byte[] previousBandProfile;
         try
         {
             nextProfile = RowProfile(next, ProfileStepX, 0, height);
-            byte[] previousProfile = RowProfile(previous, ProfileStepX, bandTop, bandHeight);
-            previousBandProfile = previousProfile;
         }
         catch (Exception ex)
         {
@@ -139,8 +167,6 @@ public static class VerticalShiftEstimator
         }
 
         // 找出投影分数的最小值，再把落进容差范围的位置全部收为候选。
-        // 不能只取「前 K 名」：等行距内容会让很多位置的投影分数完全相等，
-        // 固定 K 名会按扫描顺序吃掉前面的并列项，真实位移反而进不了候选表。
         double minProfileScore = double.MaxValue;
         for (int top = 0; top <= maxCandidateTop; top++)
         {
@@ -151,8 +177,14 @@ public static class VerticalShiftEstimator
         }
 
         double tolerance = CandidateToleranceBase + minProfileScore * CandidateToleranceRatio;
-        // 候选表为空或还没装满时直接用真实最小值兜底，保证至少有一个候选
         var candidates = new List<(int Top, double Score)>(MaxCandidates);
+
+        // 关键防护：确保 bandTop (对应位移 0) 只要在容差范围内，必定进入候选表且优先核验
+        if (bandTop <= maxCandidateTop && profileScores[bandTop].Score <= minProfileScore + tolerance)
+        {
+            candidates.Add(profileScores[bandTop]);
+        }
+
         for (int top = 0; top <= maxCandidateTop; top++)
         {
             if (profileScores[top].Score > minProfileScore + tolerance)
@@ -202,7 +234,8 @@ public static class VerticalShiftEstimator
             }
 
             verified.Add((top, score));
-            if (double.IsNaN(bestScore) || score < bestScore)
+            // 若分数更优，或者与最优分数打平/几乎打平（容差 0.5 灰度）且该候选为零位移 (top == bandTop)，优先判定为静止
+            if (double.IsNaN(bestScore) || score < bestScore || (Math.Abs(score - bestScore) <= 0.5 && top == bandTop))
             {
                 bestScore = score;
                 bestTop = top;
@@ -236,12 +269,22 @@ public static class VerticalShiftEstimator
             return new ShiftEstimate(shift, false, bestScore, runnerUp, $"内容差异过大（平均差 {bestScore:F1}），可能窗口已切换");
         }
 
-        if (!double.IsNaN(runnerUp) && runnerUp > 0 && bestScore > runnerUp * ConfidenceRatio)
+        // 1. 若候选在 bandTop（位移 0）处几乎完美重合（平均差极小），判定为可信的静止帧
+        if (shift == 0 && bestScore <= CandidateToleranceBase + 2.0)
         {
-            return new ShiftEstimate(shift, false, bestScore, runnerUp, "存在多个同样匹配的位置，位移不可信");
+            return new ShiftEstimate(0, true, bestScore, runnerUp, "ok");
         }
 
-        // 匹配位置被顶到搜索窗口边缘，说明真实位移可能超过可检测上限，此时给出的是钳制值而非真实值
+        // 2. 歧义性检查：若次优解与最优解分数相当（包括混叠与大差异噪声），说明无法确切唯一定位位移
+        if (!double.IsNaN(runnerUp))
+        {
+            if (runnerUp <= bestScore || bestScore >= runnerUp * ConfidenceRatio)
+            {
+                return new ShiftEstimate(shift, false, bestScore, runnerUp, "存在多个同样匹配的位置，位移不可信");
+            }
+        }
+
+        // 3. 匹配位置被顶到搜索窗口边缘，说明真实位移可能超过可检测上限，此时给出的是钳制值而非真实值
         if (bestTop <= 0)
         {
             return new ShiftEstimate(shift, false, bestScore, runnerUp, "位移达到可检测上限，实际滚动可能更大");

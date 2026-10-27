@@ -54,6 +54,11 @@ public partial class LongScreenshotFloatingWindow : Window
             _onCancel?.Invoke();
             e.Handled = true;
         }
+        else if (e.Key is Key.Enter or Key.Space)
+        {
+            _onStop?.Invoke();
+            e.Handled = true;
+        }
     }
 
     private void ApplyWindowStyles()

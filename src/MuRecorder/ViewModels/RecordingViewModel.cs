@@ -184,6 +184,15 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     private NamedOption<EncoderPreference>? _selectedEncoder;
 
     [ObservableProperty]
+    private NamedOption<AudioPreset>? _selectedAudioPreset;
+
+    [ObservableProperty]
+    private string _audioSelectedSummary = "未勾选设备 (静音录制)";
+
+    [ObservableProperty]
+    private bool _hasAudioDevices;
+
+    [ObservableProperty]
     private NamedOption<AudioSourceType>? _selectedAudioSource;
 
     [ObservableProperty]
@@ -436,60 +445,218 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    private bool _isUpdatingAudioPreset;
+
+    partial void OnSelectedAudioPresetChanged(NamedOption<AudioPreset>? value)
+    {
+        if (_isUpdatingAudioPreset || value == null) return;
+        ApplyAudioPreset(value.Value);
+    }
+
+    /// <summary>应用音频预设，自动勾选/取消勾选对应默认设备。</summary>
+    public void ApplyAudioPreset(AudioPreset preset)
+    {
+        _isUpdatingAudioPreset = true;
+        try
+        {
+            switch (preset)
+            {
+                case AudioPreset.None:
+                    foreach (var dev in AudioDeviceList)
+                    {
+                        dev.IsSelected = false;
+                    }
+                    break;
+
+                case AudioPreset.System:
+                    var defaultRender = AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Render && d.IsDefault)
+                        ?? AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Render);
+
+                    foreach (var dev in AudioDeviceList)
+                    {
+                        dev.IsSelected = dev == defaultRender;
+                    }
+                    break;
+
+                case AudioPreset.Microphone:
+                    var defaultCapture = AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Capture && d.IsDefault)
+                        ?? AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Capture);
+
+                    foreach (var dev in AudioDeviceList)
+                    {
+                        dev.IsSelected = dev == defaultCapture;
+                    }
+                    break;
+
+                case AudioPreset.SystemAndMic:
+                    var defRender = AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Render && d.IsDefault)
+                        ?? AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Render);
+                    var defCapture = AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Capture && d.IsDefault)
+                        ?? AudioDeviceList.FirstOrDefault(d => d.Flow == AudioDeviceFlow.Capture);
+
+                    foreach (var dev in AudioDeviceList)
+                    {
+                        dev.IsSelected = dev == defRender || dev == defCapture;
+                    }
+                    break;
+
+                case AudioPreset.Custom:
+                    // 保持当前勾选不变
+                    break;
+            }
+        }
+        finally
+        {
+            _isUpdatingAudioPreset = false;
+        }
+
+        UpdateAudioSummaryAndPresetFromList();
+    }
+
+    /// <summary>当设备勾选状态变动时触发汇总更新与预设推断。</summary>
+    private void OnAudioDeviceSelectionChanged()
+    {
+        if (_isUpdatingAudioPreset) return;
+        UpdateAudioSummaryAndPresetFromList();
+    }
+
+    private void UpdateAudioSummaryAndPresetFromList()
+    {
+        var selected = AudioDeviceList.Where(d => d.IsSelected).ToList();
+        var selectedRenders = selected.Where(d => d.Flow == AudioDeviceFlow.Render).ToList();
+        var selectedCaptures = selected.Where(d => d.Flow == AudioDeviceFlow.Capture).ToList();
+
+        if (selected.Count == 0)
+        {
+            AudioSelectedSummary = "未勾选设备 (静音录制)";
+        }
+        else
+        {
+            AudioSelectedSummary = $"已勾选 {selected.Count} 个设备 (输出 {selectedRenders.Count}，输入 {selectedCaptures.Count})";
+        }
+
+        // 同步兼容历史字段
+        if (selectedRenders.Count > 0)
+        {
+            SelectedAudioDevice = new AudioDeviceInfo(selectedRenders[0].Id, selectedRenders[0].Name, AudioDeviceFlow.Render, selectedRenders[0].IsDefault);
+            SelectedAudioSource = AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.System);
+        }
+        else if (selectedCaptures.Count > 0)
+        {
+            SelectedAudioDevice = new AudioDeviceInfo(selectedCaptures[0].Id, selectedCaptures[0].Name, AudioDeviceFlow.Capture, selectedCaptures[0].IsDefault);
+            SelectedAudioSource = AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.Device);
+        }
+        else
+        {
+            SelectedAudioDevice = null;
+            SelectedAudioSource = AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.None);
+        }
+
+        // 推断并同步预设显示（防止递归循环）
+        if (!_isUpdatingAudioPreset)
+        {
+            _isUpdatingAudioPreset = true;
+            try
+            {
+                AudioPreset matchingPreset;
+                if (selected.Count == 0)
+                {
+                    matchingPreset = AudioPreset.None;
+                }
+                else if (selectedRenders.Count == 1 && selectedCaptures.Count == 0 &&
+                         (selectedRenders[0].IsDefault || AudioDeviceList.Count(d => d.Flow == AudioDeviceFlow.Render) == 1))
+                {
+                    matchingPreset = AudioPreset.System;
+                }
+                else if (selectedCaptures.Count == 1 && selectedRenders.Count == 0 &&
+                         (selectedCaptures[0].IsDefault || AudioDeviceList.Count(d => d.Flow == AudioDeviceFlow.Capture) == 1))
+                {
+                    matchingPreset = AudioPreset.Microphone;
+                }
+                else if (selectedRenders.Count == 1 && selectedCaptures.Count == 1 &&
+                         (selectedRenders[0].IsDefault || AudioDeviceList.Count(d => d.Flow == AudioDeviceFlow.Render) == 1) &&
+                         (selectedCaptures[0].IsDefault || AudioDeviceList.Count(d => d.Flow == AudioDeviceFlow.Capture) == 1))
+                {
+                    matchingPreset = AudioPreset.SystemAndMic;
+                }
+                else
+                {
+                    matchingPreset = AudioPreset.Custom;
+                }
+
+                SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == matchingPreset)
+                    ?? AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.Custom);
+            }
+            finally
+            {
+                _isUpdatingAudioPreset = false;
+            }
+        }
+    }
+
+    /// <summary>枚举所有活跃的音频设备（输出与输入），更新勾选列表。</summary>
+    [RelayCommand]
+    public void RefreshAudioDevices()
+    {
+        var prevSelectedIds = AudioDeviceList
+            .Where(d => d.IsSelected)
+            .Select(d => d.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var item in AudioDeviceList)
+        {
+            item.SelectionChanged -= OnAudioDeviceSelectionChanged;
+        }
+        AudioDeviceList.Clear();
+
+        var allDevices = AudioDeviceEnumerator.EnumerateAllDevices();
+        foreach (var dev in allDevices)
+        {
+            bool isSelected = prevSelectedIds.Contains(dev.Id);
+            var item = new SelectableAudioDevice(dev, isSelected);
+            item.SelectionChanged += OnAudioDeviceSelectionChanged;
+            AudioDeviceList.Add(item);
+        }
+
+        HasAudioDevices = AudioDeviceList.Count > 0;
+
+        if (prevSelectedIds.Count == 0)
+        {
+            if (SelectedAudioPreset == null || SelectedAudioPreset.Value == AudioPreset.None)
+            {
+                SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.None)
+                    ?? AudioPresetOptions.FirstOrDefault();
+                ApplyAudioPreset(AudioPreset.None);
+            }
+            else
+            {
+                ApplyAudioPreset(SelectedAudioPreset.Value);
+            }
+        }
+        else
+        {
+            UpdateAudioSummaryAndPresetFromList();
+        }
+    }
+
     partial void OnSelectedAudioSourceChanged(NamedOption<AudioSourceType>? value)
     {
         var source = value?.Value ?? AudioSourceType.None;
         if (source == AudioSourceType.None)
         {
             IsAudioDeviceSelectorVisible = false;
-            AudioDevices.Clear();
-            SelectedAudioDevice = null;
+            SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.None);
         }
-        else
+        else if (source == AudioSourceType.System)
         {
             IsAudioDeviceSelectorVisible = true;
-            RefreshAudioDeviceList(source);
+            SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.System);
         }
-    }
-
-    /// <summary>重新枚举并刷新当前分类下的音频设备列表。</summary>
-    [RelayCommand]
-    public void RefreshAudioDevices()
-    {
-        var source = SelectedAudioSource?.Value ?? AudioSourceType.None;
-        if (source != AudioSourceType.None)
+        else if (source == AudioSourceType.Device)
         {
-            RefreshAudioDeviceList(source);
+            IsAudioDeviceSelectorVisible = true;
+            SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.Microphone);
         }
-    }
-
-    private void RefreshAudioDeviceList(AudioSourceType source)
-    {
-        var prevId = SelectedAudioDevice?.Id;
-        AudioDevices.Clear();
-
-        IReadOnlyList<AudioDeviceInfo> list = source switch
-        {
-            AudioSourceType.System => AudioDeviceEnumerator.EnumerateRenderDevices(),
-            AudioSourceType.Device => AudioDeviceEnumerator.EnumerateCaptureDevices(),
-            _ => Array.Empty<AudioDeviceInfo>()
-        };
-
-        AudioDeviceLabel = source switch
-        {
-            AudioSourceType.System => "系统扬声器 / 耳机 (内录输出)",
-            AudioSourceType.Device => "麦克风设备 (人声输入)",
-            _ => "音频设备"
-        };
-
-        foreach (var dev in list)
-        {
-            AudioDevices.Add(dev);
-        }
-
-        SelectedAudioDevice = AudioDevices.FirstOrDefault(d => d.Id == prevId)
-            ?? AudioDevices.FirstOrDefault(d => d.IsDefault)
-            ?? AudioDevices.FirstOrDefault();
     }
 
     // ---------- 状态与统计 ----------
@@ -532,6 +699,10 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<NamedOption<uint>> BitrateOptions { get; } = new();
 
     public ObservableCollection<NamedOption<EncoderPreference>> EncoderOptions { get; } = new();
+
+    public ObservableCollection<NamedOption<AudioPreset>> AudioPresetOptions { get; } = new();
+
+    public ObservableCollection<SelectableAudioDevice> AudioDeviceList { get; } = new();
 
     public ObservableCollection<NamedOption<AudioSourceType>> AudioSourceOptions { get; } = new();
 
@@ -700,6 +871,18 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             ?? EncoderOptions.FirstOrDefault(o => o.Value == EncoderPreference.GpuHevc)
             ?? EncoderOptions.FirstOrDefault();
 
+        if (AudioPresetOptions.Count == 0)
+        {
+            AudioPresetOptions.Add(new NamedOption<AudioPreset>(AudioPreset.None, "🔇 不录声音 (静音录制)"));
+            AudioPresetOptions.Add(new NamedOption<AudioPreset>(AudioPreset.System, "🔊 仅系统声音 (默认扬声器)"));
+            AudioPresetOptions.Add(new NamedOption<AudioPreset>(AudioPreset.Microphone, "🎙️ 仅麦克风 (默认麦克风)"));
+            AudioPresetOptions.Add(new NamedOption<AudioPreset>(AudioPreset.SystemAndMic, "🎧 系统声音 + 麦克风"));
+            AudioPresetOptions.Add(new NamedOption<AudioPreset>(AudioPreset.Custom, "⚙️ 自定义勾选"));
+        }
+
+        SelectedAudioPreset ??= AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.None)
+            ?? AudioPresetOptions.FirstOrDefault();
+
         if (AudioSourceOptions.Count == 0)
         {
             AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.None, "🔇 无音频 (静音录制)"));
@@ -709,6 +892,8 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
         SelectedAudioSource ??= AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.None)
             ?? AudioSourceOptions.FirstOrDefault();
+
+        RefreshAudioDevices();
 
         UpdateRegionText();
     }
@@ -828,6 +1013,23 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
         try
         {
+            var selectedRenders = AudioDeviceList.Where(d => d.IsSelected && d.Flow == AudioDeviceFlow.Render).ToList();
+            var selectedCaptures = AudioDeviceList.Where(d => d.IsSelected && d.Flow == AudioDeviceFlow.Capture).ToList();
+
+            AudioSourceType targetAudioSource = AudioSourceType.None;
+            string? targetAudioDeviceId = null;
+
+            if (selectedRenders.Count > 0)
+            {
+                targetAudioSource = AudioSourceType.System;
+                targetAudioDeviceId = selectedRenders[0].Id;
+            }
+            else if (selectedCaptures.Count > 0)
+            {
+                targetAudioSource = AudioSourceType.Device;
+                targetAudioDeviceId = selectedCaptures[0].Id;
+            }
+
             var options = new RecordingOptions
             {
                 Region = bounds,
@@ -836,8 +1038,8 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
                 Encoder = SelectedEncoder?.Value ?? EncoderPreference.GpuHevc,
                 CaptureCursor = true,
                 OutputPath = output,
-                AudioSource = SelectedAudioSource?.Value ?? AudioSourceType.None,
-                AudioDeviceId = SelectedAudioDevice?.Id,
+                AudioSource = targetAudioSource,
+                AudioDeviceId = targetAudioDeviceId,
             };
 
             await _service.StartAsync(options);

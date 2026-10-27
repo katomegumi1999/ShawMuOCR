@@ -48,7 +48,7 @@
                         CornerRadius="14"
                         Padding="14,4"
                         FontSize="12"
-                        ToolTip.Tip="立即完成并保存已滚动的长截图到剪贴板 (或再次按 Alt+L)" />
+                        ToolTip.Tip="立即完成并保存已滚动的长截屏到剪贴板 (点击此按钮、按 Enter 或再次按 Alt+L)" />
 
                 <Button Name="CancelButton"
                         Content="✕ 取消"

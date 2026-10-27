@@ -1,6 +1,7 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MuRecorder.ViewModels"
+             xmlns:audio="using:MuRecorder.Audio"
              x:Class="ShawMuOCR.Views.Pages.RecordingPageView"
              x:DataType="vm:RecordingViewModel">
 
@@ -202,24 +203,65 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
 
-                        <!-- 音频来源与设备选择 -->
-                        <StackPanel Spacing="6">
-                            <TextBlock Text="音频录制" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                            <ComboBox ItemsSource="{Binding AudioSourceOptions}"
-                                      SelectedItem="{Binding SelectedAudioSource}"
-                                      HorizontalAlignment="Stretch" />
+                        <!-- 音频预设与设备多选列表 -->
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="音频录制" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="🔄 刷新设备" FontSize="11" Padding="8,3"
+                                        Command="{Binding RefreshAudioDevicesCommand}" />
+                            </Grid>
 
-                            <!-- 具体音频硬件设备选择（扬声器内录或麦克风） -->
-                            <StackPanel Spacing="6" Margin="0,4,0,0" IsVisible="{Binding IsAudioDeviceSelectorVisible}">
-                                <Grid ColumnDefinitions="*,Auto">
-                                    <TextBlock Grid.Column="0" Text="{Binding AudioDeviceLabel}" FontSize="12"
-                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" />
-                                    <Button Grid.Column="1" Content="刷新设备" FontSize="11" Padding="6,2"
-                                            Command="{Binding RefreshAudioDevicesCommand}" />
-                                </Grid>
-                                <ComboBox ItemsSource="{Binding AudioDevices}"
-                                          SelectedItem="{Binding SelectedAudioDevice}"
+                            <!-- 预设选择（快速配置） -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="音频预设" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                                <ComboBox ItemsSource="{Binding AudioPresetOptions}"
+                                          SelectedItem="{Binding SelectedAudioPreset}"
                                           HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <!-- 所有设备平铺遍历列表（带 CheckBox 多选勾选） -->
+                            <StackPanel Spacing="4">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="音频设备列表（未勾选则不录声音）" FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding AudioSelectedSummary}" FontSize="11"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                                </Grid>
+
+                                <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                        BorderThickness="1"
+                                        CornerRadius="6"
+                                        Padding="8">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="未检测到活跃的音频设备（声卡未就绪）"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   IsVisible="{Binding !HasAudioDevices}"
+                                                   Margin="4,6" />
+                                        <ItemsControl ItemsSource="{Binding AudioDeviceList}"
+                                                      IsVisible="{Binding HasAudioDevices}">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="audio:SelectableAudioDevice">
+                                                    <Border Padding="4,3" Margin="0,1" CornerRadius="4">
+                                                        <CheckBox IsChecked="{Binding IsSelected}" HorizontalAlignment="Stretch">
+                                                            <Grid ColumnDefinitions="Auto,Auto,*" Margin="4,0,0,0">
+                                                                <TextBlock Grid.Column="0" Text="{Binding FlowIcon}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                                <Border Grid.Column="1" Background="{DynamicResource SubtleFillColorTertiaryBrush}"
+                                                                        CornerRadius="3" Padding="4,1" Margin="0,0,8,0" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding FlowLabel}" FontSize="10"
+                                                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                                </Border>
+                                                                <TextBlock Grid.Column="2" Text="{Binding DisplayName}" FontSize="12"
+                                                                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                                            </Grid>
+                                                        </CheckBox>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                         </StackPanel>
 

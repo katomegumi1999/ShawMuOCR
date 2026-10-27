@@ -24,10 +24,10 @@ internal sealed record LongScreenshotTimings(
     int MaxFrames,
     TimeSpan TargetFrameInterval)
 {
-    /// <summary>生产默认值：等首滚 12 秒、静止 700ms 收尾、启动后缓冲 120ms、连续 8 帧失败放弃、最多 1500 帧、帧间隔上限 12ms。</summary>
+    /// <summary>生产默认值：不设静止自动收尾（完全由用户点击完成或快捷键控制）、不设首滚超时、启动缓冲 120ms、连续 8 帧失败放弃、最多 1500 帧、帧间隔上限 12ms。</summary>
     public static LongScreenshotTimings Default { get; } = new(
-        FirstScrollTimeout: TimeSpan.FromSeconds(12),
-        IdleStopDelay: TimeSpan.FromMilliseconds(700),
+        FirstScrollTimeout: TimeSpan.Zero,
+        IdleStopDelay: TimeSpan.Zero,
         StartupDelay: TimeSpan.FromMilliseconds(120),
         MaxConsecutiveFailures: 8,
         MaxFrames: 1500,
@@ -124,7 +124,7 @@ public sealed class LongScreenshotCapturer
                     return new LongScreenshotResult(null, 0, 0, "首帧采集失败");
                 }
 
-                onStatus?.Invoke("长截图进行中，请滚动目标窗口；停止滚动后会自动结束");
+                onStatus?.Invoke("长截屏进行中，请滚动目标窗口；完成后点击【✓ 完成】或按快捷键结束");
 
                 while (!_stopRequested)
                 {
@@ -166,7 +166,7 @@ public sealed class LongScreenshotCapturer
                                 stitcher.TryAppendScrolled(current.Bitmap, estimate.ShiftPixels, out _);
                                 hasMovement = true;
                                 lastMovement = clock.Elapsed;
-                                onStatus?.Invoke($"已拼接 {stitcher.FrameCount} 帧 · {stitcher.RenderedHeight} 像素");
+                                onStatus?.Invoke($"已拼接 {stitcher.FrameCount} 帧 · {stitcher.RenderedHeight} 像素（完成后请点击【完成】）");
                             }
                             else if (estimate.ShiftPixels < 0)
                             {
@@ -182,18 +182,21 @@ public sealed class LongScreenshotCapturer
                             break;
                         }
 
-                        // 三重退出：一直不滚（超时）、滚完停手（空闲）、拼到高度上限（上一分支）
-                        var idle = clock.Elapsed - lastMovement;
-                        if (!hasMovement)
+                        // 退出判定：若配置了超时阈值（如单元测试）则按超时退出；默认完全由用户主动控制（_stopRequested / _cancelRequested）
+                        if (_timings.FirstScrollTimeout > TimeSpan.Zero && !hasMovement)
                         {
                             if (clock.Elapsed > _timings.FirstScrollTimeout)
                             {
                                 return new LongScreenshotResult(null, 0, 0, "等待滚动超时，没有检测到画面滚动");
                             }
                         }
-                        else if (idle > _timings.IdleStopDelay)
+                        else if (_timings.IdleStopDelay > TimeSpan.Zero && hasMovement)
                         {
-                            break;
+                            var idle = clock.Elapsed - lastMovement;
+                            if (idle > _timings.IdleStopDelay)
+                            {
+                                break;
+                            }
                         }
                     }
                     finally
