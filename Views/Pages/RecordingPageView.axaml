@@ -24,31 +24,6 @@
                 </StackPanel>
             </Border>
 
-            <!-- 头部说明卡片 -->
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="20,16">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <Image Source="avares://ShawMuOCR/Assets/icon-recording.png" Width="36" Height="36" VerticalAlignment="Center" Margin="0,0,16,0"
-                           RenderOptions.BitmapInterpolationMode="HighQuality" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                        <TextBlock Text="屏幕录制" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock Text="DXGI 桌面复制 + GPU/CPU 硬件加速编码 + MP4 faststart 流式封装，全部在 Rust 原生核心内闭环；界面只做来源选择与配置组装。"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                        <Button Content="✏️ 屏幕标注" Command="{Binding ToggleAnnotationCommand}"
-                                ToolTip.Tip="在屏幕上开启实时画笔、箭头与框选标注（录制视频可见，工具栏隐形）" VerticalAlignment="Center" Padding="12,6" />
-                        <Button Content="📌 录屏悬浮条" Command="{Binding ToggleFloatingBarCommand}"
-                                ToolTip.Tip="显示/隐藏录屏桌面悬浮栏（全局快捷键：Alt+R）" VerticalAlignment="Center" Padding="12,6" />
-                    </StackPanel>
-                </Grid>
-            </Border>
-
             <Grid ColumnDefinitions="*,*" Margin="0,4">
 
                 <!-- 左列：录制设置 -->
