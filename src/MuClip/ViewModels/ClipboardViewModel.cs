@@ -703,6 +703,7 @@ public partial class ClipboardViewModel : ObservableObject
         _service.IncomingPairRequested += OnIncomingPairRequested;
         _service.PairEstablished += OnPairEstablished;
         _service.RemotePeerUnpaired += OnRemotePeerUnpaired;
+        _service.RemotePeerAuthRejected += OnRemotePeerAuthRejected;
         _service.FileProgress += OnFileProgress;
         _service.FileCompleted += OnFileCompleted;
         _service.FileOfferReceived += OnFileOfferReceived;
@@ -870,6 +871,21 @@ public partial class ClipboardViewModel : ObservableObject
             PairingPin = _service.PairingPin;
             StatusMessage = $"🎉 配对成功！已与【{deviceName}】建立局域网加密连接";
             RefreshDevicesCollections();
+        });
+    }
+
+    /// <summary>
+    /// 配对认证连续被拒：只提示，不删数据。
+    ///
+    /// 文案刻意写成「建议重新配对」而不是「配对已失效」——因为 core 分不清是对端解配了、
+    /// 还是两边密钥不一致（例如对方重装过）。前者重新配对即可，后者同样重新配对即可，
+    /// 所以引导动作是同一个，但措辞不能把可能性说死。
+    /// </summary>
+    private void OnRemotePeerAuthRejected(string deviceName, int streak)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            StatusMessage = $"⚠️ 与设备【{deviceName}】的加密认证连续失败 {streak} 次，建议重新配对或删除该设备";
         });
     }
 

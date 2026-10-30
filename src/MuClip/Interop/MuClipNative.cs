@@ -350,6 +350,22 @@ internal static unsafe partial class MuClipNative
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial void SyncSetUnpairCallback(IntPtr handle, IntPtr callbackPtr, IntPtr userData);
 
+    /// <summary>
+    /// 同一对端连续被 PFS 会话握手拒绝时的提示回调（core 只在连续第 3 次触发一次，
+    /// 期间任意一次同步成功即清零）。注意：这只是提示，core **不会**因此解除配对 ——
+    /// SyncRejected 是笼统的认证失败，可能是对端已解配、密钥不一致或端点串台。
+    /// </summary>
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate void NativeAuthRejectedCallback(
+        IntPtr deviceId,
+        uint streak,
+        IntPtr userData
+    );
+
+    [LibraryImport(DllName, EntryPoint = "muclip_sync_set_auth_rejected_callback")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial void SyncSetAuthRejectedCallback(IntPtr handle, IntPtr callbackPtr, IntPtr userData);
+
     // -------------------------------------------------------------------------
     // Memory Free & High-Speed Encrypted File Transfer FFI
     // -------------------------------------------------------------------------

@@ -26,6 +26,7 @@ public interface IClipboardSyncService
     event Action<string, string, string, string>? IncomingPairRequested;
     event Action<string, string>? PairEstablished;
     event Action<string, string>? RemotePeerUnpaired;
+    event Action<string, int>? RemotePeerAuthRejected;
 
     int Broadcast(string content);
     void UpdatePairingPin(string pin);

@@ -20,6 +20,22 @@ public class RemoteClipboardEventArgs : EventArgs
     }
 }
 
+/// <summary>
+/// 会话认证连续被拒的提示（`PeerAuthRejected` 事件的载荷）。
+/// 只作提示用途：配对与密钥都不动，是否重新配对由用户决定。
+/// </summary>
+public class PeerAuthRejectedEventArgs : EventArgs
+{
+    public string DeviceId { get; }
+    public int Streak { get; }
+
+    public PeerAuthRejectedEventArgs(string deviceId, int streak)
+    {
+        DeviceId = deviceId;
+        Streak = streak;
+    }
+}
+
 public class IncomingPairRequestEventArgs : EventArgs
 {
     public string RequestId { get; }
@@ -84,6 +100,8 @@ public sealed class MuClipSync : IDisposable
     private readonly GCHandle _pairSuccessCallbackHandle;
     private readonly MuClipNative.NativeUnpairCallback _unpairCallback;
     private readonly GCHandle _unpairCallbackHandle;
+    private readonly MuClipNative.NativeAuthRejectedCallback _authRejectedCallback;
+    private readonly GCHandle _authRejectedCallbackHandle;
     private readonly MuClipNative.NativeFileProgressCallback _fileProgressCallback;
     private readonly GCHandle _fileProgressCallbackHandle;
     private readonly MuClipNative.NativeFileCompletedCallback _fileCompletedCallback;
@@ -96,6 +114,7 @@ public sealed class MuClipSync : IDisposable
     public event EventHandler<PairEstablishedEventArgs>? PairEstablished;
     public event EventHandler<PairRequestEventArgs>? PairRequestReceived;
     public event EventHandler<string>? PeerUnpaired;
+    public event EventHandler<PeerAuthRejectedEventArgs>? PeerAuthRejected;
     public event EventHandler<FileProgressEvent>? FileProgress;
     public event EventHandler<FileCompletedEvent>? FileCompleted;
     public event EventHandler<FileOfferEvent>? FileOfferReceived;
@@ -160,6 +179,11 @@ public sealed class MuClipSync : IDisposable
         IntPtr unpairCbPtr = Marshal.GetFunctionPointerForDelegate(_unpairCallback);
         MuClipNative.SyncSetUnpairCallback(_handle, unpairCbPtr, IntPtr.Zero);
 
+        _authRejectedCallback = OnNativePeerAuthRejected;
+        _authRejectedCallbackHandle = GCHandle.Alloc(_authRejectedCallback);
+        IntPtr authRejectedCbPtr = Marshal.GetFunctionPointerForDelegate(_authRejectedCallback);
+        MuClipNative.SyncSetAuthRejectedCallback(_handle, authRejectedCbPtr, IntPtr.Zero);
+
         _fileProgressCallback = OnNativeFileProgress;
         _fileProgressCallbackHandle = GCHandle.Alloc(_fileProgressCallback);
         IntPtr fileProgressCbPtr = Marshal.GetFunctionPointerForDelegate(_fileProgressCallback);
@@ -179,6 +203,15 @@ public sealed class MuClipSync : IDisposable
             fileOfferCbPtr,
             IntPtr.Zero
         );
+    }
+
+    private void OnNativePeerAuthRejected(IntPtr devIdPtr, uint streak, IntPtr userData)
+    {
+        string devId = Marshal.PtrToStringUTF8(devIdPtr) ?? string.Empty;
+        if (!string.IsNullOrEmpty(devId))
+        {
+            PeerAuthRejected?.Invoke(this, new PeerAuthRejectedEventArgs(devId, (int)streak));
+        }
     }
 
     private void OnNativePeerUnpaired(IntPtr devIdPtr, IntPtr userData)
@@ -632,6 +665,11 @@ public sealed class MuClipSync : IDisposable
         if (_unpairCallbackHandle.IsAllocated)
         {
             _unpairCallbackHandle.Free();
+        }
+
+        if (_authRejectedCallbackHandle.IsAllocated)
+        {
+            _authRejectedCallbackHandle.Free();
         }
 
         if (_fileProgressCallbackHandle.IsAllocated)

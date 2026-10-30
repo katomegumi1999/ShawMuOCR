@@ -75,6 +75,12 @@ public partial class MuClipService
     public event Action<string, string>? PairEstablished;
     public event Action<string, string>? RemotePeerUnpaired;
 
+    /// <summary>
+    /// 与某台设备的配对认证连续失败（core 判定：连续 3 次，期间成功一次即清零）。
+    /// 只作提示：配对与密钥都不动，是否重新配对由用户决定。
+    /// </summary>
+    public event Action<string, int>? RemotePeerAuthRejected;
+
     public void TriggerDiscoveryScan()
     {
         _sync?.TriggerScan();
@@ -671,6 +677,35 @@ public partial class MuClipService
         PairEstablished?.Invoke(e.DeviceId, e.DeviceName);
     }
 
+    /// <summary>
+    /// 会话认证连续被拒：仅提示，不动配对数据。
+    ///
+    /// 为什么不在这里顺手解配：`SyncRejected` 是笼统的认证失败（对端已解配 / 密钥不一致 /
+    /// 端点串台），core 刻意不区分原因。若这里自清，密钥不一致这种「重新配对就能救」的
+    /// 情况会变成必须重新扫码/输 PIN，用户还得自己猜发生了什么。
+    /// </summary>
+    private void OnRemotePeerAuthRejected(object? sender, PeerAuthRejectedEventArgs e)
+    {
+        if (string.IsNullOrWhiteSpace(e.DeviceId) ||
+            string.Equals(e.DeviceId, _localDeviceId, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        string displayName = e.DeviceId;
+        lock (_lock)
+        {
+            var item = _pairedDevices.FirstOrDefault(p =>
+                string.Equals(p.DeviceId, e.DeviceId, StringComparison.OrdinalIgnoreCase));
+            if (item != null && !string.IsNullOrEmpty(item.DeviceName))
+            {
+                displayName = item.DeviceName;
+            }
+        }
+
+        RemotePeerAuthRejected?.Invoke(displayName, e.Streak);
+    }
+
     private void OnRemotePeerUnpaired(object? sender, string deviceId)
     {
         if (string.IsNullOrWhiteSpace(deviceId) ||
@@ -805,6 +840,7 @@ public partial class MuClipService
             _sync.IncomingPairRequestReceived += OnIncomingPairRequestReceived;
             _sync.PairEstablished += OnPairEstablished;
             _sync.PeerUnpaired += OnRemotePeerUnpaired;
+            _sync.PeerAuthRejected += OnRemotePeerAuthRejected;
             _sync.FileProgress += (s, e) => FileProgress?.Invoke(e);
             _sync.FileCompleted += (s, e) => FileCompleted?.Invoke(e);
             _sync.FileOfferReceived += (s, e) => FileOfferReceived?.Invoke(e);

@@ -316,6 +316,7 @@ public partial class MuClipService : IMuClipService
                 _sync.IncomingPairRequestReceived += OnIncomingPairRequestReceived;
                 _sync.PairEstablished += OnPairEstablished;
                 _sync.PeerUnpaired += OnRemotePeerUnpaired;
+                _sync.PeerAuthRejected += OnRemotePeerAuthRejected;
                 _sync.FileProgress += (s, e) => FileProgress?.Invoke(e);
                 _sync.FileCompleted += (s, e) => FileCompleted?.Invoke(e);
                 _sync.FileOfferReceived += (s, e) => FileOfferReceived?.Invoke(e);
@@ -449,6 +450,7 @@ public partial class MuClipService : IMuClipService
                 _sync.IncomingPairRequestReceived -= OnIncomingPairRequestReceived;
                 _sync.PairEstablished -= OnPairEstablished;
                 _sync.PeerUnpaired -= OnRemotePeerUnpaired;
+                _sync.PeerAuthRejected -= OnRemotePeerAuthRejected;
                 _sync.Dispose();
                 _sync = null;
             }
