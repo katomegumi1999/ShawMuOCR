@@ -366,6 +366,8 @@ public partial class SettingsViewModel : ViewModelBase
     // 物理显卡选择 (独显 / 核显)
     // ==========================================
     private IReadOnlyList<DiscoveredGpuDevice> _discoveredGpus = [];
+    private readonly object _gpuProbeLock = new();
+    private bool _gpuProbeStarted;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(SelectedGpuDeviceOption))]
@@ -470,7 +472,7 @@ public partial class SettingsViewModel : ViewModelBase
     public string CurrentLogFilePath => _loggerService?.CurrentLogFilePath ?? string.Empty;
 
     [ObservableProperty]
-    private string _statusMessage = string.Empty;
+    private string _statusMessage = "就绪：所有配置项均实时自动保存";
 
     public ObservableCollection<string> AvailableModels { get; } = new();
     public ObservableCollection<string> AvailableEmbeddedModels { get; } = new();
@@ -588,18 +590,63 @@ public partial class SettingsViewModel : ViewModelBase
         ReloadSettings();
     }
 
+    /// <summary>
+    /// 物理显卡枚举要加载 Vulkan loader 并逐个查询设备，实测首次约 70~90ms。
+    /// 这是启动路径上最后一个大项，因此构造期只放占位项，真正的枚举放到后台线程，
+    /// 完成后再回到 UI 线程回填（此时设置页通常还没被打开，用户完全无感）。
+    /// </summary>
     private void InitializeGpuDevices()
     {
-        _discoveredGpus = ShawMuOCR.OCR.PaddleOcrV6Engine.EnumerateAllGpuDevices();
-        var gpuOptions = new List<GpuDeviceOption>
+        AvailableGpuDevices = [new GpuDeviceOption(-1, "自动选择 (默认 · 优先独立显卡)")];
+        EnsureGpuDevicesLoaded();
+    }
+
+    /// <summary>后台枚举物理显卡并回填列表；幂等，可重复调用（首次调用才会真正枚举）。</summary>
+    public void EnsureGpuDevicesLoaded()
+    {
+        lock (_gpuProbeLock)
         {
-            new(-1, "自动选择 (默认 · 优先独立显卡)")
-        };
-        foreach (var g in _discoveredGpus)
-        {
-            gpuOptions.Add(new(g.Index, g.DisplayName));
+            if (_gpuProbeStarted) return;
+            _gpuProbeStarted = true;
         }
-        AvailableGpuDevices = gpuOptions;
+
+        Task.Run(() =>
+        {
+            IReadOnlyList<DiscoveredGpuDevice> gpus;
+            try
+            {
+                gpus = ShawMuOCR.OCR.PaddleOcrV6Engine.EnumerateAllGpuDevices();
+            }
+            catch
+            {
+                gpus = [];
+            }
+
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                _discoveredGpus = gpus;
+
+                var gpuOptions = new List<GpuDeviceOption>
+                {
+                    new(-1, "自动选择 (默认 · 优先独立显卡)")
+                };
+                foreach (var g in gpus)
+                {
+                    gpuOptions.Add(new(g.Index, g.DisplayName));
+                }
+                AvailableGpuDevices = gpuOptions;
+                _loggerService?.Info($"[设置] 物理显卡枚举完成（{gpus.Count} 张），显卡选择器数据已就绪");
+
+                // 显卡列表同时决定「选择物理显卡」下拉框的可见性、可用项与后端解析文案，
+                // 回填后必须逐个通知，否则设置页会停留在「只有自动选择」的初始态
+                OnPropertyChanged(nameof(AvailableGpuDevices));
+                OnPropertyChanged(nameof(SelectedGpuDeviceOption));
+                OnPropertyChanged(nameof(HasMultipleGpus));
+                OnPropertyChanged(nameof(ShowGpuDeviceSelector));
+                OnPropertyChanged(nameof(AutoResolvedBackendText));
+                OnPropertyChanged(nameof(AutoResolvedReasonText));
+            });
+        });
     }
 
     private void LoadIdleSleepMinutes()
@@ -874,7 +921,7 @@ public partial class SettingsViewModel : ViewModelBase
         _hotkeyService.IsPaused = true;
         CancelRecordingInternal();
         IsRecordingRecordingHotkey = true;
-        StatusMessage = "请按下【屏幕录制】快捷键 (默认 Alt+R，按 Backspace 清空，按 Esc 取消)...";
+        StatusMessage = "请按下【录屏桌面悬浮栏】快捷键 (默认 Alt+R，按 Backspace 清空，按 Esc 取消)...";
     }
 
     public void OnRecordingHotkeyRecorded(HotkeyGesture gesture)

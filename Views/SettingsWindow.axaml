@@ -194,11 +194,11 @@
                             </StackPanel>
                         </Grid>
 
-                        <!-- 快捷键 5: 屏幕录制 -->
+                        <!-- 快捷键 5: 屏幕录制 / 录屏悬浮栏 -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
-                                <TextBlock Text="屏幕录制全局快捷键" FontWeight="Medium" />
-                                <TextBlock Text="唤起录屏桌面悬浮控制条或框选区域开始录制（默认 Alt+R）"
+                                <TextBlock Text="录屏桌面悬浮栏快捷键" FontWeight="Medium" />
+                                <TextBlock Text="呼出 / 隐藏录屏桌面悬浮控制条（默认 Alt+R）"
                                            FontSize="12"
                                            Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                            TextWrapping="Wrap" />

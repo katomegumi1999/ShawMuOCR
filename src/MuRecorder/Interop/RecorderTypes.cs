@@ -60,6 +60,14 @@ public unsafe struct RecorderConfig
     public byte* AudioDeviceId;
     public ulong AudioWindowHwnd;
     public uint AudioProcessId;
+    /// <summary>音频码率（kbps，传 0 默认 320；支持 96, 128, 160, 192, 256, 320）。</summary>
+    public uint AudioBitrateKbps;
+
+    /* ---- v3 追加 ---- */
+    /// <summary>0/1：点击处画扩散圆环（约 350 ms 淡出）。需 CaptureCursor=1</summary>
+    public uint CursorClickEffect;
+    /// <summary>移动轨迹拖尾时长 ms：0=关闭，否则 40~3000。需 CaptureCursor=1</summary>
+    public uint CursorTrailMs;
 
     public AudioSourceType AudioSource
     {
@@ -71,7 +79,7 @@ public unsafe struct RecorderConfig
 /// <summary>ABI 版本常量（对应 C 侧 RECORDER_ABI_VERSION）。</summary>
 public static class RecorderAbi
 {
-    public const uint Version = 1;
+    public const uint Version = 3;
 }
 
 /// <summary>

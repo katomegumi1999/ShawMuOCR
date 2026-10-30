@@ -160,10 +160,10 @@ public class ImageDocumentTests
         Assert.Equal("Alt+X", settings.CaptureImageHotkey);
         Assert.Equal("Alt+C", settings.AnnotateHotkey);
 
-        string json = System.Text.Json.JsonSerializer.Serialize(settings);
-        Assert.Contains("AnnotateHotkey", json);
+        string json = System.Text.Json.JsonSerializer.Serialize(settings, ShawMuOCR.Core.Settings.AppSettingsJsonContext.Default.AppSettings);
+        Assert.Contains("Annotate", json);
 
-        var deserialized = System.Text.Json.JsonSerializer.Deserialize<ShawMuOCR.Core.Settings.AppSettings>(json);
+        var deserialized = System.Text.Json.JsonSerializer.Deserialize(json, ShawMuOCR.Core.Settings.AppSettingsJsonContext.Default.AppSettings);
         Assert.NotNull(deserialized);
         Assert.Equal("Alt+Z", deserialized.Hotkey);
         Assert.Equal("Alt+X", deserialized.CaptureImageHotkey);

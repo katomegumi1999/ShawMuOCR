@@ -19,7 +19,7 @@ public sealed class RecordingService : IAsyncDisposable
     private bool _isRecording;
     private bool _disposed;
 
-    /// <summary>recorder_core.dll 是否可用（不可用时录屏入口整体禁用）。</summary>
+    /// <summary>murecorder_core.dll 是否可用（不可用时录屏入口整体禁用）。</summary>
     public static bool IsAvailable => s_dllAvailable;
 
     /// <summary>检查指定编码器是否具有硬件加速支持（通过 MFTEnumEx 探测硬件 MFT）。</summary>
@@ -98,6 +98,9 @@ public sealed class RecordingService : IAsyncDisposable
                     AudioDeviceId = audioDevicePtr == IntPtr.Zero ? null : (byte*)audioDevicePtr,
                     AudioWindowHwnd = (ulong)options.AudioWindowHwnd,
                     AudioProcessId = options.AudioProcessId,
+                    AudioBitrateKbps = options.AudioBitrateKbps,
+                    CursorClickEffect = options.CursorClickEffect ? 1u : 0u,
+                    CursorTrailMs = options.CursorTrailMs,
                 };
 
                 rc = RecorderNative.recorder_create(in cfg, out handle);
@@ -134,6 +137,25 @@ public sealed class RecordingService : IAsyncDisposable
                 Marshal.FreeCoTaskMem(audioDevicePtr);
             }
         }
+    }
+
+    /// <summary>
+    /// 从录制中（或已录制完）的文件无损切片提取区间（微秒单位），无需停止录制，零重编码。
+    /// </summary>
+    public static Task<ulong> ExtractRangeAsync(string srcPath, string dstPath, ulong startUs, ulong endUs, uint fps = 30)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(srcPath);
+        ArgumentException.ThrowIfNullOrWhiteSpace(dstPath);
+
+        return Task.Run(() =>
+        {
+            int rc = RecorderNative.recorder_extract_range(srcPath, dstPath, startUs, endUs, fps, out ulong durationUs);
+            if (rc != (int)MuRecorder.Interop.RecorderResult.Ok)
+            {
+                throw new RecordingException((MuRecorder.Interop.RecorderResult)rc, $"切片提取失败 (错误码 {rc})");
+            }
+            return durationUs;
+        });
     }
 
     /// <summary>停止录制（阻塞到文件落定；幂等）。</summary>
@@ -257,7 +279,7 @@ public sealed class RecordingService : IAsyncDisposable
         }
     }
 
-    /// <summary>探测 recorder_core.dll 是否可加载（缺失时禁用录屏入口）。</summary>
+    /// <summary>探测 murecorder_core.dll 是否可加载（缺失时禁用录屏入口）。</summary>
     private static bool ProbeDll()
     {
         try
@@ -325,6 +347,6 @@ public sealed class RecordingStoppedEventArgs : EventArgs
     }
 }
 
-// 说明：recorder_core.dll 与 muclip_core.dll 一致位于输出根目录，运行期默认探测即可命中，
+// 说明：murecorder_core.dll 与 muclip_core.dll 一致位于输出根目录，运行期默认探测即可命中，
 // 无需 NativeLibrary.SetDllImportResolver。若未来改为 RID 特定布局（runtimes/win-x64/native/），
 // 在 Program.cs 挂 resolver 指向该相对路径，并在解析失败时禁用录屏入口（Avalonia 跨平台场景）。

@@ -12,6 +12,7 @@ public partial class CanvasBackdropWindow : Window
 {
     private static CanvasBackdropWindow? s_sharedBackdrop;
     private static Action? s_onExitCallback;
+    private static readonly List<IntPtr> s_elevatedHwnds = new();
 
     public CanvasBackdropWindow()
     {
@@ -34,6 +35,7 @@ public partial class CanvasBackdropWindow : Window
 
     private void OnClosed(object? sender, EventArgs e)
     {
+        RestoreElevatedWindows();
         s_onExitCallback?.Invoke();
         s_onExitCallback = null;
     }
@@ -67,6 +69,9 @@ public partial class CanvasBackdropWindow : Window
     {
         s_onExitCallback = onExit;
 
+        // 恢复之前可能残留的置顶窗口
+        RestoreElevatedWindows();
+
         if (s_sharedBackdrop == null)
         {
             s_sharedBackdrop = new CanvasBackdropWindow();
@@ -82,13 +87,15 @@ public partial class CanvasBackdropWindow : Window
             s_sharedBackdrop.Show();
         }
 
+        s_sharedBackdrop.ApplyWindowStyles();
+
         var handle = s_sharedBackdrop.TryGetPlatformHandle();
         if (handle != null)
         {
-            // 将黑幕铺在普通窗口最上层，但不是 Topmost（允许已选窗口被放在它上面）
+            // 将黑幕铺在普通窗口层级（HWND_NOTOPMOST），严格不覆盖置顶窗口，且不激活
             User32.SetWindowPos(
                 handle.Handle,
-                User32.HWND_TOP,
+                User32.HWND_NOTOPMOST,
                 monitorBounds.X,
                 monitorBounds.Y,
                 monitorBounds.Width,
@@ -96,7 +103,7 @@ public partial class CanvasBackdropWindow : Window
                 User32.SWP_SHOWWINDOW | User32.SWP_NOACTIVATE);
         }
 
-        // 将所有勾选的目标窗口逐一抬升到黑幕画布之上
+        // 将所有勾选的目标窗口抬升为 HWND_TOPMOST，确保其绝对处于黑幕画布之上
         IntPtr lastHwnd = IntPtr.Zero;
         foreach (var hwnd in selectedHwnds)
         {
@@ -108,10 +115,11 @@ public partial class CanvasBackdropWindow : Window
 
             User32.SetWindowPos(
                 hwnd,
-                User32.HWND_TOP,
+                User32.HWND_TOPMOST,
                 0, 0, 0, 0,
                 User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_SHOWWINDOW);
 
+            s_elevatedHwnds.Add(hwnd);
             lastHwnd = hwnd;
         }
 
@@ -122,16 +130,33 @@ public partial class CanvasBackdropWindow : Window
     }
 
     /// <summary>
-    /// 关闭或隐藏自由画布。
+    /// 关闭或隐藏自由画布，并将抬升的目标窗口恢复为普通窗口。
     /// </summary>
     public static void CloseBackdrop()
     {
+        RestoreElevatedWindows();
         if (s_sharedBackdrop != null && s_sharedBackdrop.IsVisible)
         {
             s_sharedBackdrop.Hide();
             s_onExitCallback?.Invoke();
             s_onExitCallback = null;
         }
+    }
+
+    private static void RestoreElevatedWindows()
+    {
+        foreach (var hwnd in s_elevatedHwnds)
+        {
+            if (hwnd != IntPtr.Zero)
+            {
+                User32.SetWindowPos(
+                    hwnd,
+                    User32.HWND_NOTOPMOST,
+                    0, 0, 0, 0,
+                    User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOACTIVATE);
+            }
+        }
+        s_elevatedHwnds.Clear();
     }
 
     public static bool IsOpen => s_sharedBackdrop?.IsVisible == true;

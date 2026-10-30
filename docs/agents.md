@@ -13,7 +13,7 @@
 - **图形与排版**：SkiaSharp (高性能 2D 绘图与位图操作), PdfPig (纯托管多页 PDF 解析)
 - **OCR 推理底座**：`Sdcb.SimdPaddleOCR 2.0.0` (支持 x64 AVX2/SIMD 纯 C# 神经网络计算与 Vulkan GPU 着色器加速推理)
 - **剪贴板同步底座 (MuClip)**：C# P/Invoke + 纯 Rust 高性能多线程引擎 (`Libs/x64/muclip_core.dll`)
-- **屏幕录制底座 (MuRecorder)**：C# P/Invoke + Rust 引擎（DXGI 桌面复制 / OpenH264 / MP4 封装，`Libs/x64/recorder_core.dll`），Rust 工程独立在 `C:\Rust\MuRecorder`
+- **屏幕录制底座 (MuRecorder)**：C# P/Invoke + Rust 引擎（DXGI 桌面复制 / OpenH264 / MP4 封装 / WASAPI 音频，`Libs/x64/murecorder_core.dll`），Rust 工程独立在 `C:\Rust\MuRecorder`
 - **构建目标**：支持 Native AOT 提前编译，零未裁剪运行时依赖，毫秒级冷启动。
 
 ---
@@ -32,7 +32,7 @@ ShawMuOCR/
 ├── Views/                           # 主窗口与各个功能页 View (XAML / C#)
 ├── Models/                          # 默认 OCR 运行模型目录（包含 PP-OCRv6_small/tiny/medium, cls, dict）
 ├── Libs/x64/muclip_core.dll         # 【唯一权威】原生 64 位 Rust 动态链接库，禁止在根目录冗余复制
-├── Libs/x64/recorder_core.dll       # 【唯一权威】录屏引擎原生库（由 C:\Rust\MuRecorder 构建产出）
+├── Libs/x64/murecorder_core.dll     # 【唯一权威】录屏引擎原生库（由 C:\Rust\MuRecorder 构建产出）
 ├── src/
 │   ├── ShawMuOCR.Core/              # 核心业务接口与模型（IOcrEngine, ITranslationService, AppSettings 等）
 │   ├── ShawMuOCR.Windows/           # Win32 原生集成（RegisterHotKey 消息循环泵, GDI+ DPI 自适应截图）
@@ -165,7 +165,7 @@ ShawMuOCR/
    脚本用**绝对路径** `-ShawMuOCRDir`（默认 `C:\ShawMuOCR`）定位目标，并在复制后比对 SHA256。
    历史坑：早期用 `..\ShawMuOCR` 相对路径推算，静默复制到 `C:\Rust\ShawMuOCR` 影子目录，
    真正的 `Libs/x64` 一直留旧 DLL，表现为「测试全是 0 帧」的假故障。**怀疑产物没生效时先比哈希**：
-   `Get-FileHash target\release\recorder_core.dll` vs `Get-FileHash Libs\x64\recorder_core.dll`。
+   `Get-FileHash target\release\murecorder_core.dll` vs `Get-FileHash Libs\x64\murecorder_core.dll`。
 2. **DXGI 桌面复制只在画面变化时交付帧**：完全静止的桌面连首帧都没有，光标移动也不算变化
    （光标不在复制帧内）。因此 `capture/gdi.rs` 保留一条 GDI 首帧兜底（启动 300ms 无帧时触发），
    之后用「重发上一帧副本」维持 CFR。**改动采集循环时不要删掉这两条保命逻辑**。
@@ -173,6 +173,65 @@ ShawMuOCR/
    「编码 → 封装」的确定性覆盖在 Rust `recorder::tests::pipeline_encodes_synthetic_frames_into_valid_mp4`
    （合成帧驱动真实 encode/mux 线程）；C# 侧 `RecordingServiceIntegrationTests` 的真实录制项做成双路径
    （有帧校验产物结构 / 无帧校验「失败并清理残留文件」）。
+
+---
+
+### 3.11 启动顺序：窗口优先，重活靠后（性能红线）
+
+**铁律：主窗口呈现之前，只允许做「毫秒级」的事。** 用户能感知到的启动时间 = 进程启动 → 主窗口可见，
+任何放在 `Show()` 之前的同步耗时都会 1:1 变成"点了图标没反应"。
+
+Release AOT 实测（本机，含自定义背景图）：
+
+| 环节 | 耗时 | 处置 |
+| --- | --- | --- |
+| OCR 引擎实例化（3 个 ONNX 会话） | 105~160 ms | **必须**在后台线程，`OcrCoordinator.EnsureEngineAsync()` 惰性加载 |
+| 小沐剪贴板服务（sqlite + 局域网监听） | 100~200 ms | **必须**后台，`EnsureMuClipServiceInitialized()` 默认异步 |
+| 主题背景图「解码→模糊→JPEG 重编码」 | 50~90 ms | 结果按「路径+大小+mtime+模糊半径」落盘缓存，命中即跳过 |
+| 物理显卡枚举 | 20~80 ms | `SettingsViewModel.EnsureGpuDevicesLoaded()` 后台枚举后回填 |
+| 其余页面装配 + 截图编辑器预热 | 数百 ms | 首帧后逐页装配，页间让出一帧（`MainWindow.TryPreloadNextPage`） |
+
+落地后的关键约束，改动时不要破坏：
+
+1. `OcrCoordinator` **构造函数禁止**创建引擎。首次识别与启动预载共用同一次后台加载，
+   靠 `Task<IOcrEngine>? _engineReadyTask` 去重；`IsEngineFaulted` 在引擎未就绪时返回 `false`
+   （未就绪 ≠ 故障），`TryRecoverFaultedEngine` 也必须对 null 放行。
+   守卫测试：`OcrEngineLazyInitTests`（构造函数不加载 / 并发识别只加载一次 / 预载不影响识别）。
+2. 启动预热统一走 `App.RunStartupWarmup`：先起引擎预载（后台），`Task.Delay` 让出首帧，
+   再做剪贴板服务 → 模型缺失提醒 → 逐页装配（每页间隔）→ 最后才是截图编辑器预热。
+   **不要把这些步骤合并成一个 `Dispatcher.Post`**，那等于把分帧的卡顿重新拼成一次长阻塞。
+3. 全局热键在 `Show()` 之前注册（只是一组 `RegisterHotKey`），但热键回调**不得**依赖
+   `_muClipService` 非空 —— 剪贴板服务是启动后异步就绪的，回调里再触发 `EnsureMuClipServiceInitialized()`。
+4. 诊断入口：日志里的 `[启动] ... +N ms` 里程碑（基础服务 / ViewModel / 窗口对象 / 主窗口呈现 /
+   后台预热全部完成）就是量化依据。改启动路径后请贴这组数字做前后对比，不要凭感觉。
+
+---
+
+### 3.12 退出路径：UI 先消失，清理限时
+
+**铁律：托盘图标与窗口的消失时机，不能依赖进程结束。** 托盘图标（`Shell_NotifyIcon`）只有在显式
+`Dispose` / `IsVisible=false` 时才立即从通知区域移除；否则要等进程真正退出后由资源管理器代为清理
+—— 进程活多久，图标就残留多久。历史现象"退出后图标过几秒才消失"就是这条链路：
+`OnDesktopExit` 里 `.Wait(2s)` 等录屏 + `MuClipService.Dispose()` 同步 800ms + 热键线程 `Join(1s)`。
+
+现行顺序（`App.OnTrayExitClick` → `OnDesktopExit`）：
+
+1. `RemoveTrayIconsNow()` → 托盘图标立即消失（实测 42 ms 内完成）。
+2. 关闭所有浮动窗 / 便笺窗 → `_mainWindow.ExplicitExit()`（任务栏按钮同时消失）。
+3. 重活全部改为**后台并行任务**（幂等，只发起一次）：
+   - `StartRecordingShutdown()`：停录制 + 回填 moov，**必须等**（预算 1500 ms，否则 mp4 不可播）。
+   - `StartMuClipShutdown()`：Rust 侧释放，**不必等**（sqlite 每笔写入即提交），预算 250 ms。
+4. `StartShutdownWatchdog()`：总预算 2500 ms，超时 `Environment.Exit(0)`，杜绝"僵尸退出"。
+5. `OnDesktopExit` 只做剩余预算等待 + 同步释放（`>=50ms` 的步骤会打 `[退出] ... 释放耗时 N ms`）。
+
+改动时的注意点：
+
+- `OnDesktopExit` 阶段 dispatcher 已停止，**不要新建窗口或 Post 到 UI 线程**；`_coordinator.Dispose()`
+  是例外（它要关浮窗，必须在 UI 线程执行）。
+- 新增任何服务清理前先问一句：**它需不需要"完整性保证"**？需要才进阻塞预算，否则一律后台 + 短预算。
+- 已知未优化项：`MuClipNative.SyncStop`（`muclip_core.dll`）单次约 800 ms，属 Rust 侧线程收尾，
+  要压下去得改 `C:\Rust\MuClip` 并重出 DLL，不要试图在 C# 侧绕。
+- 验证方式：日志里的 `[退出]` 系列时间戳。Debug 实测（含剪贴板服务）：图标 42 ms、清理全部完成 332 ms。
 
 ---
 

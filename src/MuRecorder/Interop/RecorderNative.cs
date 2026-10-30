@@ -3,12 +3,12 @@ using System.Runtime.InteropServices;
 namespace MuRecorder.Interop;
 
 /// <summary>
-/// recorder_core.dll 的 C ABI 绑定（[LibraryImport] 源生成，Native AOT 安全）。
+/// murecorder_core.dll 的 C ABI 绑定（[LibraryImport] 源生成，Native AOT 安全）。
 /// 函数签名与 Rust 侧 src/lib.rs 导出逐一对应；改任一侧必须同步。
 /// </summary>
 internal static partial class RecorderNative
 {
-    private const string Lib = "recorder_core";
+    private const string Lib = "murecorder_core";
 
     /// <summary>只分配、不启动。cfg 为值传递指针；handle 成功时非空。</summary>
     [LibraryImport(Lib, EntryPoint = "recorder_create")]
@@ -45,4 +45,14 @@ internal static partial class RecorderNative
     [LibraryImport(Lib, EntryPoint = "recorder_has_hardware_encoder")]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     internal static partial int recorder_has_hardware_encoder(uint encoder);
+
+    [LibraryImport(Lib, EntryPoint = "recorder_extract_range", StringMarshalling = StringMarshalling.Utf8)]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    internal static partial int recorder_extract_range(
+        string srcPath,
+        string dstPath,
+        ulong startUs,
+        ulong endUs,
+        uint fps,
+        out ulong outDurationUs);
 }

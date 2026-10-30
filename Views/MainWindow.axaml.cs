@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
@@ -34,9 +35,49 @@ public partial class MainWindow : Window
             {
                 EnsurePageLoaded(_viewModel.CurrentPage);
             }
+            else if (e.PropertyName == nameof(MainViewModel.ClipboardVm) &&
+                     _viewModel.CurrentPage == AppNavPage.Clipboard)
+            {
+                // 剪贴板服务在后台初始化完成（ClipboardVm 从 null 变为实例）时，补装依赖它的页面。
+                // 否则用户先进入剪贴板页会拿到 DataContext=null 的空壳视图，Carousel 的
+                // SelectedIndex 绑定彻底失效（表现为三页同时铺开、切页无反应）。
+                AttachClipboardPageIfNeeded();
+            }
         };
 
         Closing += OnClosing;
+
+        if (_viewModel.RecordingVm != null)
+        {
+            _viewModel.RecordingVm.FloatingBarShowRequested += (s, e) =>
+            {
+                ShawMuOCR.Views.RecordingFloatingWindow.ShowOverlay(_viewModel.RecordingVm);
+            };
+            _viewModel.RecordingVm.FloatingBarToggleRequested += (s, e) =>
+            {
+                ShawMuOCR.Views.RecordingFloatingWindow.ToggleOverlay(_viewModel.RecordingVm);
+            };
+            _viewModel.RecordingVm.FloatingBarHideRequested += (s, e) =>
+            {
+                ShawMuOCR.Views.RecordingFloatingWindow.HideOverlay();
+            };
+
+            _viewModel.RecordingVm.LiveCursorEffectShowRequested += (s, e) =>
+            {
+                var bounds = _viewModel.RecordingVm.CurrentTargetBounds;
+                if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+                {
+                    bounds = _viewModel.RecordingVm.SelectedMonitor?.Bounds
+                        ?? (_viewModel.RecordingVm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? _viewModel.RecordingVm.Monitors.FirstOrDefault())?.Bounds
+                        ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
+                }
+                ShawMuOCR.Views.RecordingAnnotationWindow.StartLiveCursorEffect(bounds, _viewModel.RecordingVm);
+            };
+            _viewModel.RecordingVm.LiveCursorEffectHideRequested += (s, e) =>
+            {
+                ShawMuOCR.Views.RecordingAnnotationWindow.StopLiveCursorEffect();
+            };
+        }
 
         // 窗口内全局键盘拦截：使用 Tunnel 策略与 handledEventsToo 确保在任何焦点状态下都能第一时间捕获
         AddHandler(KeyDownEvent, OnWindowKeyDown, RoutingStrategies.Tunnel, handledEventsToo: true);
@@ -52,7 +93,6 @@ public partial class MainWindow : Window
     public void EnsurePageLoaded(AppNavPage page)
     {
         if (_loadedPages.Contains(page) || _viewModel == null) return;
-        _loadedPages.Add(page);
 
         switch (page)
         {
@@ -74,15 +114,26 @@ public partial class MainWindow : Window
                 break;
             case AppNavPage.Recording:
                 if (RecordingPageHost != null && RecordingPageHost.Children.Count == 0)
+                {
                     RecordingPageHost.Children.Add(new RecordingPageView { DataContext = _viewModel.RecordingVm });
+                    // 来源列表（显示器/窗口/编码器/音频设备）已推迟到首次真正用录屏页时枚举，
+                    // 这里就是那个时机：上一次停留在录屏页时，页面一装配就要有数据。
+                    _viewModel.RecordingVm.RefreshSourcesCommand.Execute(null);
+                }
                 break;
             case AppNavPage.Translate:
                 if (TranslatePageHost != null && TranslatePageHost.Children.Count == 0)
                     TranslatePageHost.Children.Add(new TranslatePageView { DataContext = _viewModel.TranslateVm });
                 break;
             case AppNavPage.Clipboard:
-                if (ClipboardPageHost != null && ClipboardPageHost.Children.Count == 0)
-                    ClipboardPageHost.Children.Add(new ClipboardView { DataContext = _viewModel.ClipboardVm });
+                // 剪贴板视图强依赖 ClipboardVm：服务尚未就绪时不装配，等 ClipboardVm 就绪后由
+                // PropertyChanged 回调补装。若此时装配空壳，视图 DataContext 会退化为继承父级，
+                // 内部 Carousel 的 SelectedIndex 绑定失效（三页铺开、无法切换）。
+                if (_viewModel.ClipboardVm == null)
+                {
+                    return;
+                }
+                AttachClipboardPageIfNeeded();
                 break;
             case AppNavPage.Theme:
                 if (ThemePageHost != null && ThemePageHost.Children.Count == 0)
@@ -101,6 +152,61 @@ public partial class MainWindow : Window
                     LogPageHost.Children.Add(new LogPageView { DataContext = _viewModel.LogVm });
                 break;
         }
+
+        _loadedPages.Add(page);
+    }
+
+    /// <summary>
+    /// 装配剪贴板页（幂等）。
+    /// 该视图强依赖 ClipboardVm：DataContext 若为 null，Avalonia 会退化为继承父级（MainViewModel），
+    /// 视图内 Carousel 的 SelectedIndex 绑定即告失效——表现正是「三个子页同时铺开、点切换没反应」。
+    /// 因此只在 ClipboardVm 就绪后装配；若之后 ClipboardVm 被替换，这里同时负责把旧视图重新指向新实例。
+    /// </summary>
+    private void AttachClipboardPageIfNeeded()
+    {
+        if (ClipboardPageHost == null || _viewModel?.ClipboardVm == null) return;
+
+        var existing = ClipboardPageHost.Children.OfType<ClipboardView>().FirstOrDefault();
+        if (existing != null)
+        {
+            if (!ReferenceEquals(existing.DataContext, _viewModel.ClipboardVm))
+            {
+                existing.DataContext = _viewModel.ClipboardVm;
+            }
+            _loadedPages.Add(AppNavPage.Clipboard);
+            return;
+        }
+
+        if (ClipboardPageHost.Children.Count > 0) return;
+
+        ClipboardPageHost.Children.Add(new ClipboardView { DataContext = _viewModel.ClipboardVm });
+        _loadedPages.Add(AppNavPage.Clipboard);
+    }
+
+    /// <summary>
+    /// 只装配下一个尚未加载的页面，装完立即返回 true；全部就绪返回 false。
+    /// 调用方每两次调用之间让出一帧，就能把「一次性装配全部页面」的长阻塞切成若干短帧，
+    /// 主界面在整个预热过程中保持可绘制、可交互。
+    /// </summary>
+    public bool TryPreloadNextPage()
+    {
+        if (_viewModel == null) return false;
+
+        foreach (var page in Enum.GetValues<AppNavPage>())
+        {
+            if (_loadedPages.Contains(page)) continue;
+
+            int before = _loadedPages.Count;
+            EnsurePageLoaded(page);
+            if (_loadedPages.Count > before)
+            {
+                return true;
+            }
+            // 该页依赖的服务尚未就绪（例如剪贴板还没初始化完），跳过继续尝试下一页，
+            // 不能在这里反复返回 true，否则预载会卡在同一页上空转。
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -108,13 +214,7 @@ public partial class MainWindow : Window
     /// </summary>
     public void PreloadRemainingPages()
     {
-        foreach (var page in Enum.GetValues<AppNavPage>())
-        {
-            if (!_loadedPages.Contains(page))
-            {
-                EnsurePageLoaded(page);
-            }
-        }
+        while (TryPreloadNextPage()) { }
     }
 
     private void OnWindowDragOver(object? sender, DragEventArgs e)
@@ -268,13 +368,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        // 屏幕录制快捷键
+        // 录屏快捷键 (Alt+R: 呼出/隐藏录屏桌面悬浮栏)
         if (HotkeyGesture.TryParse(vm.CurrentRecordingHotkey, out var recGesture) &&
             mod == recGesture.Modifiers && vk == recGesture.VirtualKey)
         {
             e.Handled = true;
-            ShawMuOCR.Views.RecordingFloatingWindow.ShowOverlay(vm.RecordingVm);
-            vm.RecordingVm.SelectRegionCommand.Execute(null);
+            ShawMuOCR.Views.RecordingFloatingWindow.ToggleOverlay(vm.RecordingVm);
             return;
         }
 

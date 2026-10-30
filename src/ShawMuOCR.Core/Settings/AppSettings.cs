@@ -1,531 +1,930 @@
+using System.Text.Json.Serialization;
+
 namespace ShawMuOCR.Core.Settings;
 
+/// <summary>
+/// 应用程序主配置。
+/// 内部按业务领域划分为 8 个 Section 分块子对象，支持独立序列化与分治维护；
+/// 根级别保留与历史属性 100% 同名的 [JsonIgnore] 桥接访问器，保证既有代码及 ViewModel 无感调用。
+/// </summary>
 public sealed class AppSettings
 {
-    public string Hotkey { get; set; } = "Alt+Z";
-    public string CaptureImageHotkey { get; set; } = "Alt+X";
-    public string AnnotateHotkey { get; set; } = "Alt+C";
+    private GeneralSettings _general = new();
+    public GeneralSettings General
+    {
+        get => _general;
+        set => _general = value ?? new();
+    }
 
-    public bool AutoCopy { get; set; } = true;
+    private HotkeySettings _hotkeys = new();
+    public HotkeySettings Hotkeys
+    {
+        get => _hotkeys;
+        set => _hotkeys = value ?? new();
+    }
 
-    /// <summary>
-    /// 表格智能分列复制：自动复制前判断识别结果是否呈表格结构（多行多列、按检测框几何对齐），
-    /// 是则改用 TSV（制表符分列 + 换行分行）写入剪贴板，粘贴到 Excel / WPS 等表格软件时直接拆入单元格；
-    /// 非表格内容仍按原有纯文本写入，粘贴到聊天窗口、记事本不受影响。
-    /// </summary>
-    public bool AutoCopyTableAsCells { get; set; } = true;
+    private OcrSettings _ocr = new();
+    public OcrSettings Ocr
+    {
+        get => _ocr;
+        set => _ocr = value ?? new();
+    }
 
-    /// <summary>
-    /// 静默模式：开启后识别完成不再自动弹出主窗口
-    /// </summary>
-    public bool SilentMode { get; set; } = true;
+    private RecordingSettings _recording = new();
+    public RecordingSettings Recording
+    {
+        get => _recording;
+        set => _recording = value ?? new();
+    }
 
-    /// <summary>
-    /// 静默启动：开启后启动直接最小化到系统托盘，不弹出主界面UI
-    /// </summary>
-    public bool SilentStartup { get; set; } = false;
+    private TranslationSettings _translation = new();
+    public TranslationSettings Translation
+    {
+        get => _translation;
+        set => _translation = value ?? new();
+    }
 
-    /// <summary>
-    /// OCR 识别气泡提醒：开启后在屏幕底部弹出识别结果与耗时卡片
-    /// </summary>
-    public bool ShowOcrNotification { get; set; } = true;
+    private ThemeSettings _theme = new();
+    public ThemeSettings Theme
+    {
+        get => _theme;
+        set => _theme = value ?? new();
+    }
 
-    /// <summary>
-    /// 截图复制气泡提醒：开启后在屏幕底部弹出截图复制成功提示
-    /// </summary>
-    public bool ShowCaptureImageNotification { get; set; } = true;
+    private BatchSettings _batch = new();
+    public BatchSettings Batch
+    {
+        get => _batch;
+        set => _batch = value ?? new();
+    }
 
-    /// <summary>
-    /// 兼容旧版气泡提醒配置
-    /// </summary>
+    private HttpApiSettings _httpApi = new();
+    public HttpApiSettings HttpApi
+    {
+        get => _httpApi;
+        set => _httpApi = value ?? new();
+    }
+
+    // ==========================================
+    // 快捷键向后兼容桥接属性 (指向 Hotkeys)
+    // ==========================================
+
+    [JsonIgnore]
+    public string Hotkey
+    {
+        get => Hotkeys.Ocr;
+        set => Hotkeys.Ocr = value;
+    }
+
+    [JsonIgnore]
+    public string CaptureImageHotkey
+    {
+        get => Hotkeys.CaptureImage;
+        set => Hotkeys.CaptureImage = value;
+    }
+
+    [JsonIgnore]
+    public string AnnotateHotkey
+    {
+        get => Hotkeys.Annotate;
+        set => Hotkeys.Annotate = value;
+    }
+
+    [JsonIgnore]
+    public string TranslateHotkey
+    {
+        get => Hotkeys.Translate;
+        set => Hotkeys.Translate = value;
+    }
+
+    [JsonIgnore]
+    public string OcrPopupHotkey
+    {
+        get => Hotkeys.OcrPopup;
+        set => Hotkeys.OcrPopup = value;
+    }
+
+    [JsonIgnore]
+    public string QuickNoteHotkey
+    {
+        get => Hotkeys.QuickNote;
+        set => Hotkeys.QuickNote = value;
+    }
+
+    [JsonIgnore]
+    public string ClipboardPanelHotkey
+    {
+        get => Hotkeys.ClipboardPanel;
+        set => Hotkeys.ClipboardPanel = value;
+    }
+
+    [JsonIgnore]
+    public string PhrasesPanelHotkey
+    {
+        get => Hotkeys.PhrasesPanel;
+        set => Hotkeys.PhrasesPanel = value;
+    }
+
+    [JsonIgnore]
+    public string LongScreenshotHotkey
+    {
+        get => Hotkeys.LongScreenshot;
+        set => Hotkeys.LongScreenshot = value;
+    }
+
+    [JsonIgnore]
+    public string RecordingHotkey
+    {
+        get => Hotkeys.Recording;
+        set => Hotkeys.Recording = value;
+    }
+
+    // ==========================================
+    // 通用偏好向后兼容桥接属性 (指向 General)
+    // ==========================================
+
+    [JsonIgnore]
+    public bool AutoCopy
+    {
+        get => General.AutoCopy;
+        set => General.AutoCopy = value;
+    }
+
+    [JsonIgnore]
+    public bool AutoCopyTableAsCells
+    {
+        get => General.AutoCopyTableAsCells;
+        set => General.AutoCopyTableAsCells = value;
+    }
+
+    [JsonIgnore]
+    public bool SilentMode
+    {
+        get => General.SilentMode;
+        set => General.SilentMode = value;
+    }
+
+    [JsonIgnore]
+    public bool SilentStartup
+    {
+        get => General.SilentStartup;
+        set => General.SilentStartup = value;
+    }
+
+    [JsonIgnore]
+    public bool ShowOcrNotification
+    {
+        get => General.ShowOcrNotification;
+        set => General.ShowOcrNotification = value;
+    }
+
+    [JsonIgnore]
+    public bool ShowCaptureImageNotification
+    {
+        get => General.ShowCaptureImageNotification;
+        set => General.ShowCaptureImageNotification = value;
+    }
+
+    [JsonIgnore]
     public bool ShowNotificationBadge
     {
-        get => ShowOcrNotification;
-        set
-        {
-            ShowOcrNotification = value;
-            ShowCaptureImageNotification = value;
-        }
+        get => General.ShowNotificationBadge;
+        set => General.ShowNotificationBadge = value;
     }
 
-    public bool ShowWindowAfterOcr { get; set; } = true;
+    [JsonIgnore]
+    public bool ShowWindowAfterOcr
+    {
+        get => General.ShowWindowAfterOcr;
+        set => General.ShowWindowAfterOcr = value;
+    }
 
-    public bool StartWithWindows { get; set; } = false;
+    [JsonIgnore]
+    public bool StartWithWindows
+    {
+        get => General.StartWithWindows;
+        set => General.StartWithWindows = value;
+    }
 
-    /// <summary>
-    /// 自动扫描同目录下 models 文件夹中的 Paddle 模型
-    /// </summary>
-    public bool ScanExternalModels { get; set; } = false;
+    [JsonIgnore]
+    public bool EnableLogging
+    {
+        get => General.EnableLogging;
+        set => General.EnableLogging = value;
+    }
 
-    /// <summary>
-    /// 兼容旧版配置字段
-    /// </summary>
+    [JsonIgnore]
+    public bool EnableLogAutoClean
+    {
+        get => General.EnableLogAutoClean;
+        set => General.EnableLogAutoClean = value;
+    }
+
+    [JsonIgnore]
+    public int LogRetentionDays
+    {
+        get => General.LogRetentionDays;
+        set => General.LogRetentionDays = value;
+    }
+
+    [JsonIgnore]
+    public string DefaultSaveFormat
+    {
+        get => General.DefaultSaveFormat;
+        set => General.DefaultSaveFormat = value;
+    }
+
+    [JsonIgnore]
+    public int DefaultSaveQuality
+    {
+        get => General.DefaultSaveQuality;
+        set => General.DefaultSaveQuality = value;
+    }
+
+    [JsonIgnore]
+    public int DefaultSaveScale
+    {
+        get => General.DefaultSaveScale;
+        set => General.DefaultSaveScale = value;
+    }
+
+    [JsonIgnore]
+    public string? LastSaveDirectory
+    {
+        get => General.LastSaveDirectory;
+        set => General.LastSaveDirectory = value;
+    }
+
+    [JsonIgnore]
+    public float AnnotationStrokeWidth
+    {
+        get => General.AnnotationStrokeWidth;
+        set => General.AnnotationStrokeWidth = value;
+    }
+
+    [JsonIgnore]
+    public float AnnotationFontSize
+    {
+        get => General.AnnotationFontSize;
+        set => General.AnnotationFontSize = value;
+    }
+
+    [JsonIgnore]
+    public bool EnableClipboard
+    {
+        get => General.EnableClipboard;
+        set => General.EnableClipboard = value;
+    }
+
+    [JsonIgnore]
+    public string ClipboardPanelBackground
+    {
+        get => General.ClipboardPanelBackground;
+        set => General.ClipboardPanelBackground = value;
+    }
+
+    // ==========================================
+    // OCR 识别与模型向后兼容桥接属性 (指向 Ocr)
+    // ==========================================
+
+    [JsonIgnore]
+    public bool ScanExternalModels
+    {
+        get => Ocr.ScanExternalModels;
+        set => Ocr.ScanExternalModels = value;
+    }
+
+    [JsonIgnore]
     public bool UseExternalModel
     {
-        get => ScanExternalModels;
-        set => ScanExternalModels = value;
+        get => Ocr.UseExternalModel;
+        set => Ocr.UseExternalModel = value;
     }
 
-    /// <summary>
-    /// 外部模型类型："LocalDirectory" (本地自定义目录) 或 "WebApi" (HTTP 接口)
-    /// </summary>
-    public string ExternalModelType { get; set; } = "LocalDirectory";
+    [JsonIgnore]
+    public string ExternalModelType
+    {
+        get => Ocr.ExternalModelType;
+        set => Ocr.ExternalModelType = value;
+    }
 
-    /// <summary>
-    /// 外部本地模型目录路径（默认 "models/v6"）
-    /// </summary>
-    public string ExternalModelPath { get; set; } = "models/v6";
+    [JsonIgnore]
+    public string ExternalModelPath
+    {
+        get => Ocr.ExternalModelPath;
+        set => Ocr.ExternalModelPath = value;
+    }
 
-    /// <summary>
-    /// 外部 Web API 接口地址（默认 "http://127.0.0.1:8080/ocr"）
-    /// </summary>
-    public string ExternalApiUrl { get; set; } = "http://127.0.0.1:8080/ocr";
+    [JsonIgnore]
+    public string ExternalApiUrl
+    {
+        get => Ocr.ExternalApiUrl;
+        set => Ocr.ExternalApiUrl = value;
+    }
 
-    private string _model = "PP-OCRv6_small";
-
-    /// <summary>
-    /// 当前生效的模型标识（默认 "PP-OCRv6_small"，如 "PP-OCRv6_tiny", "PP-OCRv6_medium" 等）
-    /// </summary>
+    [JsonIgnore]
     public string Model
     {
-        get
-        {
-            if (string.Equals(ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ExternalApiUrl))
-            {
-                return $"External:WebApi ({ExternalApiUrl})";
-            }
-            if (string.Equals(ExternalModelType, "LocalDirectory", StringComparison.OrdinalIgnoreCase) &&
-                _model == "PP-OCRv6_small" && !string.IsNullOrWhiteSpace(ExternalModelPath) && ExternalModelPath != "models/v6")
-            {
-                return $"External:Local ({ExternalModelPath})";
-            }
-            return string.IsNullOrWhiteSpace(_model) ? "PP-OCRv6_small" : _model;
-        }
-        set
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                _model = "PP-OCRv6_small";
-                return;
-            }
-            if (value.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase))
-            {
-                ScanExternalModels = true;
-                ExternalModelType = "WebApi";
-            }
-            else if (value.StartsWith("External:Local", StringComparison.OrdinalIgnoreCase))
-            {
-                ScanExternalModels = true;
-                ExternalModelType = "LocalDirectory";
-                _model = value;
-            }
-            else
-            {
-                _model = value;
-            }
-        }
+        get => Ocr.Model;
+        set => Ocr.Model = value;
     }
 
-    /// <summary>
-    /// 兼容旧版配置字段
-    /// </summary>
+    [JsonIgnore]
     public string EmbeddedModel
     {
-        get => _model;
-        set => _model = value;
+        get => Ocr.EmbeddedModel;
+        set => Ocr.EmbeddedModel = value;
     }
 
-    /// <summary>
-    /// OCR 推理硬件后端模式："Auto" (默认，自动选择最优后端), "GPU" (Vulkan GPU 加速), "CPU" (纯 CPU AVX2/SIMD)
-    /// </summary>
-    public string OcrBackend { get; set; } = "Auto";
+    [JsonIgnore]
+    public string OcrBackend
+    {
+        get => Ocr.OcrBackend;
+        set => Ocr.OcrBackend = value;
+    }
 
-    /// <summary>
-    /// 指定使用的物理 GPU 设备索引（-1 为自动优选，0 为首选 GPU，1 为次选 GPU...）
-    /// </summary>
-    public int SelectedGpuIndex { get; set; } = -1;
+    [JsonIgnore]
+    public int SelectedGpuIndex
+    {
+        get => Ocr.SelectedGpuIndex;
+        set => Ocr.SelectedGpuIndex = value;
+    }
 
-    /// <summary>
-    /// 文字方向检测：开启后检测倒立/旋转文字（默认开启）
-    /// </summary>
-    public bool EnableAngleDetection { get; set; } = true;
+    [JsonIgnore]
+    public bool EnableAngleDetection
+    {
+        get => Ocr.EnableAngleDetection;
+        set => Ocr.EnableAngleDetection = value;
+    }
 
-    /// <summary>
-    /// 文本检测最大边长限制：等比缩放送检，兼顾显存与清晰度（推荐 1280，识别仍采用原图高清切片）
-    /// </summary>
-    public int MaxSideLen { get; set; } = 1280;
+    [JsonIgnore]
+    public int MaxSideLen
+    {
+        get => Ocr.MaxSideLen;
+        set => Ocr.MaxSideLen = value;
+    }
 
-    /// <summary>
-    /// 闲置自动休眠：开启后无操作达到指定时长时自动深度整理并释放非活跃物理内存
-    /// </summary>
-    public bool EnableIdleSleep { get; set; } = true;
+    [JsonIgnore]
+    public bool EnableIdleSleep
+    {
+        get => Ocr.EnableIdleSleep;
+        set => Ocr.EnableIdleSleep = value;
+    }
 
-    /// <summary>
-    /// 闲置休眠等待时间（分钟）
-    /// </summary>
-    public int IdleSleepMinutes { get; set; } = 3;
-
-    /// <summary>
-    /// 开启本地文件日志服务
-    /// </summary>
-    public bool EnableLogging { get; set; } = false;
-
-    /// <summary>
-    /// 开启日志定期自动清理
-    /// </summary>
-    public bool EnableLogAutoClean { get; set; } = true;
-
-    /// <summary>
-    /// 日志保留天数（超过该天数的日志文件自动清理删除，默认 7 天）
-    /// </summary>
-    public int LogRetentionDays { get; set; } = 7;
-
-    /// <summary>
-    /// 截图标注默认保存格式（PNG, JPEG, WEBP, BMP）
-    /// </summary>
-    public string DefaultSaveFormat { get; set; } = "PNG";
-
-    /// <summary>
-    /// 截图标注默认保存画质（10-100）
-    /// </summary>
-    public int DefaultSaveQuality { get; set; } = 90;
-
-    /// <summary>
-    /// 截图标注默认保存缩放百分比（如 100 代表 100%）
-    /// </summary>
-    public int DefaultSaveScale { get; set; } = 100;
-
-    /// <summary>
-    /// 截图上次保存的文件夹路径（为空时默认使用系统图片目录）
-    /// </summary>
-    public string? LastSaveDirectory { get; set; }
+    [JsonIgnore]
+    public int IdleSleepMinutes
+    {
+        get => Ocr.IdleSleepMinutes;
+        set => Ocr.IdleSleepMinutes = value;
+    }
 
     // ==========================================
-    // 翻译服务配置与月度额度保护
+    // 屏幕录制向后兼容桥接属性 (指向 Recording)
     // ==========================================
 
-    /// <summary>
-    /// 选区翻译全局快捷键（默认 "Alt+T"）
-    /// </summary>
-    public string TranslateHotkey { get; set; } = "Alt+T";
+    [JsonIgnore]
+    public int RecordingEncoder
+    {
+        get => Recording.Encoder;
+        set => Recording.Encoder = value;
+    }
 
-    /// <summary>
-    /// OCR 窗格全局快捷键（默认 "Alt+D"），截屏识别后在悬浮窗中显示结果而不自动复制
-    /// </summary>
-    public string OcrPopupHotkey { get; set; } = "Alt+D";
+    [JsonIgnore]
+    public uint RecordingFps
+    {
+        get => Recording.Fps;
+        set => Recording.Fps = value;
+    }
 
-    /// <summary>
-    /// 随手便笺全局快捷键（默认 "Alt+N"），呼出自由输入浮窗
-    /// </summary>
-    public string QuickNoteHotkey { get; set; } = "Alt+N";
+    [JsonIgnore]
+    public uint RecordingBitrateKbps
+    {
+        get => Recording.BitrateKbps;
+        set => Recording.BitrateKbps = value;
+    }
 
-    /// <summary>
-    /// 是否启用小沐剪贴板功能（默认关闭）
-    /// </summary>
-    public bool EnableClipboard { get; set; } = false;
+    [JsonIgnore]
+    public bool RecordingShowRegionBorder
+    {
+        get => Recording.ShowRegionBorder;
+        set => Recording.ShowRegionBorder = value;
+    }
 
-    /// <summary>
-    /// 极速剪贴板快捷面板全局快捷键（默认 "Alt+Q"）
-    /// </summary>
-    public string ClipboardPanelHotkey { get; set; } = "Alt+Q";
+    [JsonIgnore]
+    public string RecordingOutputDir
+    {
+        get => Recording.OutputDir;
+        set => Recording.OutputDir = value;
+    }
 
-    /// <summary>
-    /// 常用语快捷呼出键（默认 "Alt+W"）
-    /// </summary>
-    public string PhrasesPanelHotkey { get; set; } = "Alt+W";
-
-    /// <summary>
-    /// 长截图全局快捷键（默认 "Alt+L"）：框选区域后跟随用户手动滚动拼接成长图，结果写入剪贴板
-    /// </summary>
-    public string LongScreenshotHotkey { get; set; } = "Alt+L";
-
-    /// <summary>
-    /// 快捷面板背景底色（十六进制颜色，默认 "#F4F4F6" 浅灰）
-    /// </summary>
-    public string ClipboardPanelBackground { get; set; } = "#F4F4F6";
-
-    /// <summary>
-    /// 默认生效的翻译提供商 ("Baidu", "Google", "OpenAI")
-    /// </summary>
-    public string TranslateProvider { get; set; } = "Baidu";
-
-    /// <summary>
-    /// 翻译源语言代码（默认 "auto" 自动检测）
-    /// </summary>
-    public string TranslateSourceLang { get; set; } = "auto";
-
-    /// <summary>
-    /// 翻译目标语言代码（默认 "zh" 简体中文）
-    /// </summary>
-    public string TranslateTargetLang { get; set; } = "zh";
-
-    /// <summary>
-    /// 翻译额度记录月份（格式 "yyyy-MM"），用于跨月自动清零计数器
-    /// </summary>
-    public string TranslationUsageMonth { get; set; } = "";
-
-    // --- 百度翻译 (双模支持：aiTextTranslate 大模型 + 通用翻译) ---
-    public string BaiduAppId { get; set; } = "";
-    public string BaiduSecretKey { get; set; } = ""; // 开发者信息中的密钥 (用于通用翻译 MD5 签名)
-    public string BaiduApiKey { get; set; } = "";    // API Key 管理中的 Key (用于大模型翻译 Bearer 鉴权)
-    public int BaiduMonthlyLimit { get; set; } = 1000000; // 默认 100 万字符
-    public int BaiduUsedCount { get; set; } = 0;
-
-    // --- 谷歌翻译 (NMT API) ---
-    public string GoogleApiKey { get; set; } = "";
-    public int GoogleMonthlyLimit { get; set; } = 500000; // 默认 50 万字符
-    public int GoogleUsedCount { get; set; } = 0;
-
-    // --- OpenAI 兼容接口 ---
-    public string OpenAiApiEndpoint { get; set; } = "https://api.openai.com/v1/chat/completions";
-    public string OpenAiApiKey { get; set; } = "";
-    public string OpenAiModel { get; set; } = "gpt-4o-mini";
-    public int OpenAiMonthlyLimit { get; set; } = 200000; // 默认 20 万 Token
-    public int OpenAiUsedCount { get; set; } = 0;
-
-    // --- 火山引擎翻译 (Volcengine TranslateText API) ---
-    public string VolcengineAccessKey { get; set; } = "";
-    public string VolcengineSecretKey { get; set; } = "";
-    public string VolcengineRegion { get; set; } = "cn-north-1";
-    public int VolcengineMonthlyLimit { get; set; } = 2000000; // 默认 200 万字符
-    public int VolcengineUsedCount { get; set; } = 0;
-
-    // --- 阿里云机器翻译 (Alibaba Cloud Machine Translation API) ---
-    public string AliyunAccessKeyId { get; set; } = "";
-    public string AliyunAccessKeySecret { get; set; } = "";
-    public string AliyunApiEndpoint { get; set; } = "http://mt.cn-hangzhou.aliyuncs.com/api/translate/web/general";
-    public int AliyunMonthlyLimit { get; set; } = 1000000; // 默认 100 万字符
-    public int AliyunUsedCount { get; set; } = 0;
-
-    // ==========================================
-    // 截图标注编辑器配置 (粗细与字号记忆)
-    // ==========================================
-    public float AnnotationStrokeWidth { get; set; } = 4f;
-    public float AnnotationFontSize { get; set; } = 40f;
-
-    // ==========================================
-    // 批量 OCR 转换配置
-    // ==========================================
-    public bool BatchExportTxt { get; set; } = true;
-    public bool BatchExportXlsx { get; set; } = true;
-    public bool BatchExportDocx { get; set; } = false;
-    public bool BatchSplitColumnsByBlocks { get; set; } = true;
-    public int BatchImageRotationIndex { get; set; } = 0;
-    public bool BatchIsSuffixEnabled { get; set; } = true;
-    public string BatchSuffixText { get; set; } = "_ocr";
-    public bool BatchUseOriginalFolder { get; set; } = true;
-    public string BatchCustomOutputDir { get; set; } = "";
-    public int BatchMaxCores { get; set; } = Math.Max(1, Environment.ProcessorCount / 2);
-    public int BatchGpuStreams { get; set; } = 1;
-    public int BatchCpuLimitPercent { get; set; } = 50;
-
-    // ==========================================
-    // 内置 HTTP API 服务配置
-    // ==========================================
-    public int HttpApiPort { get; set; } = 8080;
-    public bool HttpApiAllowRemote { get; set; } = false;
-
-    /// <summary>
-    /// 局域网访问令牌（Bearer）。非空时 HTTP 接口强制鉴权；
-    /// 开启 <see cref="HttpApiAllowRemote"/> 时若无令牌会自动生成，服务端拒绝无令牌的远程暴露。
-    /// </summary>
-    public string HttpApiAccessToken { get; set; } = "";
-
-    /// <summary>
-    /// 显式允许局域网无令牌访问（默认关闭）。
-    /// 用于"临时分享给同网段同事"：开启后同网段任何设备都可调用本机 OCR 并占用 CPU，
-    /// 但接口不读取任何本机文件。仅当 <see cref="HttpApiAccessToken"/> 为空时才有意义。
-    /// </summary>
-    public bool HttpApiAllowAnonymousRemote { get; set; } = false;
-
-    public int HttpApiMaxCores { get; set; } = Math.Max(1, Environment.ProcessorCount / 2);
-    public int HttpApiGpuStreams { get; set; } = 1;
-    public int HttpApiCpuLimitPercent { get; set; } = 50;
-
-    // ==========================================
-    // UI 体验、个性主题与布局记忆
-    // ==========================================
-    public bool IsSidebarExpanded { get; set; } = true;
-    public string? ThemeBackgroundImagePath { get; set; }
-    public double ThemeBackgroundBlurRadius { get; set; } = 0.0;
-    public double ThemeComponentOpacity { get; set; } = 0.12;
-    public double ThemeButtonOpacity { get; set; } = 0.12;
-    public bool ThemeEnableAcrylic { get; set; } = true;
-    public string? ThemeBackgroundColorHex { get; set; }
-    public string? ThemeCardColorHex { get; set; }
-    public string? ThemeTextColorHex { get; set; }
-    public string? ThemeFloatingWindowBackgroundColorHex { get; set; }
-    public string? ThemeFloatingWindowTextColorHex { get; set; }
-
-    // 推理设备调度模式 ("Auto", "GPU", "CPU")
-    public string BatchSchedulerMode { get; set; } = "Auto";
-    public string HttpApiSchedulerMode { get; set; } = "Auto";
-
-    /// <summary>
-    /// 上次退出的导航子页面，下次非静默启动时优先先渲染该页面
-    /// </summary>
-    public string LastActivePage { get; set; } = "Ocr";
-
-    /// <summary>
-    /// 录屏编码器偏好：默认 1 = GPU H.265 (HEVC)
-    /// 0=Auto, 1=GpuHevc, 2=GpuH264, 4=Soft, 5=GpuAv1
-    /// </summary>
-    public int RecordingEncoder { get; set; } = 1;
-
-    /// <summary>
-    /// 录屏默认帧率（默认 30）
-    /// </summary>
-    public uint RecordingFps { get; set; } = 30;
-
-    /// <summary>
-    /// 录屏默认码率 kbps（默认 8000）
-    /// </summary>
-    public uint RecordingBitrateKbps { get; set; } = 8000;
-
-    /// <summary>
-    /// 录屏是否显示区域边界高亮线（默认 true）
-    /// </summary>
-    public bool RecordingShowRegionBorder { get; set; } = true;
-
-    /// <summary>
-    /// 录屏自定义输出目录（可空，空则走系统默认视频目录）
-    /// </summary>
-    public string RecordingOutputDir { get; set; } = string.Empty;
-
-    private string _recordingFilePrefix = "MuRecorder";
-
-    /// <summary>
-    /// 录屏保存文件名前缀（默认 MuRecorder）
-    /// </summary>
+    [JsonIgnore]
     public string RecordingFilePrefix
     {
-        get => string.IsNullOrWhiteSpace(_recordingFilePrefix) ? "MuRecorder" : _recordingFilePrefix;
-        set => _recordingFilePrefix = string.IsNullOrWhiteSpace(value) ? "MuRecorder" : value.Trim();
+        get => Recording.FilePrefix;
+        set => Recording.FilePrefix = value;
     }
 
-    /// <summary>
-    /// 录屏全局快捷键（默认 Alt+R）
-    /// </summary>
-    public string RecordingHotkey { get; set; } = "Alt+R";
+    [JsonIgnore]
+    public uint RecordingAudioBitrateKbps
+    {
+        get => Recording.AudioBitrateKbps;
+        set => Recording.AudioBitrateKbps = value;
+    }
+
+    [JsonIgnore]
+    public bool RecordingCaptureCursor
+    {
+        get => Recording.CaptureCursor;
+        set => Recording.CaptureCursor = value;
+    }
+
+    [JsonIgnore]
+    public bool RecordingCursorClickEffect
+    {
+        get => Recording.CursorClickEffect;
+        set => Recording.CursorClickEffect = value;
+    }
+
+    [JsonIgnore]
+    public bool RecordingCursorTrail
+    {
+        get => Recording.CursorTrail;
+        set => Recording.CursorTrail = value;
+    }
+
+    [JsonIgnore]
+    public uint RecordingCursorTrailMs
+    {
+        get => Recording.CursorTrailMs;
+        set => Recording.CursorTrailMs = value;
+    }
+
+    [JsonIgnore]
+    public bool RecordingExcludeFloatingBarFromCapture
+    {
+        get => Recording.ExcludeFloatingBarFromCapture;
+        set => Recording.ExcludeFloatingBarFromCapture = value;
+    }
+
+    [JsonIgnore]
+    public bool RecordingShowFloatingBar
+    {
+        get => Recording.ShowFloatingBar;
+        set => Recording.ShowFloatingBar = value;
+    }
+
+    [JsonIgnore]
+    public bool RecordingLiveCursorEffect
+    {
+        get => Recording.LiveCursorEffect;
+        set => Recording.LiveCursorEffect = value;
+    }
+
+    // ==========================================
+    // 翻译服务向后兼容桥接属性 (指向 Translation)
+    // ==========================================
+
+    [JsonIgnore]
+    public string TranslateProvider
+    {
+        get => Translation.Provider;
+        set => Translation.Provider = value;
+    }
+
+    [JsonIgnore]
+    public string TranslateSourceLang
+    {
+        get => Translation.SourceLang;
+        set => Translation.SourceLang = value;
+    }
+
+    [JsonIgnore]
+    public string TranslateTargetLang
+    {
+        get => Translation.TargetLang;
+        set => Translation.TargetLang = value;
+    }
+
+    [JsonIgnore]
+    public string TranslationUsageMonth
+    {
+        get => Translation.UsageMonth;
+        set => Translation.UsageMonth = value;
+    }
+
+    [JsonIgnore]
+    public string BaiduAppId
+    {
+        get => Translation.BaiduAppId;
+        set => Translation.BaiduAppId = value;
+    }
+
+    [JsonIgnore]
+    public string BaiduSecretKey
+    {
+        get => Translation.BaiduSecretKey;
+        set => Translation.BaiduSecretKey = value;
+    }
+
+    [JsonIgnore]
+    public string BaiduApiKey
+    {
+        get => Translation.BaiduApiKey;
+        set => Translation.BaiduApiKey = value;
+    }
+
+    [JsonIgnore]
+    public int BaiduMonthlyLimit
+    {
+        get => Translation.BaiduMonthlyLimit;
+        set => Translation.BaiduMonthlyLimit = value;
+    }
+
+    [JsonIgnore]
+    public int BaiduUsedCount
+    {
+        get => Translation.BaiduUsedCount;
+        set => Translation.BaiduUsedCount = value;
+    }
+
+    [JsonIgnore]
+    public string GoogleApiKey
+    {
+        get => Translation.GoogleApiKey;
+        set => Translation.GoogleApiKey = value;
+    }
+
+    [JsonIgnore]
+    public int GoogleMonthlyLimit
+    {
+        get => Translation.GoogleMonthlyLimit;
+        set => Translation.GoogleMonthlyLimit = value;
+    }
+
+    [JsonIgnore]
+    public int GoogleUsedCount
+    {
+        get => Translation.GoogleUsedCount;
+        set => Translation.GoogleUsedCount = value;
+    }
+
+    [JsonIgnore]
+    public string OpenAiApiEndpoint
+    {
+        get => Translation.OpenAiApiEndpoint;
+        set => Translation.OpenAiApiEndpoint = value;
+    }
+
+    [JsonIgnore]
+    public string OpenAiApiKey
+    {
+        get => Translation.OpenAiApiKey;
+        set => Translation.OpenAiApiKey = value;
+    }
+
+    [JsonIgnore]
+    public string OpenAiModel
+    {
+        get => Translation.OpenAiModel;
+        set => Translation.OpenAiModel = value;
+    }
+
+    [JsonIgnore]
+    public int OpenAiMonthlyLimit
+    {
+        get => Translation.OpenAiMonthlyLimit;
+        set => Translation.OpenAiMonthlyLimit = value;
+    }
+
+    [JsonIgnore]
+    public int OpenAiUsedCount
+    {
+        get => Translation.OpenAiUsedCount;
+        set => Translation.OpenAiUsedCount = value;
+    }
+
+    [JsonIgnore]
+    public string VolcengineAccessKey
+    {
+        get => Translation.VolcengineAccessKey;
+        set => Translation.VolcengineAccessKey = value;
+    }
+
+    [JsonIgnore]
+    public string VolcengineSecretKey
+    {
+        get => Translation.VolcengineSecretKey;
+        set => Translation.VolcengineSecretKey = value;
+    }
+
+    [JsonIgnore]
+    public string VolcengineRegion
+    {
+        get => Translation.VolcengineRegion;
+        set => Translation.VolcengineRegion = value;
+    }
+
+    [JsonIgnore]
+    public int VolcengineMonthlyLimit
+    {
+        get => Translation.VolcengineMonthlyLimit;
+        set => Translation.VolcengineMonthlyLimit = value;
+    }
+
+    [JsonIgnore]
+    public int VolcengineUsedCount
+    {
+        get => Translation.VolcengineUsedCount;
+        set => Translation.VolcengineUsedCount = value;
+    }
+
+    [JsonIgnore]
+    public string AliyunAccessKeyId
+    {
+        get => Translation.AliyunAccessKeyId;
+        set => Translation.AliyunAccessKeyId = value;
+    }
+
+    [JsonIgnore]
+    public string AliyunAccessKeySecret
+    {
+        get => Translation.AliyunAccessKeySecret;
+        set => Translation.AliyunAccessKeySecret = value;
+    }
+
+    [JsonIgnore]
+    public string AliyunApiEndpoint
+    {
+        get => Translation.AliyunApiEndpoint;
+        set => Translation.AliyunApiEndpoint = value;
+    }
+
+    [JsonIgnore]
+    public int AliyunMonthlyLimit
+    {
+        get => Translation.AliyunMonthlyLimit;
+        set => Translation.AliyunMonthlyLimit = value;
+    }
+
+    [JsonIgnore]
+    public int AliyunUsedCount
+    {
+        get => Translation.AliyunUsedCount;
+        set => Translation.AliyunUsedCount = value;
+    }
+
+    // ==========================================
+    // 批量 OCR 转换向后兼容桥接属性 (指向 Batch)
+    // ==========================================
+
+    [JsonIgnore]
+    public bool BatchExportTxt
+    {
+        get => Batch.ExportTxt;
+        set => Batch.ExportTxt = value;
+    }
+
+    [JsonIgnore]
+    public bool BatchExportXlsx
+    {
+        get => Batch.ExportXlsx;
+        set => Batch.ExportXlsx = value;
+    }
+
+    [JsonIgnore]
+    public bool BatchExportDocx
+    {
+        get => Batch.ExportDocx;
+        set => Batch.ExportDocx = value;
+    }
+
+    [JsonIgnore]
+    public bool BatchSplitColumnsByBlocks
+    {
+        get => Batch.SplitColumnsByBlocks;
+        set => Batch.SplitColumnsByBlocks = value;
+    }
+
+    [JsonIgnore]
+    public int BatchImageRotationIndex
+    {
+        get => Batch.ImageRotationIndex;
+        set => Batch.ImageRotationIndex = value;
+    }
+
+    [JsonIgnore]
+    public bool BatchIsSuffixEnabled
+    {
+        get => Batch.IsSuffixEnabled;
+        set => Batch.IsSuffixEnabled = value;
+    }
+
+    [JsonIgnore]
+    public string BatchSuffixText
+    {
+        get => Batch.SuffixText;
+        set => Batch.SuffixText = value;
+    }
+
+    [JsonIgnore]
+    public bool BatchUseOriginalFolder
+    {
+        get => Batch.UseOriginalFolder;
+        set => Batch.UseOriginalFolder = value;
+    }
+
+    [JsonIgnore]
+    public string BatchCustomOutputDir
+    {
+        get => Batch.CustomOutputDir;
+        set => Batch.CustomOutputDir = value;
+    }
+
+    [JsonIgnore]
+    public int BatchMaxCores
+    {
+        get => Batch.MaxCores;
+        set => Batch.MaxCores = value;
+    }
+
+    [JsonIgnore]
+    public int BatchGpuStreams
+    {
+        get => Batch.GpuStreams;
+        set => Batch.GpuStreams = value;
+    }
+
+    [JsonIgnore]
+    public int BatchCpuLimitPercent
+    {
+        get => Batch.CpuLimitPercent;
+        set => Batch.CpuLimitPercent = value;
+    }
+
+    [JsonIgnore]
+    public string BatchSchedulerMode
+    {
+        get => Batch.SchedulerMode;
+        set => Batch.SchedulerMode = value;
+    }
+
+    // ==========================================
+    // 内置 HTTP API 向后兼容桥接属性 (指向 HttpApi)
+    // ==========================================
+
+    [JsonIgnore]
+    public int HttpApiPort
+    {
+        get => HttpApi.Port;
+        set => HttpApi.Port = value;
+    }
+
+    [JsonIgnore]
+    public bool HttpApiAllowRemote
+    {
+        get => HttpApi.AllowRemote;
+        set => HttpApi.AllowRemote = value;
+    }
+
+    [JsonIgnore]
+    public string HttpApiAccessToken
+    {
+        get => HttpApi.AccessToken;
+        set => HttpApi.AccessToken = value;
+    }
+
+    [JsonIgnore]
+    public bool HttpApiAllowAnonymousRemote
+    {
+        get => HttpApi.AllowAnonymousRemote;
+        set => HttpApi.AllowAnonymousRemote = value;
+    }
+
+    [JsonIgnore]
+    public int HttpApiMaxCores
+    {
+        get => HttpApi.MaxCores;
+        set => HttpApi.MaxCores = value;
+    }
+
+    [JsonIgnore]
+    public int HttpApiGpuStreams
+    {
+        get => HttpApi.GpuStreams;
+        set => HttpApi.GpuStreams = value;
+    }
+
+    [JsonIgnore]
+    public int HttpApiCpuLimitPercent
+    {
+        get => HttpApi.CpuLimitPercent;
+        set => HttpApi.CpuLimitPercent = value;
+    }
+
+    [JsonIgnore]
+    public string HttpApiSchedulerMode
+    {
+        get => HttpApi.SchedulerMode;
+        set => HttpApi.SchedulerMode = value;
+    }
+
+    // ==========================================
+    // 主题与外观记忆向后兼容桥接属性 (指向 Theme)
+    // ==========================================
+
+    [JsonIgnore]
+    public bool IsSidebarExpanded
+    {
+        get => Theme.IsSidebarExpanded;
+        set => Theme.IsSidebarExpanded = value;
+    }
+
+    [JsonIgnore]
+    public string? ThemeBackgroundImagePath
+    {
+        get => Theme.BackgroundImagePath;
+        set => Theme.BackgroundImagePath = value;
+    }
+
+    [JsonIgnore]
+    public double ThemeBackgroundBlurRadius
+    {
+        get => Theme.BackgroundBlurRadius;
+        set => Theme.BackgroundBlurRadius = value;
+    }
+
+    [JsonIgnore]
+    public double ThemeComponentOpacity
+    {
+        get => Theme.ComponentOpacity;
+        set => Theme.ComponentOpacity = value;
+    }
+
+    [JsonIgnore]
+    public double ThemeButtonOpacity
+    {
+        get => Theme.ButtonOpacity;
+        set => Theme.ButtonOpacity = value;
+    }
+
+    [JsonIgnore]
+    public bool ThemeEnableAcrylic
+    {
+        get => Theme.EnableAcrylic;
+        set => Theme.EnableAcrylic = value;
+    }
+
+    [JsonIgnore]
+    public string? ThemeBackgroundColorHex
+    {
+        get => Theme.BackgroundColorHex;
+        set => Theme.BackgroundColorHex = value;
+    }
+
+    [JsonIgnore]
+    public string? ThemeCardColorHex
+    {
+        get => Theme.CardColorHex;
+        set => Theme.CardColorHex = value;
+    }
+
+    [JsonIgnore]
+    public string? ThemeTextColorHex
+    {
+        get => Theme.TextColorHex;
+        set => Theme.TextColorHex = value;
+    }
+
+    [JsonIgnore]
+    public string? ThemeFloatingWindowBackgroundColorHex
+    {
+        get => Theme.FloatingWindowBackgroundColorHex;
+        set => Theme.FloatingWindowBackgroundColorHex = value;
+    }
+
+    [JsonIgnore]
+    public string? ThemeFloatingWindowTextColorHex
+    {
+        get => Theme.FloatingWindowTextColorHex;
+        set => Theme.FloatingWindowTextColorHex = value;
+    }
+
+    [JsonIgnore]
+    public string LastActivePage
+    {
+        get => Theme.LastActivePage;
+        set => Theme.LastActivePage = value;
+    }
 
     public AppSettings Clone() => new()
     {
-        Hotkey = Hotkey,
-        CaptureImageHotkey = CaptureImageHotkey,
-        AnnotateHotkey = AnnotateHotkey,
-        AutoCopy = AutoCopy,
-        AutoCopyTableAsCells = AutoCopyTableAsCells,
-        SilentMode = SilentMode,
-        SilentStartup = SilentStartup,
-        ShowOcrNotification = ShowOcrNotification,
-        ShowCaptureImageNotification = ShowCaptureImageNotification,
-        ShowWindowAfterOcr = ShowWindowAfterOcr,
-        StartWithWindows = StartWithWindows,
-        Model = Model,
-        EmbeddedModel = EmbeddedModel,
-        ScanExternalModels = ScanExternalModels,
-        UseExternalModel = UseExternalModel,
-        ExternalModelType = ExternalModelType,
-        ExternalModelPath = ExternalModelPath,
-        ExternalApiUrl = ExternalApiUrl,
-        OcrBackend = OcrBackend,
-        SelectedGpuIndex = SelectedGpuIndex,
-        EnableAngleDetection = EnableAngleDetection,
-        MaxSideLen = MaxSideLen,
-        EnableIdleSleep = EnableIdleSleep,
-        IdleSleepMinutes = IdleSleepMinutes,
-        EnableLogging = EnableLogging,
-        EnableLogAutoClean = EnableLogAutoClean,
-        LogRetentionDays = LogRetentionDays,
-        DefaultSaveFormat = DefaultSaveFormat,
-        DefaultSaveQuality = DefaultSaveQuality,
-        DefaultSaveScale = DefaultSaveScale,
-        LastSaveDirectory = LastSaveDirectory,
-
-        TranslateHotkey = TranslateHotkey,
-        OcrPopupHotkey = OcrPopupHotkey,
-        QuickNoteHotkey = QuickNoteHotkey,
-        EnableClipboard = EnableClipboard,
-        ClipboardPanelHotkey = ClipboardPanelHotkey,
-        PhrasesPanelHotkey = PhrasesPanelHotkey,
-        LongScreenshotHotkey = LongScreenshotHotkey,
-        ClipboardPanelBackground = ClipboardPanelBackground,
-        TranslateProvider = TranslateProvider,
-        TranslateSourceLang = TranslateSourceLang,
-        TranslateTargetLang = TranslateTargetLang,
-        TranslationUsageMonth = TranslationUsageMonth,
-
-        BaiduAppId = BaiduAppId,
-        BaiduSecretKey = BaiduSecretKey,
-        BaiduApiKey = BaiduApiKey,
-        BaiduMonthlyLimit = BaiduMonthlyLimit,
-        BaiduUsedCount = BaiduUsedCount,
-
-        GoogleApiKey = GoogleApiKey,
-        GoogleMonthlyLimit = GoogleMonthlyLimit,
-        GoogleUsedCount = GoogleUsedCount,
-
-        OpenAiApiEndpoint = OpenAiApiEndpoint,
-        OpenAiApiKey = OpenAiApiKey,
-        OpenAiModel = OpenAiModel,
-        OpenAiMonthlyLimit = OpenAiMonthlyLimit,
-        OpenAiUsedCount = OpenAiUsedCount,
-
-        VolcengineAccessKey = VolcengineAccessKey,
-        VolcengineSecretKey = VolcengineSecretKey,
-        VolcengineRegion = VolcengineRegion,
-        VolcengineMonthlyLimit = VolcengineMonthlyLimit,
-        VolcengineUsedCount = VolcengineUsedCount,
-
-        AliyunAccessKeyId = AliyunAccessKeyId,
-        AliyunAccessKeySecret = AliyunAccessKeySecret,
-        AliyunApiEndpoint = AliyunApiEndpoint,
-        AliyunMonthlyLimit = AliyunMonthlyLimit,
-        AliyunUsedCount = AliyunUsedCount,
-
-        BatchExportTxt = BatchExportTxt,
-        BatchExportXlsx = BatchExportXlsx,
-        BatchExportDocx = BatchExportDocx,
-        BatchSplitColumnsByBlocks = BatchSplitColumnsByBlocks,
-        BatchImageRotationIndex = BatchImageRotationIndex,
-        BatchIsSuffixEnabled = BatchIsSuffixEnabled,
-        BatchSuffixText = BatchSuffixText,
-        BatchUseOriginalFolder = BatchUseOriginalFolder,
-        BatchCustomOutputDir = BatchCustomOutputDir,
-        BatchMaxCores = BatchMaxCores,
-        BatchGpuStreams = BatchGpuStreams,
-        BatchCpuLimitPercent = BatchCpuLimitPercent,
-
-        HttpApiPort = HttpApiPort,
-        HttpApiAllowRemote = HttpApiAllowRemote,
-        HttpApiAccessToken = HttpApiAccessToken,
-        HttpApiAllowAnonymousRemote = HttpApiAllowAnonymousRemote,
-        HttpApiMaxCores = HttpApiMaxCores,
-        HttpApiGpuStreams = HttpApiGpuStreams,
-        HttpApiCpuLimitPercent = HttpApiCpuLimitPercent,
-
-        IsSidebarExpanded = IsSidebarExpanded,
-        ThemeBackgroundImagePath = ThemeBackgroundImagePath,
-        ThemeBackgroundBlurRadius = ThemeBackgroundBlurRadius,
-        ThemeComponentOpacity = ThemeComponentOpacity,
-        ThemeButtonOpacity = ThemeButtonOpacity,
-        ThemeEnableAcrylic = ThemeEnableAcrylic,
-        ThemeBackgroundColorHex = ThemeBackgroundColorHex,
-        ThemeCardColorHex = ThemeCardColorHex,
-        ThemeTextColorHex = ThemeTextColorHex,
-        ThemeFloatingWindowBackgroundColorHex = ThemeFloatingWindowBackgroundColorHex,
-        ThemeFloatingWindowTextColorHex = ThemeFloatingWindowTextColorHex,
-        BatchSchedulerMode = BatchSchedulerMode,
-        HttpApiSchedulerMode = HttpApiSchedulerMode,
-        AnnotationStrokeWidth = AnnotationStrokeWidth,
-        AnnotationFontSize = AnnotationFontSize,
-        LastActivePage = LastActivePage,
-        RecordingEncoder = RecordingEncoder,
-        RecordingFps = RecordingFps,
-        RecordingBitrateKbps = RecordingBitrateKbps,
-        RecordingShowRegionBorder = RecordingShowRegionBorder,
-        RecordingOutputDir = RecordingOutputDir,
-        RecordingFilePrefix = RecordingFilePrefix,
-        RecordingHotkey = RecordingHotkey
+        General = General.Clone(),
+        Hotkeys = Hotkeys.Clone(),
+        Ocr = Ocr.Clone(),
+        Recording = Recording.Clone(),
+        Translation = Translation.Clone(),
+        Theme = Theme.Clone(),
+        Batch = Batch.Clone(),
+        HttpApi = HttpApi.Clone()
     };
 }

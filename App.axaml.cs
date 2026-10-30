@@ -490,20 +490,11 @@ public partial class App : Application
             {
                 recordingSuccess = _hotkeyService.Register(HOTKEY_ID_RECORDING, recGesture, () =>
                 {
-                    Dispatcher.UIThread.Post(async () =>
+                    Dispatcher.UIThread.Post(() =>
                     {
                         var recVm = _mainViewModel?.RecordingVm;
                         if (recVm == null) return;
-                        if (recVm.IsRecording)
-                        {
-                            await recVm.StopRecordingCommand.ExecuteAsync(null);
-                        }
-                        else
-                        {
-                            // 触发桌面悬浮条并开始框选录制
-                            ShawMuOCR.Views.RecordingFloatingWindow.ShowOverlay(recVm);
-                            await recVm.SelectRegionCommand.ExecuteAsync(null);
-                        }
+                        ShawMuOCR.Views.RecordingFloatingWindow.ToggleOverlay(recVm);
                     });
                 });
             }

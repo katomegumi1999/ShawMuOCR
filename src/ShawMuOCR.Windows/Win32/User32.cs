@@ -37,6 +37,8 @@ public static class User32
     public const uint SWP_NOZORDER = 0x0004;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_NOACTIVATE = 0x0010;
+    public const uint SWP_FRAMECHANGED = 0x0020;
+    public const int SM_REMOTESESSION = 0x1000;
 
     public const uint WM_ACTIVATE = 0x0006;
     public const int WA_INACTIVE = 0;

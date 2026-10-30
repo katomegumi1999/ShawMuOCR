@@ -25,7 +25,12 @@ public sealed class OcrCoordinator : IOcrCoordinator
     private readonly ILoggerService? _logger;
 
     private readonly object _stateLock = new();
-    private IOcrEngine _ocrEngine;
+    private readonly object _engineLock = new();
+
+    // 引擎惰性实例化：PaddleOcrAll.LoadAsync 要同步加载 3 个 ONNX 会话（实测 250~350ms），
+    // 若在构造期完成会直接推迟主窗口出现。这里推迟到「首次使用」或「首帧后的后台预载」。
+    private IOcrEngine? _ocrEngine;
+    private Task<IOcrEngine>? _engineReadyTask;
     private IIdleSleepService? _idleSleepService;
     private Task? _warmupTask;
     private OcrSession? _currentSession;
@@ -70,39 +75,82 @@ public sealed class OcrCoordinator : IOcrCoordinator
         _translationService = translationService ?? new TranslationService(settingsService);
         _idleSleepService = idleSleepService;
 
-        // 默认初始化当前模型（捕获启动异常并写入错误日志，防止因目录权限或模型文件问题导致启动直接闪退）
+        // 引擎改为惰性 + 后台线程实例化：启动路径上不再同步加载 ONNX 会话，
+        // 主窗口可以先呈现，引擎在首帧之后的空闲期由 PreloadEngineInBackground 完成加载与预热。
+        // 配置快照仍需在构造期记录，用于 OnSettingsChanged 的变更比对。
         _cachedSettings = _settingsService.Current.Clone();
-        try
-        {
-            string originalModel = _cachedSettings.Model;
-            _ocrEngine = _engineFactory.Create(_cachedSettings);
-            if (!string.Equals(originalModel, _cachedSettings.Model, StringComparison.OrdinalIgnoreCase))
-            {
-                _settingsService.Save(_cachedSettings);
-            }
-
-            if (_ocrEngine is ShawMuOCR.OCR.PaddleOcrV6Engine { ConfiguredBackend: not Sdcb.SimdPaddleOCR.OcrBackend.Cpu })
-            {
-                StartBackgroundWarmup(_ocrEngine, "启动初始化", delayMs: 300);
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger?.Error("启动初始化 OCR 模型引擎失败", ex);
-            _statusMessage = $"⚠️ OCR 模型未就绪: {ex.Message}";
-            _ocrEngine = new FaultedOcrEngine(ex.Message);
-        }
 
         _settingsService.SettingsChanged += OnSettingsChanged;
     }
 
     public bool IsEngineFaulted => _ocrEngine is FaultedOcrEngine;
 
+    /// <summary>
+    /// 确保 OCR 引擎实例已就绪：首次调用在后台线程完成 ONNX 会话加载，之后复用同一实例。
+    /// 加载失败返回 FaultedOcrEngine 占位（与原有失败语义一致），不向调用方抛出。
+    /// </summary>
+    private Task<IOcrEngine> EnsureEngineAsync()
+    {
+        lock (_engineLock)
+        {
+            if (_ocrEngine is { } ready)
+            {
+                return Task.FromResult(ready);
+            }
+
+            return _engineReadyTask ??= Task.Run(CreateEngineCore);
+        }
+    }
+
+    private IOcrEngine CreateEngineCore()
+    {
+        var sw = Stopwatch.StartNew();
+        var settings = _settingsService.Current.Clone();
+        try
+        {
+            string originalModel = settings.Model;
+            var engine = _engineFactory.Create(settings);
+            if (!string.Equals(originalModel, settings.Model, StringComparison.OrdinalIgnoreCase))
+            {
+                _settingsService.Save(settings);
+            }
+
+            lock (_engineLock)
+            {
+                _ocrEngine = engine;
+            }
+
+            _logger?.Info($"[引擎] OCR 引擎实例化完成（{engine.ModelName}），耗时 {sw.ElapsedMilliseconds} ms（后台线程）");
+            return engine;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("启动初始化 OCR 模型引擎失败", ex);
+            _statusMessage = $"⚠️ OCR 模型未就绪: {ex.Message}";
+            var faulted = new FaultedOcrEngine(ex.Message);
+            lock (_engineLock)
+            {
+                _ocrEngine = faulted;
+            }
+            return faulted;
+        }
+    }
+
+    /// <summary>
+    /// 启动后由 UI 侧在首帧呈现后调用：后台完成引擎实例化与预热，全程不阻塞界面。
+    /// 若用户在预热完成前就按下热键，识别流程会等待同一次加载结束，不会重复加载模型。
+    /// </summary>
+    public void PreloadEngineInBackground(string scene = "启动预载", int delayMs = 0)
+    {
+        StartBackgroundWarmup(scene, delayMs);
+    }
+
     private bool TryRecoverFaultedEngine(out string errorMessage)
     {
         lock (_stateLock)
         {
-            if (_ocrEngine is not FaultedOcrEngine)
+            // 引擎尚未实例化（惰性加载中或还没轮到预载）不算故障，交由 EnsureEngineAsync 正常加载
+            if (_ocrEngine is null or not FaultedOcrEngine)
             {
                 errorMessage = string.Empty;
                 return true;
@@ -113,8 +161,11 @@ public sealed class OcrCoordinator : IOcrCoordinator
                 var current = _settingsService.Current.Clone();
                 string originalModel = current.Model;
                 var newEngine = _engineFactory.Create(current);
-                _ocrEngine.Dispose();
-                _ocrEngine = newEngine;
+                lock (_engineLock)
+                {
+                    _ocrEngine?.Dispose();
+                    _ocrEngine = newEngine;
+                }
                 _cachedSettings = current;
                 if (!string.Equals(originalModel, current.Model, StringComparison.OrdinalIgnoreCase))
                 {
@@ -127,7 +178,10 @@ public sealed class OcrCoordinator : IOcrCoordinator
             catch (Exception ex)
             {
                 errorMessage = ex.Message;
-                _ocrEngine = new FaultedOcrEngine(ex.Message);
+                lock (_engineLock)
+                {
+                    _ocrEngine = new FaultedOcrEngine(ex.Message);
+                }
                 return false;
             }
         }
@@ -150,21 +204,33 @@ public sealed class OcrCoordinator : IOcrCoordinator
         _idleSleepService = idleSleepService;
     }
 
-    private void StartBackgroundWarmup(IOcrEngine engine, string scene, int delayMs = 0)
+    private void StartBackgroundWarmup(string scene, int delayMs = 0)
     {
         lock (_stateLock)
         {
-            _logger?.Info($"[{scene}] 正在后台异步预热 OCR 引擎 (包含 GPU Vulkan 着色器管线 / 内存池)...");
+            if (_disposed) return;
+
+            _logger?.Info($"[{scene}] 正在后台异步加载并预热 OCR 引擎 (包含模型会话 / GPU Vulkan 着色器管线 / 内存池)...");
             _warmupTask = Task.Run(async () =>
             {
                 try
                 {
                     if (delayMs > 0)
                     {
-                        await Task.Delay(delayMs);
+                        await Task.Delay(delayMs).ConfigureAwait(false);
                     }
+
+                    var engine = await EnsureEngineAsync().ConfigureAwait(false);
+
+                    // CPU 后端首次推理本身开销可控，且没有着色器管线要编译；故障占位也不需要预热
+                    if (engine is FaultedOcrEngine ||
+                        engine is ShawMuOCR.OCR.PaddleOcrV6Engine { ConfiguredBackend: Sdcb.SimdPaddleOCR.OcrBackend.Cpu })
+                    {
+                        return;
+                    }
+
                     var sw = Stopwatch.StartNew();
-                    await engine.WarmupAsync();
+                    await engine.WarmupAsync().ConfigureAwait(false);
                     sw.Stop();
                     _logger?.Info($"[{scene}] OCR 引擎预热就绪，耗时 {sw.ElapsedMilliseconds} ms");
                 }
@@ -180,7 +246,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
     {
         if (_idleSleepService?.TryWakeUp() == true)
         {
-            StartBackgroundWarmup(_ocrEngine, "休眠唤醒");
+            StartBackgroundWarmup("休眠唤醒");
         }
     }
 
@@ -227,14 +293,14 @@ public sealed class OcrCoordinator : IOcrCoordinator
                 try
                 {
                     var newEngine = _engineFactory.Create(settings);
-                    _ocrEngine.Dispose();
-                    _ocrEngine = newEngine;
+                    lock (_engineLock)
+                    {
+                        _ocrEngine?.Dispose();
+                        _ocrEngine = newEngine;
+                    }
                     _cachedSettings = settings.Clone();
 
-                    if (_ocrEngine is ShawMuOCR.OCR.PaddleOcrV6Engine { ConfiguredBackend: not Sdcb.SimdPaddleOCR.OcrBackend.Cpu })
-                    {
-                        StartBackgroundWarmup(_ocrEngine, "切换配置");
-                    }
+                    StartBackgroundWarmup("切换配置");
                 }
                 catch (Exception ex)
                 {
@@ -713,10 +779,11 @@ public sealed class OcrCoordinator : IOcrCoordinator
                         : (null, info));
             }
 
-            // 执行后台推理
+            // 执行后台推理（引擎可能在启动预载中，这里等待同一次加载完成）
             var ocrTask = Task.Run(async () =>
             {
-                return await _ocrEngine.RecognizeAsync(image);
+                var engine = await EnsureEngineAsync().ConfigureAwait(false);
+                return await engine.RecognizeAsync(image).ConfigureAwait(false);
             });
 
             List<(int Left, int Right)>? lineColumns = null;
@@ -855,7 +922,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
         return await Task.Run(async () =>
         {
-            return await _ocrEngine.RecognizeAsync(image);
+            var engine = await EnsureEngineAsync().ConfigureAwait(false);
+            return await engine.RecognizeAsync(image).ConfigureAwait(false);
         });
     }
 
@@ -927,9 +995,10 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
             // 1. OCR 识别数据提取（提取完成后立刻释放图片，内存 0 泄露）
             OcrResult ocrResult;
+            var engine = await EnsureEngineAsync();
             try
             {
-                ocrResult = await _ocrEngine.RecognizeAsync(image);
+                ocrResult = await engine.RecognizeAsync(image);
             }
             finally
             {
@@ -1120,9 +1189,10 @@ public sealed class OcrCoordinator : IOcrCoordinator
             await AwaitWarmupAsync();
 
             OcrResult ocrResult;
+            var engine = await EnsureEngineAsync();
             try
             {
-                ocrResult = await _ocrEngine.RecognizeAsync(image);
+                ocrResult = await engine.RecognizeAsync(image);
             }
             finally
             {
@@ -1174,7 +1244,7 @@ public sealed class OcrCoordinator : IOcrCoordinator
             // 长截图采集循环是自持的，退出时必须显式叫停，否则会一直抓屏到帧数上限
             _longScreenshotCapturer?.RequestStop();
             _currentSession?.Dispose();
-            _ocrEngine.Dispose();
+            _ocrEngine?.Dispose();
         }
     }
 }

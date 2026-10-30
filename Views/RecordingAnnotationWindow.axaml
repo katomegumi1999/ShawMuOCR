@@ -5,10 +5,10 @@
         WindowDecorations="None"
         Topmost="True"
         ShowInTaskbar="False"
-        Background="#01000000"
+        Background="Transparent"
         TransparencyBackgroundFallback="Transparent"
         TransparencyLevelHint="Transparent"
         CanResize="False"
         WindowStartupLocation="Manual">
-    <Panel Name="RootPanel" Background="#01000000" />
+    <Panel Name="RootPanel" Background="Transparent" />
 </Window>

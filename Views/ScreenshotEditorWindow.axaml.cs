@@ -357,9 +357,9 @@ public partial class ScreenshotEditorWindow : Window
 
         if (WindowState != WindowState.Maximized)
         {
-            // 确保窗口宽度保底 960px，彻底保证两行操作区的全部按钮（OCR、翻译、另存为、复制、置顶）完整可见
-            double totalDipW = Math.Clamp(Math.Max(finalCanvasW + ChromeExtraWidth, 960.0), 960.0, workingW / scaling);
-            double totalDipH = Math.Clamp(Math.Max(finalCanvasH + ChromeExtraHeight, 520.0), 500.0, workingH / scaling);
+            // 确保窗口宽度保底 890px，保证底部单行操作区全部按钮舒展完整显示且不折行不挤压
+            double totalDipW = Math.Clamp(Math.Max(finalCanvasW + ChromeExtraWidth, 890.0), 890.0, workingW / scaling);
+            double totalDipH = Math.Clamp(Math.Max(finalCanvasH + ChromeExtraHeight, 480.0), 480.0, workingH / scaling);
 
             Width = totalDipW;
             Height = totalDipH;

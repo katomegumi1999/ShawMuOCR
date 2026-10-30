@@ -21,5 +21,14 @@ public interface IClipboardHistoryService
     int DeleteHistoryByTimeRange(DateTime? startTime, DateTime? endTime);
     List<MuClipItem> QueryHistoryPage(int offset, int limit = 100);
     List<MuClipItem> Search(string query, int limit = 500);
+
+    /// <summary>
+    /// 结构化分页搜索：关键词 + 内容类型白名单 + 分页全部在 SQL 侧生效。
+    /// </summary>
+    List<MuClipItem> SearchPage(string query, int[]? typeIds, int offset, int limit);
+
+    /// <summary>命中总数（不受分页影响）。</summary>
+    int CountSearch(string query, int[]? typeIds);
+
     void RefreshHistory();
 }

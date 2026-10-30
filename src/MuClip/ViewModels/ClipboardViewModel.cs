@@ -1,6 +1,7 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls;
@@ -691,6 +692,7 @@ public partial class ClipboardViewModel : ObservableObject
     public ClipboardViewModel(IMuClipService service)
     {
         _service = service;
+        _searchDebouncer = new Debouncer(RefreshForSearch, SearchDebounceMs);
         _autoDiscoveryEnabled = _service.AutoDiscoveryEnabled;
         _service.HistoryChanged += OnHistoryChanged;
         _service.PhrasesChanged += OnPhrasesChanged;
@@ -899,25 +901,63 @@ public partial class ClipboardViewModel : ObservableObject
     private bool _hasMoreHistoryInDb;
     private const int DbPageSize = 100;
 
+    /// <summary>搜索每页条数。滚动到底再取下一页，不再一次把全库匹配搬进内存。</summary>
+    private const int SearchPageSize = 200;
+
+    /// <summary>
+    /// 搜索防抖：连续输入只在停顿后检索一次。
+    /// 没有它时每敲一个字符就会「全库 LIKE + 跨 FFI 回传 + 重建列表」，
+    /// 长历史下输入明显发滞。
+    /// </summary>
+    private readonly Debouncer _searchDebouncer;
+
+    private const int SearchDebounceMs = 180;
+
     partial void OnSearchTextChanged(string value)
     {
-        LoadItems();
-        LoadPhrases();
+        // 清空搜索要立刻回到默认列表（用户按 × 时期待瞬时反馈），不必等防抖。
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            _searchDebouncer.Cancel();
+            RefreshForSearch();
+            return;
+        }
+
+        _searchDebouncer.Trigger();
+    }
+
+    /// <summary>在 UI 线程上按当前搜索条件刷新列表与常用语。</summary>
+    private void RefreshForSearch()
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            LoadItems();
+            LoadPhrases();
+            return;
+        }
+        Dispatcher.UIThread.Post(() =>
+        {
+            LoadItems();
+            LoadPhrases();
+        });
     }
 
     partial void OnSelectedTypeFilterChanged(string value) => LoadItems();
 
-    private bool MatchesTypeFilter(MuClipItem it)
+    /// <summary>
+    /// 分类筛选 → Rust 侧内容类型编号（编号即落盘格式，与 ContentType::to_db_i64 一一对应）。
+    ///
+    /// 「文本」取 plain_text / email / hex_color / number 四类：早先的实现在内存里只认
+    /// `plain_text`，导致选中「文本」时邮箱、数字、色值凭空消失。空数组表示不限。
+    /// </summary>
+    private int[] CurrentTypeFilterIds => SelectedTypeFilter switch
     {
-        return SelectedTypeFilter switch
-        {
-            "文本" => it.ContentType is "text" or "plain_text",
-            "代码" => it.ContentType == "code",
-            "链接" => it.ContentType == "url",
-            "JSON" => it.ContentType == "json",
-            _ => true
-        };
-    }
+        "文本" => new[] { 0, 2, 3, 6 },
+        "代码" => new[] { 5 },
+        "链接" => new[] { 1 },
+        "JSON" => new[] { 4 },
+        _ => Array.Empty<int>(),
+    };
 
     private void SyncHistoryFavoriteStates()
     {
@@ -976,24 +1016,23 @@ public partial class ClipboardViewModel : ObservableObject
         }
         else
         {
-            // 搜索或分类筛选状态：从 SQLite 持久化库中检索匹配项
-            int maxSearchLimit = Math.Max(500, _service.TotalHistoryCount);
-            var rawItems = string.IsNullOrWhiteSpace(SearchText)
-                ? _service.QueryHistoryPage(0, maxSearchLimit)
-                : _service.Search(SearchText, maxSearchLimit);
-
-            var filtered = rawItems.Where(MatchesTypeFilter).ToList();
+            // 搜索 / 分类筛选：条件全部下推到 SQLite，只取第一页。
+            // 旧实现是 `limit = max(500, 全库条数)` 再在内存里按类型过滤——
+            // 既把整库搬了两遍，又会让「链接」这类稀缺类型在 limit 用满后一条都搜不到。
+            var typeIds = CurrentTypeFilterIds;
+            var page = _service.SearchPage(SearchText, typeIds, 0, SearchPageSize);
+            int total = _service.CountSearch(SearchText, typeIds);
 
             FilteredItems.Clear();
-            foreach (var item in filtered)
+            foreach (var item in page)
             {
                 item.IsFavorite = phraseSet.Contains(item.Content);
                 FilteredItems.Add(item);
             }
 
-            _dbLoadedOffset = rawItems.Count;
-            _hasMoreHistoryInDb = false;
-            TotalHistoryCount = FilteredItems.Count;
+            _dbLoadedOffset = page.Count;
+            _hasMoreHistoryInDb = page.Count < total;
+            TotalHistoryCount = total;
         }
 
         if (SelectedItem == null || !FilteredItems.Contains(SelectedItem))
@@ -1008,13 +1047,16 @@ public partial class ClipboardViewModel : ObservableObject
     public void LoadMoreHistory()
     {
         if (!_hasMoreHistoryInDb) return;
-        if (!string.IsNullOrWhiteSpace(SearchText) || SelectedTypeFilter != "全部") return;
 
-        var moreItems = _service.QueryHistoryPage(_dbLoadedOffset, DbPageSize);
+        // 搜索 / 筛选状态下同样支持继续加载：走同一条分页查询，只是条件不同。
+        bool isFiltered = !string.IsNullOrWhiteSpace(SearchText) || SelectedTypeFilter != "全部";
+        var moreItems = isFiltered
+            ? _service.SearchPage(SearchText, CurrentTypeFilterIds, _dbLoadedOffset, DbPageSize)
+            : _service.QueryHistoryPage(_dbLoadedOffset, DbPageSize);
+
         if (moreItems.Count == 0)
         {
             _hasMoreHistoryInDb = false;
-            TotalHistoryCount = FilteredItems.Count;
             return;
         }
 
@@ -1030,11 +1072,15 @@ public partial class ClipboardViewModel : ObservableObject
         }
 
         _dbLoadedOffset += moreItems.Count;
-        if (moreItems.Count < DbPageSize || _dbLoadedOffset >= _service.TotalHistoryCount)
+        if (moreItems.Count < DbPageSize || _dbLoadedOffset >= TotalHistoryCount)
         {
             _hasMoreHistoryInDb = false;
         }
-        TotalHistoryCount = Math.Max(FilteredItems.Count, _service.TotalHistoryCount);
+        // 搜索态的「总数」是命中数（由 CountSearch 给出），不能被已加载条数覆盖
+        if (!isFiltered)
+        {
+            TotalHistoryCount = Math.Max(FilteredItems.Count, _service.TotalHistoryCount);
+        }
     }
 
     [RelayCommand]

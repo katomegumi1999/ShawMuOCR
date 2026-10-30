@@ -6,8 +6,8 @@
         Topmost="True"
         ShowInTaskbar="True"
         CanResize="True"
-        MinWidth="960"
-        MinHeight="500"
+        MinWidth="890"
+        MinHeight="480"
         Background="#181818"
         WindowDecorations="None"
         WindowStartupLocation="Manual">
@@ -180,7 +180,7 @@
                 </Panel>
             </Border>
 
-            <!-- 底部悬浮现代化多功能工具栏 (两行布局，沉稳纯黑经典风格) -->
+            <!-- 底部悬浮现代化多功能工具栏 (两行布局，沉稳纯黑经典风格，保底最小宽度) -->
             <Border Grid.Row="2"
                     Background="#1E1E1E"
                     BorderBrush="#333333"
@@ -189,10 +189,11 @@
                     BoxShadow="0 8 28 0 #70000000"
                     Padding="10,4"
                     Margin="10,0,10,6"
+                    MinWidth="860"
                     HorizontalAlignment="Center">
                 <StackPanel Orientation="Vertical" Spacing="3" HorizontalAlignment="Center">
-                    <!-- 第 1 行: 撤销/还原 + 标注图元工具 + 导出与操作动作 -->
-                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                    <!-- 第 1 行: 撤销/还原 + 标注图元工具 + 导出与操作动作 (单行横排，保底最小宽度不折行) -->
+                    <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" HorizontalAlignment="Center">
                         <!-- 撤销 -->
                         <Button Name="UndoBtn"
                                 Classes="ToolBtn"
@@ -416,62 +417,56 @@
                             </Button.Flyout>
                         </Button>
 
-                        <Separator Classes="ToolSep" />
+                        <Separator Classes="ToolSep" VerticalAlignment="Center" Margin="4,0" />
 
-                        <!-- 动作按钮 -->
+                        <!-- 动作按钮 (单行横排，移除多余关闭键) -->
                         <Button Name="LongScreenshotBtn"
                                 Classes="ActionBtn"
-                                Content="📜 长截图"
+                                Content="长截图"
                                 ToolTip.Tip="在当前选定区域直接开始长截屏"
                                 Click="OnLongScreenshotClick" />
 
                         <Button Name="RegionRecordBtn"
                                 Classes="ActionBtn"
-                                Content="🎥 区域录制"
+                                Content="区域录制"
                                 ToolTip.Tip="在当前选定区域直接开始录屏"
                                 Click="OnRegionRecordClick" />
 
                         <Button Name="OcrBtn"
                                 Classes="ActionBtn"
-                                Content="🔤 OCR"
+                                Content="OCR"
                                 ToolTip.Tip="直接 OCR 识别并复制文字"
                                 Click="OnOcrClick" />
 
                         <Button Name="TranslateBtn"
                                 Classes="ActionBtn"
-                                Content="🌐 翻译"
+                                Content="翻译"
                                 ToolTip.Tip="直接提取文字并打开随动翻译浮窗"
                                 Click="OnTranslateClick" />
 
                         <Button Name="QuickSaveBtn"
                                 Classes="ActionBtn"
-                                Content="⚡ 快存"
+                                Content="快存"
                                 ToolTip.Tip="直接自动保存到上次路径 (Ctrl+Shift+S)"
                                 Click="OnQuickSaveClick" />
 
                         <Button Name="SaveBtn"
                                 Classes="ActionBtn"
-                                Content="💾 另存为"
+                                Content="另存为"
                                 ToolTip.Tip="保存图片设置与自定义位置 (Ctrl+S)"
                                 Click="OnSaveClick" />
 
                         <Button Name="CopyBtn"
                                 Classes="ActionBtn PrimaryActionBtn"
-                                Content="📋 复制"
+                                Content="复制"
                                 ToolTip.Tip="复制带标注图片至剪贴板 (Ctrl+C)"
                                 Click="OnCopyClick" />
 
                         <Button Name="PinBtn"
                                 Classes="ActionBtn"
-                                Content="📌 置顶"
+                                Content="置顶"
                                 ToolTip.Tip="无边框置顶贴在桌面上"
                                 Click="OnPinClick" />
-
-                        <Button Name="CloseBtn"
-                                Classes="ActionBtn"
-                                Content="✕"
-                                ToolTip.Tip="关闭 (Esc)"
-                                Click="OnCloseClick" />
                     </StackPanel>
 
                     <!-- 第 2 行: 粗细调节、颜色选择、文字大小输入框 (适用于所有文字、线条、形状、画笔、马赛克、橡皮擦) -->

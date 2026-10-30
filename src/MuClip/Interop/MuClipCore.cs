@@ -148,6 +148,52 @@ public sealed class MuClipCore : IDisposable
     }
 
     /// <summary>
+    /// 结构化分页搜索：关键词与内容类型都在 SQL 侧过滤，只回传当前页。
+    /// </summary>
+    /// <param name="query">字面量子串（`%` `_` `\` 按字面量匹配，不会当通配符）</param>
+    /// <param name="typeIds">内容类型白名单（Rust 侧编号），null/空表示不限</param>
+    public unsafe List<HistoryRecord> SearchHistoryPage(string query, int[]? typeIds, int offset, int limit)
+    {
+        ThrowIfDisposed();
+        var request = new HistorySearchRequest
+        {
+            Query = query ?? string.Empty,
+            Types = typeIds ?? Array.Empty<int>(),
+            Offset = Math.Max(0, offset),
+            Limit = limit,
+        };
+        string json = JsonSerializer.Serialize(request, PhraseRuleJsonContext.Default.HistorySearchRequest);
+        byte[] bytes = Encoding.UTF8.GetBytes(json + "\0");
+        fixed (byte* p = bytes)
+        {
+            ulong leaseId = MuClipNative.CoreSearchHistoryPagePooled(_handle, p, out IntPtr ptr, out nuint len);
+            return MuClipBinaryDecoder.ReadHistoryFromPooled(leaseId, ptr, len);
+        }
+    }
+
+    /// <summary>
+    /// 命中总数（不受分页 limit 影响）。用于「共 N 条」与「还有更多」判断，失败返回 -1。
+    /// </summary>
+    public unsafe int CountSearch(string query, int[]? typeIds)
+    {
+        ThrowIfDisposed();
+        var request = new HistorySearchRequest
+        {
+            Query = query ?? string.Empty,
+            Types = typeIds ?? Array.Empty<int>(),
+            Offset = 0,
+            Limit = 0,
+        };
+        string json = JsonSerializer.Serialize(request, PhraseRuleJsonContext.Default.HistorySearchRequest);
+        byte[] bytes = Encoding.UTF8.GetBytes(json + "\0");
+        fixed (byte* p = bytes)
+        {
+            long n = MuClipNative.CoreSearchHistoryCount(_handle, p);
+            return n > int.MaxValue ? int.MaxValue : (int)n;
+        }
+    }
+
+    /// <summary>
     /// 删除指定历史记录
     /// </summary>
     public bool DeleteHistory(long id)

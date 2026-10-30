@@ -372,6 +372,7 @@ public sealed class IntOrBoolJsonConverter : JsonConverter<bool>
 [JsonSerializable(typeof(PhraseRuleTemplate))]
 [JsonSerializable(typeof(List<PhraseRuleTemplate>))]
 [JsonSerializable(typeof(BackupSummary))]
+[JsonSerializable(typeof(HistorySearchRequest))]
 internal partial class PhraseRuleJsonContext : JsonSerializerContext
 {
 }

@@ -269,8 +269,14 @@ public partial class MainViewModel : ViewModelBase
         HttpApiViewModel? httpApiVm = null,
         IThemeService? themeService = null,
         ThemeViewModel? themeVm = null,
-        RecordingViewModel? recordingVm = null)
+        RecordingViewModel? recordingVm = null,
+        Func<RecordingViewModel>? recordingVmFactory = null)
     {
+        // 启动分段计时：构造函数里一次性装配了全部子页面 VM，它们整体位于首帧关键路径上，
+        // 只有分段埋点才能看出究竟是谁在吃时间（避免凭直觉优化错对象）。
+        var bootSw = System.Diagnostics.Stopwatch.StartNew();
+        void Mark(string stage) => _logger?.Info($"[启动] MainViewModel.{stage} +{bootSw.ElapsedMilliseconds} ms");
+
         _coordinator = coordinator;
         _clipboardService = clipboardService;
         _settingsService = settingsService;
@@ -278,6 +284,7 @@ public partial class MainViewModel : ViewModelBase
         _settingsVmFactory = settingsVmFactory;
         _aboutVmFactory = aboutVmFactory;
         _muClipService = muClipService;
+        Mark("字段就绪");
 
         _themeService = themeService ?? new ThemeService(settingsService);
         ThemeVm = themeVm ?? new ThemeViewModel(_themeService);
@@ -287,6 +294,7 @@ public partial class MainViewModel : ViewModelBase
             OnPropertyChanged(nameof(HasCustomBackgroundImage));
         };
         _themeService.InitializeTheme();
+        Mark("主题与背景图");
 
         SettingsVm = settingsVmFactory();
         AboutVm = aboutVmFactory?.Invoke();
@@ -294,31 +302,40 @@ public partial class MainViewModel : ViewModelBase
         {
             SettingsVm.RequestOpenAbout += _ => Navigate(AppNavPage.About);
         }
+        Mark("设置页与关于页");
 
         BatchVm = batchVm ?? new BatchOcrViewModel(
             engineFactory ?? new ShawMuOCR.OCR.OcrEngineFactory(),
             settingsService,
             logger);
+        Mark("批量OCR页");
 
         HttpApiVm = httpApiVm ?? new HttpApiViewModel(
             engineFactory ?? new ShawMuOCR.OCR.OcrEngineFactory(),
             settingsService,
             clipboardService,
             logger);
+        Mark("HTTP接口页");
 
         if (_muClipService != null)
         {
             InitClipboardVm(_muClipService);
+            Mark("剪贴板页");
         }
 
         var transService = translationService ?? (coordinator is ShawMuOCR.Services.OcrCoordinator oc ? oc.TranslationService : new TranslationService(settingsService));
         TranslateVm = new TranslateViewModel(transService, settingsService, clipboardService, coordinator);
+        Mark("翻译页");
         LogVm = new LogViewModel(logger, _settingsService);
-        RecordingVm = recordingVm ?? new RecordingViewModel(
-            new ShawMuOCR.Windows.ScreenCapture.WindowsScreenCaptureService(),
-            new ShawMuOCR.Windows.ScreenCapture.WindowsNativeScreenSelectionService(),
-            logger,
-            _settingsService);
+        Mark("日志页");
+        RecordingVm = recordingVm
+                       ?? recordingVmFactory?.Invoke()
+                       ?? new RecordingViewModel(
+                           new ShawMuOCR.Windows.ScreenCapture.WindowsScreenCaptureService(),
+                           new ShawMuOCR.Windows.ScreenCapture.WindowsNativeScreenSelectionService(),
+                           logger,
+                           _settingsService);
+        Mark("录屏页");
 
         _currentHotkey = _settingsService.Current.Hotkey;
         _currentCaptureImageHotkey = _settingsService.Current.CaptureImageHotkey;
@@ -338,6 +355,8 @@ public partial class MainViewModel : ViewModelBase
         _coordinator.StateChanged += OnCoordinatorStateChanged;
         _coordinator.SessionCompleted += OnSessionCompleted;
         _settingsService.SettingsChanged += OnSettingsChanged;
+
+        Mark("事件订阅完成");
     }
 
     private void OnCoordinatorStateChanged(OcrState state, string? message)

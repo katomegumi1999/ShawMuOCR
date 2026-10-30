@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using MuRecorder.ViewModels;
 using ShawMuOCR.Windows.Win32;
 
@@ -37,12 +38,31 @@ public partial class RecordingFloatingWindow : Window
         var win = EnsureInstance(vm);
         win.PositionAtDefaultIfFirstTime();
         win.Show();
+        win.Topmost = false;
+        win.Topmost = true;
         win.Activate();
     }
 
     public static void HideOverlay()
     {
-        s_instance?.Hide();
+        s_instance?.CloseAndExitAnnotation();
+    }
+
+    /// <summary>
+    /// 关闭或隐藏悬浮栏；如果屏幕标注当前仍在开启状态，则跟随其一同退出关闭。
+    /// </summary>
+    public void CloseAndExitAnnotation()
+    {
+        Hide();
+        var vm = _attachedVm ?? (DataContext as RecordingViewModel);
+        if (vm?.IsAnnotationActive == true)
+        {
+            vm.CloseAnnotation();
+        }
+        else
+        {
+            RecordingAnnotationWindow.ExitAnnotation();
+        }
     }
 
     /// <summary>
@@ -50,6 +70,10 @@ public partial class RecordingFloatingWindow : Window
     /// </summary>
     public static void BringToFront()
     {
+        // 1. 先确保全屏透明光轨/标注图层处于 HWND_TOPMOST 顶层（高于浏览器、编辑器等一切第三方应用）
+        RecordingAnnotationWindow.BringToFront();
+
+        // 2. 再确保悬浮控制栏居于最顶层（高于透明屏幕标注层）
         if (s_instance != null && s_instance.IsVisible)
         {
             s_instance.Topmost = false;
@@ -70,13 +94,11 @@ public partial class RecordingFloatingWindow : Window
         var win = EnsureInstance(vm);
         if (win.IsVisible)
         {
-            win.Hide();
+            win.CloseAndExitAnnotation();
         }
         else
         {
-            win.PositionAtDefaultIfFirstTime();
-            win.Show();
-            win.Activate();
+            ShowOverlay(vm);
         }
     }
 
@@ -86,7 +108,15 @@ public partial class RecordingFloatingWindow : Window
 
         Opened += OnOpened;
         RootBorder.PointerPressed += OnRootPointerPressed;
-        CloseButton.Click += (_, _) => Hide();
+        CloseButton.Click += (_, _) =>
+        {
+            CloseAndExitAnnotation();
+        };
+        Closing += (_, e) =>
+        {
+            e.Cancel = true;
+            CloseAndExitAnnotation();
+        };
     }
 
     private RecordingViewModel? _attachedVm;
@@ -95,6 +125,10 @@ public partial class RecordingFloatingWindow : Window
     {
         if (ReferenceEquals(_attachedVm, vm)) return;
         _attachedVm = vm;
+
+        vm.FloatingBarShowRequested += (s, e) => ShowOverlay(vm);
+        vm.FloatingBarToggleRequested += (s, e) => ToggleOverlay(vm);
+        vm.FloatingBarHideRequested += (s, e) => HideOverlay();
 
         vm.AnnotationToggleRequested += (s, active) =>
         {
@@ -112,7 +146,7 @@ public partial class RecordingFloatingWindow : Window
             }
             else
             {
-                RecordingAnnotationWindow.HideOverlay();
+                RecordingAnnotationWindow.ExitAnnotation();
             }
         };
 
@@ -148,6 +182,14 @@ public partial class RecordingFloatingWindow : Window
 
         vm.AnnotationUndoRequested += (s, e) => RecordingAnnotationWindow.Undo();
         vm.AnnotationClearRequested += (s, e) => RecordingAnnotationWindow.Clear();
+
+        vm.PropertyChanged += (s, e) =>
+        {
+            if (e.PropertyName == nameof(RecordingViewModel.ExcludeFloatingBarFromCapture))
+            {
+                UpdateCaptureAffinity();
+            }
+        };
     }
 
     public RecordingFloatingWindow(RecordingViewModel vm) : this()
@@ -163,6 +205,18 @@ public partial class RecordingFloatingWindow : Window
 
     private void OnRootPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        // 关键防护：如果点击源是 Button 或其内部子元素，绝不触发窗口拖拽，确保 Click 事件 100% 灵敏响应
+        if (e.Source is Visual visual)
+        {
+            for (var cur = visual; cur != null && !ReferenceEquals(cur, this); cur = cur.GetVisualParent())
+            {
+                if (cur is Button)
+                {
+                    return;
+                }
+            }
+        }
+
         if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
         {
             BeginMoveDrag(e);
@@ -186,6 +240,25 @@ public partial class RecordingFloatingWindow : Window
         }
     }
 
+    public void UpdateCaptureAffinity()
+    {
+        var handle = TryGetPlatformHandle();
+        if (handle == null) return;
+
+        bool isRemoteSession = User32.GetSystemMetrics(User32.SM_REMOTESESSION) != 0;
+        bool shouldExclude = _attachedVm?.ExcludeFloatingBarFromCapture ?? true;
+
+        // 核心技术保证：
+        // 1. 若处于远程桌面 (RDP 等) 环境，系统屏幕推流管线会被 WDA_EXCLUDEFROMCAPTURE 误杀导致远程用户看不见悬浮栏；
+        // 2. 若用户主动关闭隐身（例如使用向日葵/ToDesk等第三方远程软件），则恢复 WDA_NONE 正常渲染；
+        // 3. 本地正常录制且开启隐身时，设置 WDA_EXCLUDEFROMCAPTURE，录制出的 MP4 绝不包含悬浮工具栏！
+        uint affinity = (!isRemoteSession && shouldExclude)
+            ? User32.WDA_EXCLUDEFROMCAPTURE
+            : User32.WDA_NONE;
+
+        User32.SetWindowDisplayAffinity(handle.Handle, affinity);
+    }
+
     private void ApplyWindowStyles()
     {
         var handle = TryGetPlatformHandle();
@@ -200,9 +273,9 @@ public partial class RecordingFloatingWindow : Window
             | User32.WS_EX_NOACTIVATE;
 
         User32.SetWindowLongPtr(handle.Handle, User32.GWL_EXSTYLE, new IntPtr(newExStyle));
+        User32.SetWindowPos(handle.Handle, IntPtr.Zero, 0, 0, 0, 0,
+            User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOZORDER | User32.SWP_FRAMECHANGED);
 
-        // 核心技术保证：通知 Windows DWM 硬件合成器对屏幕录制/截屏完全隐身！
-        // 即使悬浮栏位于录制区域正中央，录出来的 MP4 视频画面也 100% 不会包含本窗口。
-        User32.SetWindowDisplayAffinity(handle.Handle, User32.WDA_EXCLUDEFROMCAPTURE);
+        UpdateCaptureAffinity();
     }
 }

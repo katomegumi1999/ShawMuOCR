@@ -48,7 +48,10 @@ public partial class RecordingPageView : UserControl
             _currentVm.PropertyChanged -= OnVmPropertyChanged;
             _currentVm.RegionBorderPulseRequested -= OnPulseRequested;
             _currentVm.FloatingBarShowRequested -= OnFloatingBarShowRequested;
+            _currentVm.FloatingBarHideRequested -= OnFloatingBarHideRequested;
             _currentVm.FloatingBarToggleRequested -= OnFloatingBarToggleRequested;
+            _currentVm.LiveCursorEffectShowRequested -= OnLiveCursorEffectShowRequested;
+            _currentVm.LiveCursorEffectHideRequested -= OnLiveCursorEffectHideRequested;
             _currentVm.CanvasModeEnterRequested -= OnCanvasModeEnterRequested;
             _currentVm.CanvasModeExitRequested -= OnCanvasModeExitRequested;
             _currentVm.AnnotationToggleRequested -= OnAnnotationToggleRequested;
@@ -66,7 +69,10 @@ public partial class RecordingPageView : UserControl
             _currentVm.PropertyChanged += OnVmPropertyChanged;
             _currentVm.RegionBorderPulseRequested += OnPulseRequested;
             _currentVm.FloatingBarShowRequested += OnFloatingBarShowRequested;
+            _currentVm.FloatingBarHideRequested += OnFloatingBarHideRequested;
             _currentVm.FloatingBarToggleRequested += OnFloatingBarToggleRequested;
+            _currentVm.LiveCursorEffectShowRequested += OnLiveCursorEffectShowRequested;
+            _currentVm.LiveCursorEffectHideRequested += OnLiveCursorEffectHideRequested;
             _currentVm.CanvasModeEnterRequested += OnCanvasModeEnterRequested;
             _currentVm.CanvasModeExitRequested += OnCanvasModeExitRequested;
             _currentVm.AnnotationToggleRequested += OnAnnotationToggleRequested;
@@ -98,7 +104,7 @@ public partial class RecordingPageView : UserControl
         }
         else
         {
-            RecordingAnnotationWindow.HideOverlay();
+            RecordingAnnotationWindow.ExitAnnotation();
         }
     }
 
@@ -169,12 +175,37 @@ public partial class RecordingPageView : UserControl
         }
     }
 
+    private void OnFloatingBarHideRequested(object? sender, EventArgs e)
+    {
+        RecordingFloatingWindow.HideOverlay();
+    }
+
     private void OnFloatingBarToggleRequested(object? sender, EventArgs e)
     {
         if (_currentVm != null)
         {
             RecordingFloatingWindow.ToggleOverlay(_currentVm);
         }
+    }
+
+    private void OnLiveCursorEffectShowRequested(object? sender, EventArgs e)
+    {
+        if (_currentVm != null)
+        {
+            var bounds = _currentVm.CurrentTargetBounds;
+            if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                bounds = _currentVm.SelectedMonitor?.Bounds
+                    ?? (_currentVm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? _currentVm.Monitors.FirstOrDefault())?.Bounds
+                    ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
+            }
+            RecordingAnnotationWindow.StartLiveCursorEffect(bounds, _currentVm);
+        }
+    }
+
+    private void OnLiveCursorEffectHideRequested(object? sender, EventArgs e)
+    {
+        RecordingAnnotationWindow.StopLiveCursorEffect();
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)

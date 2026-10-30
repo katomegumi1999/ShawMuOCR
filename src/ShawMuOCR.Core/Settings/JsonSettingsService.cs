@@ -72,6 +72,7 @@ public sealed class JsonSettingsService : ISettingsService
                     var settings = JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings);
                     if (settings != null)
                     {
+                        MigrateLegacyFlatJsonIfNeeded(json, settings);
                         DecryptSensitiveFields(settings);
                         LastLoadError = null;
                         _current = settings;
@@ -90,6 +91,7 @@ public sealed class JsonSettingsService : ISettingsService
                     var settings = JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings);
                     if (settings != null)
                     {
+                        MigrateLegacyFlatJsonIfNeeded(json, settings);
                         DecryptSensitiveFields(settings);
                         LastLoadError = null;
                         _current = settings;
@@ -106,6 +108,7 @@ public sealed class JsonSettingsService : ISettingsService
                     var settings = JsonSerializer.Deserialize(json, AppSettingsJsonContext.Default.AppSettings);
                     if (settings != null)
                     {
+                        MigrateLegacyFlatJsonIfNeeded(json, settings);
                         DecryptSensitiveFields(settings);
                         LastLoadError = null;
                         _current = settings;
@@ -327,5 +330,401 @@ public sealed class JsonSettingsService : ISettingsService
         // 用户重新录入了凭据，丢弃之前的无法解密副本
         _unreadableCiphertexts.Remove(fieldName);
         return DataProtectionHelper.Protect(plainText);
+    }
+
+    /// <summary>
+    /// 兼容性迁移：若 JSON 根节点包含历史版本遗留的单层扁平字段，
+    /// 单趟 O(N) 映射赋值给对应的 Section 分块对象，保障旧配置无感升级且零开销。
+    /// </summary>
+    private static void MigrateLegacyFlatJsonIfNeeded(string json, AppSettings settings)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(json);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return;
+
+            foreach (var prop in root.EnumerateObject())
+            {
+                var val = prop.Value;
+                switch (prop.Name)
+                {
+                    // Hotkeys
+                    case "Hotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.Ocr = val.GetString()!;
+                        break;
+                    case "CaptureImageHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.CaptureImage = val.GetString()!;
+                        break;
+                    case "AnnotateHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.Annotate = val.GetString()!;
+                        break;
+                    case "TranslateHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.Translate = val.GetString()!;
+                        break;
+                    case "OcrPopupHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.OcrPopup = val.GetString()!;
+                        break;
+                    case "QuickNoteHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.QuickNote = val.GetString()!;
+                        break;
+                    case "ClipboardPanelHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.ClipboardPanel = val.GetString()!;
+                        break;
+                    case "PhrasesPanelHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.PhrasesPanel = val.GetString()!;
+                        break;
+                    case "LongScreenshotHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.LongScreenshot = val.GetString()!;
+                        break;
+                    case "RecordingHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.Recording = val.GetString()!;
+                        break;
+
+                    // General
+                    case "AutoCopy":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.AutoCopy = val.GetBoolean();
+                        break;
+                    case "AutoCopyTableAsCells":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.AutoCopyTableAsCells = val.GetBoolean();
+                        break;
+                    case "SilentMode":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.SilentMode = val.GetBoolean();
+                        break;
+                    case "SilentStartup":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.SilentStartup = val.GetBoolean();
+                        break;
+                    case "ShowOcrNotification":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.ShowOcrNotification = val.GetBoolean();
+                        break;
+                    case "ShowCaptureImageNotification":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.ShowCaptureImageNotification = val.GetBoolean();
+                        break;
+                    case "ShowNotificationBadge":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False)
+                        {
+                            settings.General.ShowOcrNotification = val.GetBoolean();
+                            settings.General.ShowCaptureImageNotification = val.GetBoolean();
+                        }
+                        break;
+                    case "ShowWindowAfterOcr":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.ShowWindowAfterOcr = val.GetBoolean();
+                        break;
+                    case "StartWithWindows":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.StartWithWindows = val.GetBoolean();
+                        break;
+                    case "EnableLogging":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.EnableLogging = val.GetBoolean();
+                        break;
+                    case "EnableLogAutoClean":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.EnableLogAutoClean = val.GetBoolean();
+                        break;
+                    case "LogRetentionDays":
+                        if (val.TryGetInt32(out int lrd)) settings.General.LogRetentionDays = lrd;
+                        break;
+                    case "DefaultSaveFormat":
+                        if (val.ValueKind == JsonValueKind.String) settings.General.DefaultSaveFormat = val.GetString()!;
+                        break;
+                    case "DefaultSaveQuality":
+                        if (val.TryGetInt32(out int dsq)) settings.General.DefaultSaveQuality = dsq;
+                        break;
+                    case "DefaultSaveScale":
+                        if (val.TryGetInt32(out int dss)) settings.General.DefaultSaveScale = dss;
+                        break;
+                    case "LastSaveDirectory":
+                        settings.General.LastSaveDirectory = val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+                        break;
+                    case "AnnotationStrokeWidth":
+                        if (val.TryGetSingle(out float asw)) settings.General.AnnotationStrokeWidth = asw;
+                        break;
+                    case "AnnotationFontSize":
+                        if (val.TryGetSingle(out float afs)) settings.General.AnnotationFontSize = afs;
+                        break;
+                    case "EnableClipboard":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.EnableClipboard = val.GetBoolean();
+                        break;
+                    case "ClipboardPanelBackground":
+                        if (val.ValueKind == JsonValueKind.String) settings.General.ClipboardPanelBackground = val.GetString()!;
+                        break;
+
+                    // OCR
+                    case "Model":
+                        if (val.ValueKind == JsonValueKind.String) settings.Ocr.Model = val.GetString()!;
+                        break;
+                    case "EmbeddedModel":
+                        if (val.ValueKind == JsonValueKind.String) settings.Ocr.EmbeddedModel = val.GetString()!;
+                        break;
+                    case "ScanExternalModels":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Ocr.ScanExternalModels = val.GetBoolean();
+                        break;
+                    case "UseExternalModel":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Ocr.UseExternalModel = val.GetBoolean();
+                        break;
+                    case "ExternalModelType":
+                        if (val.ValueKind == JsonValueKind.String) settings.Ocr.ExternalModelType = val.GetString()!;
+                        break;
+                    case "ExternalModelPath":
+                        if (val.ValueKind == JsonValueKind.String) settings.Ocr.ExternalModelPath = val.GetString()!;
+                        break;
+                    case "ExternalApiUrl":
+                        if (val.ValueKind == JsonValueKind.String) settings.Ocr.ExternalApiUrl = val.GetString()!;
+                        break;
+                    case "OcrBackend":
+                        if (val.ValueKind == JsonValueKind.String) settings.Ocr.OcrBackend = val.GetString()!;
+                        break;
+                    case "SelectedGpuIndex":
+                        if (val.TryGetInt32(out int sgi)) settings.Ocr.SelectedGpuIndex = sgi;
+                        break;
+                    case "EnableAngleDetection":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Ocr.EnableAngleDetection = val.GetBoolean();
+                        break;
+                    case "MaxSideLen":
+                        if (val.TryGetInt32(out int msl)) settings.Ocr.MaxSideLen = msl;
+                        break;
+                    case "EnableIdleSleep":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Ocr.EnableIdleSleep = val.GetBoolean();
+                        break;
+                    case "IdleSleepMinutes":
+                        if (val.TryGetInt32(out int ism)) settings.Ocr.IdleSleepMinutes = ism;
+                        break;
+
+                    // Recording
+                    case "RecordingEncoder":
+                        if (val.TryGetInt32(out int re)) settings.Recording.Encoder = re;
+                        break;
+                    case "RecordingFps":
+                        if (val.TryGetUInt32(out uint rfps)) settings.Recording.Fps = rfps;
+                        break;
+                    case "RecordingBitrateKbps":
+                        if (val.TryGetUInt32(out uint rbk)) settings.Recording.BitrateKbps = rbk;
+                        break;
+                    case "RecordingShowRegionBorder":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Recording.ShowRegionBorder = val.GetBoolean();
+                        break;
+                    case "RecordingOutputDir":
+                        if (val.ValueKind == JsonValueKind.String) settings.Recording.OutputDir = val.GetString()!;
+                        break;
+                    case "RecordingFilePrefix":
+                        if (val.ValueKind == JsonValueKind.String) settings.Recording.FilePrefix = val.GetString()!;
+                        break;
+                    case "RecordingAudioBitrateKbps":
+                        if (val.TryGetUInt32(out uint rabk)) settings.Recording.AudioBitrateKbps = rabk;
+                        break;
+                    case "RecordingCaptureCursor":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Recording.CaptureCursor = val.GetBoolean();
+                        break;
+                    case "RecordingCursorClickEffect":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Recording.CursorClickEffect = val.GetBoolean();
+                        break;
+                    case "RecordingCursorTrail":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Recording.CursorTrail = val.GetBoolean();
+                        break;
+                    case "RecordingCursorTrailMs":
+                        if (val.TryGetUInt32(out uint rctm)) settings.Recording.CursorTrailMs = rctm;
+                        break;
+                    case "RecordingExcludeFloatingBarFromCapture":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Recording.ExcludeFloatingBarFromCapture = val.GetBoolean();
+                        break;
+                    case "RecordingShowFloatingBar":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Recording.ShowFloatingBar = val.GetBoolean();
+                        break;
+                    case "RecordingLiveCursorEffect":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Recording.LiveCursorEffect = val.GetBoolean();
+                        break;
+
+                    // Translation
+                    case "TranslateProvider":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.Provider = val.GetString()!;
+                        break;
+                    case "TranslateSourceLang":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.SourceLang = val.GetString()!;
+                        break;
+                    case "TranslateTargetLang":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.TargetLang = val.GetString()!;
+                        break;
+                    case "TranslationUsageMonth":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.UsageMonth = val.GetString()!;
+                        break;
+                    case "BaiduAppId":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.BaiduAppId = val.GetString()!;
+                        break;
+                    case "BaiduSecretKey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.BaiduSecretKey = val.GetString()!;
+                        break;
+                    case "BaiduApiKey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.BaiduApiKey = val.GetString()!;
+                        break;
+                    case "BaiduMonthlyLimit":
+                        if (val.TryGetInt32(out int bml)) settings.Translation.BaiduMonthlyLimit = bml;
+                        break;
+                    case "BaiduUsedCount":
+                        if (val.TryGetInt32(out int buc)) settings.Translation.BaiduUsedCount = buc;
+                        break;
+                    case "GoogleApiKey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.GoogleApiKey = val.GetString()!;
+                        break;
+                    case "GoogleMonthlyLimit":
+                        if (val.TryGetInt32(out int gml)) settings.Translation.GoogleMonthlyLimit = gml;
+                        break;
+                    case "GoogleUsedCount":
+                        if (val.TryGetInt32(out int guc)) settings.Translation.GoogleUsedCount = guc;
+                        break;
+                    case "OpenAiApiEndpoint":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.OpenAiApiEndpoint = val.GetString()!;
+                        break;
+                    case "OpenAiApiKey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.OpenAiApiKey = val.GetString()!;
+                        break;
+                    case "OpenAiModel":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.OpenAiModel = val.GetString()!;
+                        break;
+                    case "OpenAiMonthlyLimit":
+                        if (val.TryGetInt32(out int oml)) settings.Translation.OpenAiMonthlyLimit = oml;
+                        break;
+                    case "OpenAiUsedCount":
+                        if (val.TryGetInt32(out int ouc)) settings.Translation.OpenAiUsedCount = ouc;
+                        break;
+                    case "VolcengineAccessKey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.VolcengineAccessKey = val.GetString()!;
+                        break;
+                    case "VolcengineSecretKey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.VolcengineSecretKey = val.GetString()!;
+                        break;
+                    case "VolcengineRegion":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.VolcengineRegion = val.GetString()!;
+                        break;
+                    case "VolcengineMonthlyLimit":
+                        if (val.TryGetInt32(out int vml)) settings.Translation.VolcengineMonthlyLimit = vml;
+                        break;
+                    case "VolcengineUsedCount":
+                        if (val.TryGetInt32(out int vuc)) settings.Translation.VolcengineUsedCount = vuc;
+                        break;
+                    case "AliyunAccessKeyId":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.AliyunAccessKeyId = val.GetString()!;
+                        break;
+                    case "AliyunAccessKeySecret":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.AliyunAccessKeySecret = val.GetString()!;
+                        break;
+                    case "AliyunApiEndpoint":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.AliyunApiEndpoint = val.GetString()!;
+                        break;
+                    case "AliyunMonthlyLimit":
+                        if (val.TryGetInt32(out int aml)) settings.Translation.AliyunMonthlyLimit = aml;
+                        break;
+                    case "AliyunUsedCount":
+                        if (val.TryGetInt32(out int auc)) settings.Translation.AliyunUsedCount = auc;
+                        break;
+
+                    // Theme
+                    case "IsSidebarExpanded":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Theme.IsSidebarExpanded = val.GetBoolean();
+                        break;
+                    case "ThemeBackgroundImagePath":
+                        settings.Theme.BackgroundImagePath = val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+                        break;
+                    case "ThemeBackgroundBlurRadius":
+                        if (val.TryGetDouble(out double bbr)) settings.Theme.BackgroundBlurRadius = bbr;
+                        break;
+                    case "ThemeComponentOpacity":
+                        if (val.TryGetDouble(out double co)) settings.Theme.ComponentOpacity = co;
+                        break;
+                    case "ThemeButtonOpacity":
+                        if (val.TryGetDouble(out double bo)) settings.Theme.ButtonOpacity = bo;
+                        break;
+                    case "ThemeEnableAcrylic":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Theme.EnableAcrylic = val.GetBoolean();
+                        break;
+                    case "ThemeBackgroundColorHex":
+                        settings.Theme.BackgroundColorHex = val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+                        break;
+                    case "ThemeCardColorHex":
+                        settings.Theme.CardColorHex = val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+                        break;
+                    case "ThemeTextColorHex":
+                        settings.Theme.TextColorHex = val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+                        break;
+                    case "ThemeFloatingWindowBackgroundColorHex":
+                        settings.Theme.FloatingWindowBackgroundColorHex = val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+                        break;
+                    case "ThemeFloatingWindowTextColorHex":
+                        settings.Theme.FloatingWindowTextColorHex = val.ValueKind == JsonValueKind.String ? val.GetString() : null;
+                        break;
+                    case "LastActivePage":
+                        if (val.ValueKind == JsonValueKind.String) settings.Theme.LastActivePage = val.GetString()!;
+                        break;
+
+                    // Batch
+                    case "BatchExportTxt":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Batch.ExportTxt = val.GetBoolean();
+                        break;
+                    case "BatchExportXlsx":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Batch.ExportXlsx = val.GetBoolean();
+                        break;
+                    case "BatchExportDocx":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Batch.ExportDocx = val.GetBoolean();
+                        break;
+                    case "BatchSplitColumnsByBlocks":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Batch.SplitColumnsByBlocks = val.GetBoolean();
+                        break;
+                    case "BatchImageRotationIndex":
+                        if (val.TryGetInt32(out int biri)) settings.Batch.ImageRotationIndex = biri;
+                        break;
+                    case "BatchIsSuffixEnabled":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Batch.IsSuffixEnabled = val.GetBoolean();
+                        break;
+                    case "BatchSuffixText":
+                        if (val.ValueKind == JsonValueKind.String) settings.Batch.SuffixText = val.GetString()!;
+                        break;
+                    case "BatchUseOriginalFolder":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.Batch.UseOriginalFolder = val.GetBoolean();
+                        break;
+                    case "BatchCustomOutputDir":
+                        if (val.ValueKind == JsonValueKind.String) settings.Batch.CustomOutputDir = val.GetString()!;
+                        break;
+                    case "BatchMaxCores":
+                        if (val.TryGetInt32(out int bmc)) settings.Batch.MaxCores = bmc;
+                        break;
+                    case "BatchGpuStreams":
+                        if (val.TryGetInt32(out int bgs)) settings.Batch.GpuStreams = bgs;
+                        break;
+                    case "BatchCpuLimitPercent":
+                        if (val.TryGetInt32(out int bclp)) settings.Batch.CpuLimitPercent = bclp;
+                        break;
+                    case "BatchSchedulerMode":
+                        if (val.ValueKind == JsonValueKind.String) settings.Batch.SchedulerMode = val.GetString()!;
+                        break;
+
+                    // HttpApi
+                    case "HttpApiPort":
+                        if (val.TryGetInt32(out int hap)) settings.HttpApi.Port = hap;
+                        break;
+                    case "HttpApiAllowRemote":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.HttpApi.AllowRemote = val.GetBoolean();
+                        break;
+                    case "HttpApiAccessToken":
+                        if (val.ValueKind == JsonValueKind.String) settings.HttpApi.AccessToken = val.GetString()!;
+                        break;
+                    case "HttpApiAllowAnonymousRemote":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.HttpApi.AllowAnonymousRemote = val.GetBoolean();
+                        break;
+                    case "HttpApiMaxCores":
+                        if (val.TryGetInt32(out int hamc)) settings.HttpApi.MaxCores = hamc;
+                        break;
+                    case "HttpApiGpuStreams":
+                        if (val.TryGetInt32(out int hags)) settings.HttpApi.GpuStreams = hags;
+                        break;
+                    case "HttpApiCpuLimitPercent":
+                        if (val.TryGetInt32(out int haclp)) settings.HttpApi.CpuLimitPercent = haclp;
+                        break;
+                    case "HttpApiSchedulerMode":
+                        if (val.ValueKind == JsonValueKind.String) settings.HttpApi.SchedulerMode = val.GetString()!;
+                        break;
+                }
+            }
+        }
+        catch
+        {
+            // 兼容性迁移遇异常时容错跳过
+        }
     }
 }

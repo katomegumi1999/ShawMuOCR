@@ -31,8 +31,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Include="..\..\Libs\x64\recorder_core.dll">
-      <Link>recorder_core.dll</Link>
+    <None Include="..\..\Libs\x64\murecorder_core.dll">
+      <Link>murecorder_core.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

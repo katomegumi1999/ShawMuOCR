@@ -202,6 +202,33 @@ public partial class MuClipService
         return records.Select(r => MuClipItem.FromRecord(r)).ToList();
     }
 
+    /// <summary>
+    /// 结构化分页搜索：关键词与内容类型都下推到 SQLite，只回传当前页。
+    /// </summary>
+    /// <param name="query">字面量子串；空串表示不限关键词</param>
+    /// <param name="typeIds">内容类型白名单（Rust 侧编号），null/空表示不限</param>
+    public List<MuClipItem> SearchPage(string query, int[]? typeIds, int offset, int limit)
+    {
+        if (_core == null) return new List<MuClipItem>();
+        var records = _core.SearchHistoryPage(query ?? string.Empty, typeIds, offset, limit);
+        var result = new List<MuClipItem>(records.Count);
+        foreach (var r in records)
+        {
+            result.Add(MuClipItem.FromRecord(r));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// 命中总数（不受分页影响）。失败时返回 0，界面显示「0 条」比抛异常更安全。
+    /// </summary>
+    public int CountSearch(string query, int[]? typeIds)
+    {
+        if (_core == null) return 0;
+        int n = _core.CountSearch(query ?? string.Empty, typeIds);
+        return n < 0 ? 0 : n;
+    }
+
     public void RefreshHistory()
     {
         if (_core == null) return;

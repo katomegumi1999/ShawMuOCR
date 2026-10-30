@@ -49,6 +49,12 @@ public sealed record NamedOption<T>(T Value, string Label)
 public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 {
     private readonly RecordingService _service;
+
+    /// <summary>
+    /// 显示器 / 窗口 / 编码器 / 音频设备列表是否已真正枚举过一次。
+    /// 构造阶段不刷新（这些枚举合计约 140ms，首屏用不到），因此开录前必须检查。
+    /// </summary>
+    private bool _sourcesLoaded;
     private readonly RecordingPoller _poller;
     private readonly IScreenCaptureService _capture;
     private readonly IScreenSelectionService _selection;
@@ -146,10 +152,19 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         {
             _showRegionBorder = _settingsService.Current.RecordingShowRegionBorder;
             _filePrefix = _settingsService.Current.RecordingFilePrefix;
+            _captureCursor = _settingsService.Current.RecordingCaptureCursor;
+            _cursorClickEffect = _settingsService.Current.RecordingCursorClickEffect;
+            _cursorTrail = _settingsService.Current.RecordingCursorTrail;
+            _cursorTrailMs = _settingsService.Current.RecordingCursorTrailMs;
+            _excludeFloatingBarFromCapture = _settingsService.Current.RecordingExcludeFloatingBarFromCapture;
+            _isFloatingBarEnabled = _settingsService.Current.RecordingShowFloatingBar;
+            _liveCursorEffect = _settingsService.Current.RecordingLiveCursorEffect;
         }
 
         OutputPath = BuildDefaultOutputPath();
-        RefreshSources();
+        // 构造阶段刻意不刷来源：显示器枚举、窗口枚举、硬件编码器探测（要初始化 D3D/MF）
+        // 与音频设备枚举合计约 140ms，而首屏根本看不到录屏页。
+        // 这些统一由进入录屏页时的 RefreshSources 补齐（见 MainViewModel.Navigate）。
     }
 
     // ---------- 可配置状态 ----------
@@ -196,6 +211,9 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     private NamedOption<AudioSourceType>? _selectedAudioSource;
 
     [ObservableProperty]
+    private NamedOption<uint>? _selectedAudioBitrate;
+
+    [ObservableProperty]
     private AudioDeviceInfo? _selectedAudioDevice;
 
     [ObservableProperty]
@@ -217,6 +235,27 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     private bool _showRegionBorder = true;
 
     [ObservableProperty]
+    private bool _captureCursor = true;
+
+    [ObservableProperty]
+    private bool _cursorClickEffect;
+
+    [ObservableProperty]
+    private bool _cursorTrail;
+
+    [ObservableProperty]
+    private uint _cursorTrailMs = 200;
+
+    [ObservableProperty]
+    private bool _excludeFloatingBarFromCapture = true;
+
+    [ObservableProperty]
+    private bool _isFloatingBarEnabled = false;
+
+    [ObservableProperty]
+    private bool _liveCursorEffect;
+
+    [ObservableProperty]
     private string _regionText = "未选择";
 
     /// <summary>当前录制或选定的目标矩形区域（物理像素）。</summary>
@@ -225,8 +264,17 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     /// <summary>请求区域边界呼吸灯高亮闪烁提示。</summary>
     public event EventHandler? RegionBorderPulseRequested;
 
+    /// <summary>请求显示录屏桌面实时鼠标波纹特效图层。</summary>
+    public event EventHandler? LiveCursorEffectShowRequested;
+
+    /// <summary>请求隐藏录屏桌面实时鼠标波纹特效图层。</summary>
+    public event EventHandler? LiveCursorEffectHideRequested;
+
     /// <summary>请求显示录屏悬浮工具栏。</summary>
     public event EventHandler? FloatingBarShowRequested;
+
+    /// <summary>请求隐藏录屏悬浮工具栏。</summary>
+    public event EventHandler? FloatingBarHideRequested;
 
     /// <summary>请求切换（显示/隐藏）录屏悬浮工具栏。</summary>
     public event EventHandler? FloatingBarToggleRequested;
@@ -243,6 +291,13 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     public void RequestRegionBorderPulse()
     {
         RegionBorderPulseRequested?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>在桌面呼出并置顶录屏悬浮控制栏（单次点击动作呼出）。</summary>
+    [RelayCommand]
+    public void SummonFloatingBar()
+    {
+        FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
     }
 
     /// <summary>切换桌面录屏悬浮工具栏。</summary>
@@ -272,7 +327,10 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         IsCanvasModeActive = true;
         Source = RecordingSource.Screen; // 画布模式录制全屏
         CanvasModeEnterRequested?.Invoke(this, EventArgs.Empty);
-        FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
+        if (IsFloatingBarEnabled)
+        {
+            FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
+        }
         StatusMessage = $"已进入自由画布模式（已置顶 {selected.Count} 个窗口，黑幕全屏录制）";
     }
 
@@ -331,6 +389,23 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         if (IsAnnotationActive)
         {
             StatusMessage = "✏️ 屏幕实时标注已开启（可在屏幕上涂鸦、箭头与框选）";
+        }
+        else
+        {
+            StatusMessage = "已退出屏幕标注模式";
+        }
+    }
+
+    /// <summary>主动关闭屏幕实时标注模式。</summary>
+    [RelayCommand]
+    public void CloseAnnotation()
+    {
+        if (IsAnnotationActive)
+        {
+            IsAnnotationActive = false;
+            IsAnnotationClickThrough = false;
+            AnnotationToggleRequested?.Invoke(this, false);
+            StatusMessage = "已退出屏幕标注模式";
         }
     }
 
@@ -442,6 +517,97 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         {
             _settingsService.Current.RecordingBitrateKbps = value.Value;
             _settingsService.Save(_settingsService.Current);
+        }
+    }
+
+    partial void OnSelectedAudioBitrateChanged(NamedOption<uint>? value)
+    {
+        if (value != null && _settingsService != null)
+        {
+            _settingsService.Current.RecordingAudioBitrateKbps = value.Value;
+            _settingsService.Save(_settingsService.Current);
+        }
+    }
+
+    partial void OnCaptureCursorChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingCaptureCursor = value;
+            _settingsService.Save(_settingsService.Current);
+        }
+    }
+
+    partial void OnCursorClickEffectChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingCursorClickEffect = value;
+            _settingsService.Save(_settingsService.Current);
+        }
+    }
+
+    partial void OnCursorTrailChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingCursorTrail = value;
+            _settingsService.Save(_settingsService.Current);
+        }
+    }
+
+    partial void OnCursorTrailMsChanged(uint value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingCursorTrailMs = value;
+            _settingsService.Save(_settingsService.Current);
+        }
+    }
+
+    partial void OnExcludeFloatingBarFromCaptureChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingExcludeFloatingBarFromCapture = value;
+            _settingsService.Save(_settingsService.Current);
+        }
+    }
+
+    partial void OnIsFloatingBarEnabledChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingShowFloatingBar = value;
+            _settingsService.Save(_settingsService.Current);
+        }
+        if (value)
+        {
+            FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            FloatingBarHideRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    partial void OnLiveCursorEffectChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingLiveCursorEffect = value;
+            _settingsService.Save(_settingsService.Current);
+        }
+        if (IsRecording)
+        {
+            if (value)
+            {
+                LiveCursorEffectShowRequested?.Invoke(this, EventArgs.Empty);
+            }
+            else
+            {
+                LiveCursorEffectHideRequested?.Invoke(this, EventArgs.Empty);
+            }
         }
     }
 
@@ -657,6 +823,10 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             IsAudioDeviceSelectorVisible = true;
             SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.Microphone);
         }
+        else if (source == AudioSourceType.Window)
+        {
+            IsAudioDeviceSelectorVisible = false;
+        }
     }
 
     // ---------- 状态与统计 ----------
@@ -701,6 +871,8 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     public ObservableCollection<NamedOption<EncoderPreference>> EncoderOptions { get; } = new();
 
     public ObservableCollection<NamedOption<AudioPreset>> AudioPresetOptions { get; } = new();
+
+    public ObservableCollection<NamedOption<uint>> AudioBitrateOptions { get; } = new();
 
     public ObservableCollection<SelectableAudioDevice> AudioDeviceList { get; } = new();
 
@@ -782,10 +954,23 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>刷新显示器与窗口列表（窗口打开/关闭后手动刷新）。</summary>
     [RelayCommand]
-    private void RefreshSources()
+    private void RefreshSources() => RefreshSourcesCore(includeWindows: true);
+
+    /// <summary>
+    /// 刷新录屏来源。
+    /// <para>
+    /// <paramref name="includeWindows"/> 为 false 时跳过窗口枚举：那一步要遍历系统全部可见窗口，
+    /// 并逐个读取标题与进程名（实测约占本方法 90ms 的绝大部分），而结果只在录屏页真正打开时
+    /// 才被用户看到。构造阶段先跳过，等进入录屏页调用 <see cref="RefreshSources"/> 时再补齐，
+    /// 避免把这段开销算进首帧关键路径。
+    /// </para>
+    /// </summary>
+    private void RefreshSourcesCore(bool includeWindows)
     {
         var previousMonitor = SelectedMonitor;
-        var previouslySelectedHwnds = Windows.Where(w => w.IsSelected).Select(w => w.Window.Hwnd).ToHashSet();
+        var previouslySelectedHwnds = includeWindows
+            ? Windows.Where(w => w.IsSelected).Select(w => w.Window.Hwnd).ToHashSet()
+            : new HashSet<IntPtr>();
 
         Monitors.Clear();
         foreach (var m in MonitorEnumerator.Enumerate())
@@ -799,16 +984,19 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             : primary;
 
         Windows.Clear();
-        foreach (var w in WindowEnumerator.Enumerate())
+        if (includeWindows)
         {
-            bool isSelected = previouslySelectedHwnds.Contains(w.Hwnd);
-            Windows.Add(new SelectableWindowItem(w, isSelected, UpdateSelectedWindowsBounds));
-        }
+            foreach (var w in WindowEnumerator.Enumerate())
+            {
+                bool isSelected = previouslySelectedHwnds.Contains(w.Hwnd);
+                Windows.Add(new SelectableWindowItem(w, isSelected, UpdateSelectedWindowsBounds));
+            }
 
-        // 首次或未选择时，默认勾选首个窗口
-        if (Windows.Count > 0 && !Windows.Any(w => w.IsSelected))
-        {
-            Windows[0].IsSelected = true;
+            // 首次或未选择时，默认勾选首个窗口
+            if (Windows.Count > 0 && !Windows.Any(w => w.IsSelected))
+            {
+                Windows[0].IsSelected = true;
+            }
         }
 
         UpdateSelectedWindowsBounds();
@@ -871,6 +1059,21 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             ?? EncoderOptions.FirstOrDefault(o => o.Value == EncoderPreference.GpuHevc)
             ?? EncoderOptions.FirstOrDefault();
 
+        if (AudioBitrateOptions.Count == 0)
+        {
+            AudioBitrateOptions.Add(new NamedOption<uint>(320, "320 kbps (最高音质 · 母带级)"));
+            AudioBitrateOptions.Add(new NamedOption<uint>(256, "256 kbps (极高品质)"));
+            AudioBitrateOptions.Add(new NamedOption<uint>(192, "192 kbps (高品质)"));
+            AudioBitrateOptions.Add(new NamedOption<uint>(160, "160 kbps (标准品质)"));
+            AudioBitrateOptions.Add(new NamedOption<uint>(128, "128 kbps (适中品质)"));
+            AudioBitrateOptions.Add(new NamedOption<uint>(96, "96 kbps (紧凑体积)"));
+        }
+
+        uint targetAudioBitrate = _settingsService?.Current.RecordingAudioBitrateKbps ?? 320;
+        SelectedAudioBitrate ??= AudioBitrateOptions.FirstOrDefault(b => b.Value == targetAudioBitrate)
+            ?? AudioBitrateOptions.FirstOrDefault(b => b.Value == 320)
+            ?? AudioBitrateOptions.FirstOrDefault();
+
         if (AudioPresetOptions.Count == 0)
         {
             AudioPresetOptions.Add(new NamedOption<AudioPreset>(AudioPreset.None, "🔇 不录声音 (静音录制)"));
@@ -888,6 +1091,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.None, "🔇 无音频 (静音录制)"));
             AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.System, "🔊 系统声音 (扬声器内录)"));
             AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.Device, "🎙️ 麦克风 (人声讲解)"));
+            AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.Window, "🪟 仅目标窗口声音 (进程隔离)"));
         }
 
         SelectedAudioSource ??= AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.None)
@@ -896,6 +1100,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         RefreshAudioDevices();
 
         UpdateRegionText();
+        _sourcesLoaded = true;
     }
 
     /// <summary>框选自定义区域：全屏截图 → 原生遮罩框选 → 物理像素矩形。</summary>
@@ -968,6 +1173,14 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
         ErrorMessage = string.Empty;
 
+        // 来源列表可能尚未加载：构造阶段已刻意不刷新（省掉约 140ms 启动开销），
+        // 正常流程是先进入录屏页由 RefreshSources 补齐；但热键可以直接开录，
+        // 那时 Monitors 为空会让录制区域退化成 0×0、录出无效文件，所以这里必须兜底。
+        if (!_sourcesLoaded)
+        {
+            RefreshSourcesCore(includeWindows: true);
+        }
+
         if (Source == RecordingSource.Window)
         {
             var selectedWindows = Windows.Where(w => w.IsSelected).Select(w => w.Window).ToList();
@@ -1018,11 +1231,40 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
             AudioSourceType targetAudioSource = AudioSourceType.None;
             string? targetAudioDeviceId = null;
+            ulong targetWindowHwnd = 0;
+            uint targetProcessId = 0;
 
-            if (selectedRenders.Count > 0)
+            if (SelectedAudioSource?.Value == AudioSourceType.Window)
             {
-                targetAudioSource = AudioSourceType.System;
-                targetAudioDeviceId = selectedRenders[0].Id;
+                var targetWin = Windows.FirstOrDefault(w => w.IsSelected)?.Window;
+                if (targetWin != null)
+                {
+                    targetAudioSource = AudioSourceType.Window;
+                    targetWindowHwnd = (ulong)targetWin.Hwnd;
+                    targetProcessId = targetWin.ProcessId;
+                }
+                else
+                {
+                    targetAudioSource = AudioSourceType.System;
+                }
+            }
+            else if (SelectedAudioPreset?.Value == AudioPreset.None && selectedRenders.Count == 0 && selectedCaptures.Count == 0)
+            {
+                targetAudioSource = AudioSourceType.None;
+            }
+            else if (selectedRenders.Count > 0)
+            {
+                var render = selectedRenders.FirstOrDefault(d => d.IsDefault) ?? selectedRenders[0];
+                if (render.IsDefault)
+                {
+                    targetAudioSource = AudioSourceType.System;
+                    targetAudioDeviceId = null;
+                }
+                else
+                {
+                    targetAudioSource = AudioSourceType.Device;
+                    targetAudioDeviceId = render.Id;
+                }
             }
             else if (selectedCaptures.Count > 0)
             {
@@ -1030,16 +1272,25 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
                 targetAudioDeviceId = selectedCaptures[0].Id;
             }
 
+            bool isLiveEffectActive = CaptureCursor && LiveCursorEffect;
             var options = new RecordingOptions
             {
                 Region = bounds,
                 Fps = SelectedFps?.Value ?? 30,
                 BitrateKbps = SelectedBitrate?.Value ?? 8000,
                 Encoder = SelectedEncoder?.Value ?? EncoderPreference.GpuHevc,
-                CaptureCursor = true,
+                CaptureCursor = CaptureCursor,
+                // 若开启桌面实时演示模式，由 C# 标注层在桌面直接渲染（DXGI 录制自然捕获录入），
+                // Rust 核心此时不重复硬烧录以防止双重重影；
+                // 若未开启桌面实时演示模式，则由 Rust 核心硬件直接将波纹与光轨合成烧录进录制视频！
+                CursorClickEffect = CaptureCursor && CursorClickEffect && !LiveCursorEffect,
+                CursorTrailMs = (CaptureCursor && CursorTrail && !LiveCursorEffect) ? Math.Clamp(CursorTrailMs, 40u, 3000u) : 0,
                 OutputPath = output,
                 AudioSource = targetAudioSource,
                 AudioDeviceId = targetAudioDeviceId,
+                AudioWindowHwnd = (IntPtr)targetWindowHwnd,
+                AudioProcessId = targetProcessId,
+                AudioBitrateKbps = SelectedAudioBitrate?.Value ?? 320,
             };
 
             await _service.StartAsync(options);
@@ -1047,7 +1298,14 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             _poller.Start();
             IsRecording = true;
             StatusMessage = "● 录制中…";
-            FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
+            if (IsFloatingBarEnabled)
+            {
+                FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
+            }
+            if (isLiveEffectActive)
+            {
+                LiveCursorEffectShowRequested?.Invoke(this, EventArgs.Empty);
+            }
             _logger?.Info($"录屏开始: {bounds.Width}x{bounds.Height} @ ({bounds.X},{bounds.Y}) -> {output}");
         }
         catch (RecordingException ex)
@@ -1078,6 +1336,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             await _service.StopAsync();
             _poller.Stop();
             IsRecording = false;
+            LiveCursorEffectHideRequested?.Invoke(this, EventArgs.Empty);
             StatusMessage = File.Exists(_lastSavedFile)
                 ? $"✓ 已保存：{_lastSavedFile}"
                 : "✓ 录制已停止";
@@ -1302,6 +1561,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             _poller.Stop();
             IsRecording = false;
             ResetStats();
+            LiveCursorEffectHideRequested?.Invoke(this, EventArgs.Empty);
             if (Source == RecordingSource.Region)
             {
                 Region = default;

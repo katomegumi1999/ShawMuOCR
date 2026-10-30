@@ -175,6 +175,30 @@
                                        TextWrapping="Wrap" />
                         </StackPanel>
 
+                        <!-- 鼠标与光标特效配置 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="鼠标与演示特效" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*" RowSpacing="6" ColumnSpacing="10">
+                                <CheckBox Grid.Row="0" Grid.Column="0"
+                                          Content="捕获鼠标指针" IsChecked="{Binding CaptureCursor}" FontSize="12"
+                                          ToolTip.Tip="在录制的视频画面中合成系统鼠标指针" />
+                                <CheckBox Grid.Row="0" Grid.Column="1"
+                                          Content="点击波纹特效" IsChecked="{Binding CursorClickEffect}" IsEnabled="{Binding CaptureCursor}" FontSize="12"
+                                          ToolTip.Tip="鼠标点击处渲染扩散圆环动画" />
+                                <CheckBox Grid.Row="1" Grid.Column="0"
+                                          Content="桌面实时呈现特效（演示模式）" IsChecked="{Binding LiveCursorEffect}" IsEnabled="{Binding CaptureCursor}" FontSize="12"
+                                          ToolTip.Tip="开启后录屏期间在您的物理屏幕上也实时呈现点击波纹与流光光轨（教学演示模式）；关闭后屏幕无干扰，由录屏引擎硬件直接合成进视频" />
+                                <CheckBox Grid.Row="1" Grid.Column="1"
+                                          Content="移动流光光轨" IsChecked="{Binding CursorTrail}" IsEnabled="{Binding CaptureCursor}" FontSize="12"
+                                          ToolTip.Tip="鼠标移动时沿历史路径生成连续平滑收窄的霓虹流光光轨" />
+                            </Grid>
+                            <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="8" IsVisible="{Binding CursorTrail}">
+                                <TextBlock Grid.Column="0" Text="拖尾时长" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                                <Slider Grid.Column="1" Minimum="40" Maximum="1000" Value="{Binding CursorTrailMs}" SmallChange="10" LargeChange="50" TickFrequency="50" IsSnapToTickEnabled="True" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding CursorTrailMs, StringFormat={}{0} ms}" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" VerticalAlignment="Center" Width="55" />
+                            </Grid>
+                        </StackPanel>
+
                         <!-- 帧率 / 码率 -->
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                             <StackPanel Grid.Column="0" Spacing="6">

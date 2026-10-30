@@ -70,6 +70,16 @@ internal static unsafe partial class MuClipNative
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial ulong CoreSearchHistoryPooled(IntPtr handle, byte* query, nuint limit, out IntPtr outPtr, out nuint outLen);
 
+    /// <summary>结构化分页搜索；请求体为 JSON。</summary>
+    [LibraryImport(DllName, EntryPoint = "muclip_core_search_history_page_pooled")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial ulong CoreSearchHistoryPagePooled(IntPtr handle, byte* requestJson, out IntPtr outPtr, out nuint outLen);
+
+    /// <summary>搜索命中总数（不受分页影响）；负数表示失败。</summary>
+    [LibraryImport(DllName, EntryPoint = "muclip_core_search_history_count")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial long CoreSearchHistoryCount(IntPtr handle, byte* requestJson);
+
     [LibraryImport(DllName, EntryPoint = "muclip_core_delete_history")]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial int CoreDeleteHistory(IntPtr handle, long id);

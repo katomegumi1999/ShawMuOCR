@@ -18,13 +18,19 @@ public sealed class RecordingOptions
 
     public MuRecorder.Interop.EncoderPreference Encoder { get; init; } = MuRecorder.Interop.EncoderPreference.GpuH264;
 
-    /// <summary>是否合成鼠标指针（M1 忽略，Rust 侧预留）。</summary>
-    public bool CaptureCursor { get; init; }
+    /// <summary>是否合成鼠标指针（Rust 核心合成到画面像素）。</summary>
+    public bool CaptureCursor { get; init; } = true;
+
+    /// <summary>鼠标点击处画扩散圆环波纹特效（需 CaptureCursor 为 true）。</summary>
+    public bool CursorClickEffect { get; init; }
+
+    /// <summary>鼠标移动流光光轨拖尾毫秒数（0=关闭，建议 120~400，需 CaptureCursor 为 true）。</summary>
+    public uint CursorTrailMs { get; init; }
 
     /// <summary>输出文件路径（.mp4）。</summary>
     public required string OutputPath { get; init; }
 
-    /// <summary>音源。M1 仅支持 None（Rust M4 开放 WASAPI）。</summary>
+    /// <summary>音源：None（静音）、System（默认扬声器 Loopback）、Device（指定设备）、Window（进程/窗口隔离）。</summary>
     public MuRecorder.Interop.AudioSourceType AudioSource { get; init; } = MuRecorder.Interop.AudioSourceType.None;
 
     public string? AudioDeviceId { get; init; }
@@ -32,4 +38,7 @@ public sealed class RecordingOptions
     public IntPtr AudioWindowHwnd { get; init; }
 
     public uint AudioProcessId { get; init; }
+
+    /// <summary>音频目标码率（kbps，传 0 默认 320；支持 96, 128, 160, 192, 256, 320）。</summary>
+    public uint AudioBitrateKbps { get; init; } = 320;
 }

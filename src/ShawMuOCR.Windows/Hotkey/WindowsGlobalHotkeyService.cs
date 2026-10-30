@@ -286,8 +286,14 @@ public sealed class WindowsGlobalHotkeyService : IGlobalHotkeyService
                 User32.PostMessage(_hwnd, (uint)User32.WM_CLOSE_HOTKEY_WINDOW, IntPtr.Zero, IntPtr.Zero);
             }
 
-            _messageLoopThread.Join(TimeSpan.FromSeconds(1));
-            _windowCreatedEvent.Dispose();
+            // 退出路径上的等待要短：消息循环线程是后台线程（IsBackground = true），
+            // 即使没能在 250ms 内收尾也不会阻止进程结束，句柄随进程释放即可。
+            // 历史上这里等满 1 秒，直接叠在"点退出 → 托盘图标消失"的延迟上。
+            bool joined = _messageLoopThread.Join(TimeSpan.FromMilliseconds(250));
+            if (joined)
+            {
+                _windowCreatedEvent.Dispose();
+            }
         }
     }
 }

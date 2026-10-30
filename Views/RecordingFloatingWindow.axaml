@@ -14,6 +14,30 @@
         SizeToContent="WidthAndHeight"
         WindowStartupLocation="Manual">
 
+    <Window.Styles>
+        <!-- 强制悬浮窗内按钮与文字保持固定纯白色，避免随系统浅色/深色主题切换变成黑字 -->
+        <Style Selector="Button.subtle">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.subtle /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Button.subtle:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Background" Value="#33FFFFFF" />
+        </Style>
+        <Style Selector="Button.subtle:pressed /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+            <Setter Property="Background" Value="#4DFFFFFF" />
+        </Style>
+        <Style Selector="Border.annotation-bar TextBlock">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+        <Style Selector="Border.annotation-bar Button.subtle">
+            <Setter Property="Foreground" Value="#FFFFFF" />
+        </Style>
+    </Window.Styles>
+
     <Border Name="RootBorder"
             Background="#EE1E1E22"
             BorderBrush="#4DFFFFFF"
@@ -96,12 +120,18 @@
                             IsVisible="{Binding !IsRecording}" />
 
                     <!-- 空闲状态：全屏录制 -->
-                    <Button Content="⏺ 开始录制"
-                            Command="{Binding StartRecordingCommand}"
+                    <Button Command="{Binding StartRecordingCommand}"
+                            Classes="accent"
                             CornerRadius="14"
                             Padding="10,4"
                             FontSize="12"
-                            IsVisible="{Binding !IsRecording}" />
+                            IsVisible="{Binding !IsRecording}">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Image Source="avares://ShawMuOCR/Assets/icon-recording.png" Width="14" Height="14" VerticalAlignment="Center"
+                                   RenderOptions.BitmapInterpolationMode="HighQuality" />
+                            <TextBlock Text="开始录制" Foreground="#FFFFFF" FontWeight="Medium" FontSize="12" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
 
                     <!-- 退出画布模式快捷按钮 -->
                     <Button Content="✕ 退出画布"
@@ -130,7 +160,8 @@
             </Grid>
 
             <!-- 展开的屏幕标注子工具条 -->
-            <Border Background="#1CFFFFFF"
+            <Border Classes="annotation-bar"
+                    Background="#1CFFFFFF"
                     CornerRadius="12"
                     Padding="8,4"
                     IsVisible="{Binding IsAnnotationActive}">
@@ -139,6 +170,7 @@
                             Command="{Binding SetAnnotationToolCommand}"
                             CommandParameter="Pen"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="6,3"
                             CornerRadius="8"
                             FontSize="11"
@@ -147,6 +179,7 @@
                             Command="{Binding SetAnnotationToolCommand}"
                             CommandParameter="Arrow"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="6,3"
                             CornerRadius="8"
                             FontSize="11"
@@ -155,6 +188,7 @@
                             Command="{Binding SetAnnotationToolCommand}"
                             CommandParameter="Rectangle"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="6,3"
                             CornerRadius="8"
                             FontSize="11"
@@ -163,6 +197,7 @@
                             Command="{Binding SetAnnotationToolCommand}"
                             CommandParameter="Ellipse"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="6,3"
                             CornerRadius="8"
                             FontSize="11"
@@ -171,6 +206,7 @@
                             Command="{Binding SetAnnotationToolCommand}"
                             CommandParameter="Laser"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="6,3"
                             CornerRadius="8"
                             FontSize="11"
@@ -201,6 +237,7 @@
                     <Button Content="↩️"
                             Command="{Binding AnnotationUndoCommand}"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="6,3"
                             CornerRadius="8"
                             FontSize="11"
@@ -208,6 +245,7 @@
                     <Button Content="🧹"
                             Command="{Binding AnnotationClearCommand}"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="6,3"
                             CornerRadius="8"
                             FontSize="11"
@@ -215,6 +253,7 @@
                     <Button Content="🖱️ 穿透"
                             Command="{Binding ToggleAnnotationClickThroughCommand}"
                             Classes="subtle"
+                            Foreground="#FFFFFF"
                             Padding="7,3"
                             CornerRadius="8"
                             FontSize="11"
