@@ -51,8 +51,8 @@ Unlike traditional OCR software that relies on heavy dependencies like Python en
 ### 2. ✂️ Full-Scenario Screenshot & Long Screenshot Ecosystem
 - **Screenshot OCR (`Alt+Z`)**: Full-screen high-DPI 1:1 physical pixel lossless crop ➔ auto extract text ➔ auto copy to clipboard ➔ lightweight bubble notification at screen bottom;
 - **Smart Table Column Detection**: Simultaneously populates clipboard with rich HTML table and clean plain text when tables are detected;
-- **Quick Screenshot Copy (`Alt+C`)**: System-level clipboard experience, directly writes selected image to system clipboard after selection;
-- **Advanced Screenshot Annotation Editor (`Alt+X`)**:
+- **Quick Screenshot Copy (`Alt+X`)**: System-level clipboard experience, directly writes selected image to system clipboard after selection;
+- **Advanced Screenshot Annotation Editor (`Alt+C`)**:
   - Supports rectangle, ellipse, arrow, freehand brush, highlighter, text input, numbered badges (incremental bubbles), mosaic and Gaussian blur;
   - Integrated **Long Screenshot** and **Region Recording** launch buttons on the annotation action bar to start seamlessly from the selected region;
   - Supports lossless undo/redo, pin to top (stick to screen desktop), one-click save (PNG/JPG/WEBP/BMP, custom quality and scale), one-click send for translation;
@@ -106,12 +106,12 @@ Unlike traditional OCR software that relies on heavy dependencies like Python en
 | Function | Default Hotkey | Description |
 | :--- | :---: | :--- |
 | **Screenshot OCR** | `Alt + Z` | Full-screen selection, auto extract text, copy and show notification |
-| **Screenshot Copy** | `Alt + C` | Full-screen selection, directly copy selected image to clipboard |
-| **Screenshot Annotation** | `Alt + X` | Open annotation editor, doodle, save, pin to desktop, or launch long screenshot / screen recording |
+| **Screenshot Copy** | `Alt + X` | Full-screen selection, directly copy selected image to clipboard |
+| **Screenshot Annotation** | `Alt + C` | Open annotation editor, doodle, save, pin to desktop, or launch long screenshot / screen recording |
 | **Long Screenshot** | `Alt + L` | Select region, scroll naturally to stitch, finish anytime via floating bar, Enter, or hotkey |
 | **Screen Recording** | `Alt + R` | Summon desktop floating bar or start recording (MuRecorder hardware-accelerated core) |
 | **Selection Translation** | `Alt + T` | Select screen paragraph, floating window translates in place |
-| **OCR Popup** | `Alt + V` | Select screen area, show OCR results in floating window without auto-copy |
+| **OCR Popup** | `Alt + D` | Select screen area, show OCR results in floating window without auto-copy |
 | **Quick Note** | `Alt + N` | Floating quick note window for spontaneous memo and inspiration |
 | **MuClip Clipboard** | `Alt + Q` | Summon floating clipboard panel, real-time history search and paste |
 | **Quick Phrases Panel** | `Alt + W` | Summon MuClip phrases panel, click or press key to paste |
