@@ -434,6 +434,28 @@
                                         Padding="10,5" />
                             </StackPanel>
                         </Grid>
+
+                        <!-- 本地库加密状态（仅在开启后显示） -->
+                        <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding EnableClipboard}">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="本地数据库加密状态" FontWeight="Medium" />
+                                <TextBlock Text="{Binding MuClipEncryptionStatus}"
+                                           FontSize="13"
+                                           Margin="0,4,0,0"
+                                           TextWrapping="Wrap" />
+                                <TextBlock Text="{Binding MuClipEncryptionDetail}"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           Margin="0,2,0,0"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <Button Grid.Column="1"
+                                    Content="重新检测"
+                                    Command="{Binding RefreshMuClipEncryptionStatusCommand}"
+                                    Padding="10,5"
+                                    VerticalAlignment="Center" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 

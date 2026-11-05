@@ -20,6 +20,7 @@ public partial class SettingsViewModel : ViewModelBase
     private readonly IOcrModelProvider _modelProvider;
     private readonly ILoggerService? _loggerService;
     private readonly Func<AboutViewModel>? _aboutVmFactory;
+    private readonly Func<bool?>? _muClipEncryptionProbe;
     private bool _isInitializing = true;
     private bool _isSaving;
     private CancellationTokenSource? _autoSaveCts;
@@ -468,6 +469,18 @@ public partial class SettingsViewModel : ViewModelBase
     public string SettingsFilePath => _settingsService.SettingsFilePath;
     public string AppDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR");
     public string MuClipDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR", "Muclip");
+
+    /// <summary>小沐剪贴板本地库文件路径（与核心默认路径一致）。</summary>
+    public string MuClipDatabasePath => Path.Combine(MuClipDataDirectory, "muclip.db");
+
+    /// <summary>本地库加密状态的一行结论，直接绑到设置页。</summary>
+    [ObservableProperty]
+    private string _muClipEncryptionStatus = "检测中…";
+
+    /// <summary>结论的依据（核心实测 / 文件头回退 / 文件不存在），避免只给结论不给来源。</summary>
+    [ObservableProperty]
+    private string _muClipEncryptionDetail = string.Empty;
+
     public string LogDirectory => _loggerService?.LogDirectory ?? string.Empty;
     public string CurrentLogFilePath => _loggerService?.CurrentLogFilePath ?? string.Empty;
 
@@ -495,7 +508,8 @@ public partial class SettingsViewModel : ViewModelBase
         IGlobalHotkeyService hotkeyService,
         IOcrModelProvider modelProvider,
         Func<AboutViewModel>? aboutVmFactory = null,
-        ILoggerService? loggerService = null)
+        ILoggerService? loggerService = null,
+        Func<bool?>? muClipEncryptionProbe = null)
     {
         _settingsService = settingsService;
         _startupService = startupService;
@@ -503,6 +517,7 @@ public partial class SettingsViewModel : ViewModelBase
         _modelProvider = modelProvider;
         _aboutVmFactory = aboutVmFactory;
         _loggerService = loggerService;
+        _muClipEncryptionProbe = muClipEncryptionProbe;
 
         var current = _settingsService.Current;
         _hotkey = current.Hotkey;
@@ -577,6 +592,7 @@ public partial class SettingsViewModel : ViewModelBase
         LoadMaxSideLens();
         LoadIdleSleepMinutes();
         LoadLogRetentionDays();
+        RefreshMuClipEncryptionStatus();
         _settingsService.SettingsChanged += OnExternalSettingsChanged;
         StatusMessage = HasNoModels
             ? "⚠️ 未在 models 目录下检测到任何 OCR 模型，请将 models 文件夹放入程序目录后点击刷新"
@@ -1805,6 +1821,77 @@ public partial class SettingsViewModel : ViewModelBase
         {
             StatusMessage = "复制路径失败";
         }
+    }
+
+    /// <summary>
+    /// 刷新「本地库加密状态」。优先问核心（<c>PRAGMA cipher_version</c> 实测，权威），
+    /// 核心未初始化时退回读库文件头 —— 两种情况都写清依据，避免界面给一个无来源的结论。
+    /// </summary>
+    [RelayCommand]
+    public void RefreshMuClipEncryptionStatus()
+    {
+        bool? fromCore = null;
+        try
+        {
+            fromCore = _muClipEncryptionProbe?.Invoke();
+        }
+        catch (Exception ex)
+        {
+            _loggerService?.Warn($"读取本地库加密状态失败: {ex.Message}");
+        }
+
+        if (fromCore.HasValue)
+        {
+            MuClipEncryptionStatus = fromCore.Value ? "🔒 已加密（SQLCipher）" : "⚠️ 未加密（明文存储）";
+            MuClipEncryptionDetail = "由 Rust 核心实测（PRAGMA cipher_version），非按构建配置推断";
+            return;
+        }
+
+        try
+        {
+            string dbPath = MuClipDatabasePath;
+            if (!File.Exists(dbPath))
+            {
+                MuClipEncryptionStatus = "— 数据库尚未创建";
+                MuClipEncryptionDetail = "首次启动小沐剪贴板后会在数据目录生成本地库";
+                return;
+            }
+
+            // SQLite 明文库的固定魔数；被 SQLCipher 加密后首部 16 字节整体是密文，不会匹配。
+            Span<byte> head = stackalloc byte[16];
+            using (FileStream fs = new(dbPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            {
+                int read = fs.ReadAtLeast(head, head.Length, throwOnEndOfStream: false);
+                if (read < head.Length)
+                {
+                    MuClipEncryptionStatus = "— 无法判断";
+                    MuClipEncryptionDetail = $"库文件过短（{read} 字节），可能正在写入";
+                    return;
+                }
+            }
+
+            bool plaintext = IsPlaintextSqliteHeader(head) == true;
+            MuClipEncryptionStatus = plaintext ? "⚠️ 未加密（明文存储）" : "🔒 已加密（密文库）";
+            MuClipEncryptionDetail = "核心未运行，按库文件头判断（不含 SQLite 明文标识即为密文）";
+        }
+        catch (Exception ex)
+        {
+            MuClipEncryptionStatus = "— 无法判断";
+            MuClipEncryptionDetail = ex.Message;
+        }
+    }
+
+    /// <summary>
+    /// 判断 16 字节文件头是否属于 SQLite 明文库。
+    /// </summary>
+    /// <returns>
+    /// <c>true</c> 明文、<c>false</c> 非明文（密文或别的东西）、<c>null</c> 长度不足无法判断。
+    /// </returns>
+    public static bool? IsPlaintextSqliteHeader(ReadOnlySpan<byte> head)
+    {
+        ReadOnlySpan<byte> sqliteMagic = "SQLite format 3\0"u8;
+        if (head.Length < sqliteMagic.Length) return null;
+        return head[..sqliteMagic.Length].SequenceEqual(sqliteMagic);
     }
 
     [RelayCommand]

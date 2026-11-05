@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 
 namespace MuRecorder.Interop;
 
@@ -45,6 +45,18 @@ internal static partial class RecorderNative
     [LibraryImport(Lib, EntryPoint = "recorder_has_hardware_encoder")]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     internal static partial int recorder_has_hardware_encoder(uint encoder);
+
+    /// <summary>
+    /// 预热硬件编码器探测，结果由原生侧缓存。
+    /// 单次枚举 100–430 ms，只能在后台线程调用。
+    /// </summary>
+    [LibraryImport(Lib, EntryPoint = "recorder_warm_hardware_probe")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    internal static partial int recorder_warm_hardware_probe();
+
+    [LibraryImport(Lib, EntryPoint = "recorder_set_preview_hwnd")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    internal static partial int recorder_set_preview_hwnd(RecorderSafeHandle handle, ulong hwnd);
 
     [LibraryImport(Lib, EntryPoint = "recorder_extract_range", StringMarshalling = StringMarshalling.Utf8)]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]

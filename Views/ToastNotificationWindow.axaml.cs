@@ -13,6 +13,8 @@ public partial class ToastNotificationWindow : Window
     private readonly DispatcherTimer _closeTimer;
     private bool _isClosing;
 
+    private Action? _clickAction;
+
     public ToastNotificationWindow()
     {
         InitializeComponent();
@@ -27,14 +29,20 @@ public partial class ToastNotificationWindow : Window
             CloseToast();
         };
 
-        PointerPressed += (s, e) => CloseToast();
+        PointerPressed += (s, e) =>
+        {
+            var action = _clickAction;
+            _clickAction = null;
+            CloseToast();
+            action?.Invoke();
+        };
     }
 
     public static void Show(string text) => Show(text, TimeSpan.Zero, null);
 
     public static void Show(string text, string title) => Show(text, TimeSpan.Zero, title);
 
-    public static void Show(string text, TimeSpan elapsed, string? title = null)
+    public static void Show(string text, TimeSpan elapsed, string? title = null, double displaySeconds = 1.5, Action? onClick = null)
     {
         Dispatcher.UIThread.Post(() =>
         {
@@ -44,6 +52,7 @@ public partial class ToastNotificationWindow : Window
                 _activeToast?.CloseToast(instant: true);
 
                 var toast = new ToastNotificationWindow();
+                toast._clickAction = onClick;
                 _activeToast = toast;
 
                 string cleanText = (text ?? string.Empty).Trim().Replace("\r\n", " ").Replace('\r', ' ').Replace('\n', ' ');
@@ -57,7 +66,25 @@ public partial class ToastNotificationWindow : Window
                     toast.TitleTextBlock.Text = title;
                 }
                 toast.SnippetTextBlock.Text = cleanText;
-                toast.ElapsedTextBlock.Text = elapsed > TimeSpan.Zero ? $"耗时: {elapsed.TotalMilliseconds:F0} ms" : string.Empty;
+                if (elapsed > TimeSpan.Zero)
+                {
+                    if (elapsed.TotalSeconds >= 60)
+                    {
+                        toast.ElapsedTextBlock.Text = $"时长: {elapsed:mm\\:ss}";
+                    }
+                    else if (elapsed.TotalSeconds >= 1)
+                    {
+                        toast.ElapsedTextBlock.Text = $"时长: {elapsed.TotalSeconds:F1}s";
+                    }
+                    else
+                    {
+                        toast.ElapsedTextBlock.Text = $"耗时: {elapsed.TotalMilliseconds:F0} ms";
+                    }
+                }
+                else
+                {
+                    toast.ElapsedTextBlock.Text = string.Empty;
+                }
 
                 toast.Opened += (s, e) =>
                 {
@@ -116,6 +143,7 @@ public partial class ToastNotificationWindow : Window
                 };
 
                 toast.Show();
+                toast._closeTimer.Interval = TimeSpan.FromSeconds(Math.Max(0.5, displaySeconds));
                 toast._closeTimer.Start();
             }
             catch

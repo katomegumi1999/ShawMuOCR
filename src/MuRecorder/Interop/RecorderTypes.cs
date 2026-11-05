@@ -3,15 +3,56 @@ using System.Runtime.InteropServices;
 namespace MuRecorder.Interop;
 
 /// <summary>
-/// 音源类型，与 recorder.h 的 AudioSourceType 对齐。
-/// M1 仅支持 None（Rust 侧 audio 能力随 M4 WASAPI 落地）。
+/// 采集模式，与 recorder.h 的 CaptureMode 对齐。
 /// </summary>
+public enum CaptureMode
+{
+    Region = 0,
+    Window = 1,
+}
+
+/// <summary>
+/// 窗口源标志位（与 recorder.h 的 SOURCE_FLAG_* 对齐）。
+/// </summary>
+[Flags]
+public enum SourceFlags : uint
+{
+    None = 0,
+    ClientAreaOnly = 1 << 0,
+    AlphaBlend = 1 << 1,
+}
+
+/// <summary>
+/// 单个窗口源（与 recorder.h 的 RecorderSource 严格对齐）。
+/// </summary>
+[StructLayout(LayoutKind.Sequential)]
+public struct RecorderSource
+{
+    public ulong Hwnd;
+    public uint Z;
+    public uint Flags;
+}
+
+/// <summary>
+/// 音源类型，与 recorder.h 的 AudioSourceType 对齐。
+/// </summary>
+/// <remarks>
+/// <see cref="Device"/> 与 <see cref="Mic"/> 指向**不同的 WASAPI 路径**：
+/// 前者是渲染端点的环回（LOOPBACK），后者是采集端点。对采集端点带上
+/// LOOPBACK 标志会被 Initialize 直接拒绝，所以两者必须由类型本身区分，
+/// 不能靠端点 ID 去猜（这正是 v4 时代「选麦克风就报音频设备不可用」的成因）。
+/// </remarks>
 public enum AudioSourceType
 {
     None = 0,
+    /// <summary>默认渲染设备环回（系统声音）。</summary>
     System = 1,
+    /// <summary>指定**渲染**设备环回（需 AudioDeviceId）。</summary>
     Device = 2,
+    /// <summary>进程树应用环回（需 AudioWindowHwnd / AudioProcessId）。</summary>
     Window = 3,
+    /// <summary>麦克风（采集端点）。AudioDeviceId 可空表示默认麦克风。</summary>
+    Mic = 4,
 }
 
 /// <summary>
@@ -69,6 +110,24 @@ public unsafe struct RecorderConfig
     /// <summary>移动轨迹拖尾时长 ms：0=关闭，否则 40~3000。需 CaptureCursor=1</summary>
     public uint CursorTrailMs;
 
+    /* ---- v4 追加 ---- */
+    public uint CaptureMode;
+    public uint CanvasW;
+    public uint CanvasH;
+    public uint CanvasBackground;
+    public uint SourceCount;
+    public RecorderSource* Sources;
+    public uint CaptureFlags;
+
+    /* ---- v5 追加 ---- */
+    /// <summary>
+    /// 麦克风叠加增益（百分比）：0 = 不叠加，1~300 = 叠加到主音轨并乘该系数。
+    /// 同一个字段既是开关也是电平——两路 PCM 直接相加会削顶，增益必须一开就有着落。
+    /// </summary>
+    public uint MicGainPercent;
+    /// <summary>UTF-8 麦克风端点 ID，可空（= 默认麦克风）。仅 MicGainPercent &gt; 0 时生效。</summary>
+    public byte* MicDeviceId;
+
     public AudioSourceType AudioSource
     {
         get => (AudioSourceType)AudioSourceTypeValue;
@@ -79,7 +138,7 @@ public unsafe struct RecorderConfig
 /// <summary>ABI 版本常量（对应 C 侧 RECORDER_ABI_VERSION）。</summary>
 public static class RecorderAbi
 {
-    public const uint Version = 3;
+    public const uint Version = 5;
 }
 
 /// <summary>

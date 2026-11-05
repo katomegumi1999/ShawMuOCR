@@ -42,6 +42,16 @@ internal static unsafe partial class MuClipNative
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial void CoreFree(IntPtr handle);
 
+    /// <summary>滚动自动备份：整文件快照 + 按数量清理。返回 JSON 信封（需 FreeString）。</summary>
+    [LibraryImport(DllName, EntryPoint = "muclip_core_auto_backup")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial IntPtr CoreAutoBackup(IntPtr handle, byte* dir, uint keep, uint intervalHours);
+
+    /// <summary>本地库是否真正启用了 SQLCipher 静态加密：1=已加密 / 0=明文 / -1=句柄无效。</summary>
+    [LibraryImport(DllName, EntryPoint = "muclip_core_is_encrypted")]
+    [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
+    public static partial int CoreIsEncrypted(IntPtr handle);
+
     [LibraryImport(DllName, EntryPoint = "muclip_core_add_history")]
     [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvCdecl) })]
     public static partial long CoreAddHistory(IntPtr handle, byte* content);

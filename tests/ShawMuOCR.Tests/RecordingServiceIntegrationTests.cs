@@ -3,6 +3,7 @@ using System.Text;
 using MuRecorder.Interop;
 using MuRecorder.Services;
 using ShawMuOCR.Core.Capture;
+using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Windows.ScreenCapture;
 using Xunit;
 
@@ -251,6 +252,109 @@ public class RecordingServiceIntegrationTests
         };
     }
 
+    /// <summary>
+    /// 「系统声音 + 麦克风」同时录：两路必须被混进**同一条**音轨。
+    /// </summary>
+    /// <remarks>
+    /// 这条用例的价值在 <c>StartAsync</c> 那一行：Rust 的预检会**分别**打开主音源与
+    /// 麦克风，任一失败就拒绝启动。所以「启动成功」本身就证明了两件事：
+    ///   1. 麦克风走的是采集端点（没有套 LOOPBACK 标志，否则 Initialize 被拒）；
+    ///   2. v5 的两个新字段确实被 Rust 读到了正确的偏移。
+    ///
+    /// 后半段校验「混音发生在写入前」：容器里仍然只有视频 + 音频两条 trak，
+    /// 而不是每路音频各一条。
+    ///
+    /// 机器没有麦克风时这条会失败——那是正确行为（预检就该拒绝），
+    /// 所以标了 Slow，只在有完整音频设备的环境跑。
+    /// </remarks>
+    [Trait("Category", "Slow")]
+    [Fact]
+    public async Task Record_SystemAudioWithMicOverlay_MixesIntoSingleTrack()
+    {
+        var output = Path.Combine(Path.GetTempPath(), $"shawmu_rec_mic_{Guid.NewGuid():N}.mp4");
+        if (File.Exists(output))
+        {
+            File.Delete(output);
+        }
+
+        var options = new RecordingOptions
+        {
+            Region = ValidOptions(output).Region,
+            Fps = 15,
+            BitrateKbps = 2000,
+            Encoder = EncoderPreference.Soft,
+            CaptureCursor = false,
+            OutputPath = output,
+            AudioSource = AudioSourceType.System,
+            MicGainPercent = 100,
+        };
+
+        await using var service = NewService();
+        // 预检严格：麦克风打不开就在这里抛，不会录出一条没声音的文件。
+        await service.StartAsync(options);
+        Assert.True(service.IsRecording);
+
+        await Task.Delay(1500);
+        var stats = service.PollStats();
+        Assert.NotNull(stats);
+        _output.WriteLine($"捕获 {stats!.Value.FramesCaptured} 帧 / 编码 {stats.Value.FramesEncoded} 帧");
+
+        if (stats.Value.FramesCaptured == 0)
+        {
+            // 桌面完全静止时 DXGI 一帧都不给（API 语义）。此时无法产出 moov，
+            // 停止必然失败并删除残留文件——音频侧的正确性由 Rust e2e 覆盖。
+            await Assert.ThrowsAnyAsync<RecordingException>(() => service.StopAsync());
+            File.Delete(output);
+            return;
+        }
+
+        await service.StopAsync();
+        Assert.True(File.Exists(output), "停止后文件必须存在");
+
+        var bytes = File.ReadAllBytes(output);
+        var moovAt = -1;
+        long moovSize = 0;
+        int scanAt = 0;
+        while (scanAt + 8 <= bytes.Length)
+        {
+            var box = ReadBoxHeader(bytes, scanAt);
+            long size = box.Size;
+            if (size == 1)
+            {
+                size = (long)BinaryPrimitives.ReadUInt64BigEndian(new ReadOnlySpan<byte>(bytes, scanAt + 8, 8));
+            }
+            if (size < 8) break;
+            if (box.Type == "moov")
+            {
+                moovAt = scanAt;
+                moovSize = size;
+                break;
+            }
+            scanAt += (int)size;
+        }
+        Assert.True(moovAt > 0, "文件里找不到 moov 盒");
+
+        var moov = new ReadOnlySpan<byte>(bytes, moovAt, (int)moovSize);
+
+        // 恰好两条 trak：视频 + 混音后的音频。若哪天误做成「每路音频一条轨」，
+        // 这里会立刻变成 3。
+        int trakCount = 0;
+        int cursor = 0;
+        while (true)
+        {
+            int at = moov[cursor..].IndexOf("trak"u8);
+            if (at < 0) break;
+            trakCount++;
+            cursor += at + 4;
+        }
+        Assert.Equal(2, trakCount);
+
+        Assert.True(moov.IndexOf("mp4a"u8) >= 0, "moov 缺少 mp4a 音频样本描述");
+        Assert.True(moov.IndexOf("esds"u8) >= 0, "moov 缺少 esds（AAC 配置）");
+
+        File.Delete(output);
+    }
+
     private static (uint Size, string Type) ReadBoxHeader(byte[] bytes, int offset)
     {
         uint size = BinaryPrimitives.ReadUInt32BigEndian(new ReadOnlySpan<byte>(bytes, offset, 4));
@@ -278,6 +382,64 @@ public class RecordingServiceIntegrationTests
     {
         var stats = new RecorderStats { EncoderType = type };
         Assert.Equal(expected, stats.EncoderName);
+    }
+
+    /// <summary>
+    /// 预热后三种编码器的探测结果都必须进缓存，且判定为「已就绪」。
+    /// 这条同时守住一个性能约定：预热之后 UI 的 TryGetHardwareEncoder 不再跨 P/Invoke。
+    /// 慢：单次 MFTEnumEx 实测 100–430 ms。
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Slow")]
+    public void WarmHardwareProbe_PopulatesCacheForAllCodecs()
+    {
+        if (!RecordingService.IsAvailable) return; // 无 DLL 环境跳过
+
+        RecordingService.WarmHardwareProbe();
+
+        Assert.True(RecordingService.HardwareProbeReady, "预热后应标记为就绪");
+        foreach (var enc in new[]
+                 {
+                     EncoderPreference.GpuAv1, EncoderPreference.GpuHevc, EncoderPreference.GpuH264
+                 })
+        {
+            Assert.NotNull(RecordingService.TryGetHardwareEncoder(enc));
+        }
+    }
+
+    /// <summary>没预热时必须返回 null 而不是「false」—— false 会让 UI 谎报「未检测到」。</summary>
+    [Fact]
+    public void TryGetHardwareEncoder_ReturnsNullBeforeWarm()
+    {
+        // 进程内若已被其他用例预热过，这条断言不成立，跳过即可。
+        if (RecordingService.HardwareProbeReady) return;
+        Assert.Null(RecordingService.TryGetHardwareEncoder(EncoderPreference.GpuHevc));
+    }
+
+    /// <summary>
+    /// FFI 必须返回三态：1 有 / 0 明确没有 / -1 问不出来。
+    ///
+    /// 守住的是「未知不能被压成 0」这条契约：一旦压成 0，一次瞬时的 MF 初始化/枚举失败
+    /// 就会让界面在整个会话里显示「未检测到硬件支持，将回退到 CPU 软编」，
+    /// 明明有显卡却告诉用户没有。慢：可能触发真实 MFTEnumEx（100–430 ms/格式）。
+    /// </summary>
+    [Fact]
+    [Trait("Category", "Slow")]
+    public void RecorderHasHardwareEncoder_ReturnsTriState()
+    {
+        if (!RecordingService.IsAvailable) return;
+
+        foreach (var enc in new[]
+                 {
+                     EncoderPreference.GpuAv1, EncoderPreference.GpuHevc, EncoderPreference.GpuH264
+                 })
+        {
+            var v = RecorderNative.recorder_has_hardware_encoder((uint)enc);
+            Assert.True(v is -1 or 0 or 1, $"{enc} 必须返回三态之一（1/0/-1），实际 {v}");
+        }
+
+        // 非法编号是「请求错误」，不是「未知」—— 必须仍然是 0，不要跟着变成 -1。
+        Assert.Equal(0, RecorderNative.recorder_has_hardware_encoder(999));
     }
 
     [Fact]
@@ -407,6 +569,61 @@ public class RecordingServiceIntegrationTests
         var ex = await Assert.ThrowsAsync<RecordingException>(() =>
             RecordingService.ExtractRangeAsync(nonExistent, dst, 0, 10_000_000, 30));
         Assert.True(ex.Result is RecorderResult.Io or RecorderResult.Invalid);
+    }
+
+    [Fact]
+    public void RecordingViewModel_LaserAndTextTool_ToggleAndFontSizeWork()
+    {
+        var vm = new MuRecorder.ViewModels.RecordingViewModel(
+            new SimpleCaptureService(),
+            new SimpleSelectionService());
+
+        // 1. 初始为 Pen (0)
+        Assert.Equal(0, vm.SelectedAnnotationToolIndex);
+        Assert.False(vm.IsAnnotationLaserSelected);
+        Assert.False(vm.IsAnnotationTextToolSelected);
+
+        // 2. 启用激光笔 -> index 4, IsAnnotationLaserSelected == true
+        vm.SetAnnotationTool("Laser");
+        Assert.Equal(4, vm.SelectedAnnotationToolIndex);
+        Assert.True(vm.IsAnnotationLaserSelected);
+        Assert.False(vm.IsAnnotationTextToolSelected);
+
+        // 3. 再次点击激光笔 -> 自动切回 Pen (0), 彻底解决激光笔开启后无法关闭的问题
+        vm.SetAnnotationTool("Laser");
+        Assert.Equal(0, vm.SelectedAnnotationToolIndex);
+        Assert.False(vm.IsAnnotationLaserSelected);
+
+        // 4. 选择文字工具 -> index 5, IsAnnotationTextToolSelected == true
+        vm.SetAnnotationTool("Text");
+        Assert.Equal(5, vm.SelectedAnnotationToolIndex);
+        Assert.True(vm.IsAnnotationTextToolSelected);
+
+        // 5. 字号滑动条联动
+        double reportedFontSize = 0;
+        vm.AnnotationFontSizeChangeRequested += (s, fs) => reportedFontSize = fs;
+
+        vm.AnnotationFontSize = 48.0;
+        Assert.Equal(48.0, reportedFontSize);
+        Assert.Equal("48px", vm.AnnotationFontSizeText);
+
+        // 6. 再次点击文字 -> 自动切回 Pen (0)
+        vm.SetAnnotationTool("Text");
+        Assert.Equal(0, vm.SelectedAnnotationToolIndex);
+        Assert.False(vm.IsAnnotationTextToolSelected);
+    }
+
+    private class SimpleCaptureService : IScreenCaptureService
+    {
+        public ScreenRect GetVirtualScreenBounds() => new(0, 0, 1920, 1080);
+        public OcrImage CaptureVirtualScreen() => new(new SkiaSharp.SKBitmap(10, 10));
+        public OcrImage CaptureRegion(ScreenRect rect) => new(new SkiaSharp.SKBitmap(10, 10));
+    }
+
+    private class SimpleSelectionService : IScreenSelectionService
+    {
+        public Task<OcrImage?> SelectRegionAsync(OcrImage fullScreenshot, ScreenRect virtualBounds) =>
+            Task.FromResult<OcrImage?>(null);
     }
 }
 

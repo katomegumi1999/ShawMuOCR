@@ -19,6 +19,9 @@ public partial class RecordingFloatingWindow : Window
     private static RecordingFloatingWindow? s_instance;
     private bool _hasPositioned;
 
+    private static IntPtr s_floatingHwnd = IntPtr.Zero;
+    public static IntPtr FloatingHwnd => s_floatingHwnd;
+
     public static RecordingFloatingWindow EnsureInstance(RecordingViewModel vm)
     {
         if (s_instance == null)
@@ -38,9 +41,9 @@ public partial class RecordingFloatingWindow : Window
         var win = EnsureInstance(vm);
         win.PositionAtDefaultIfFirstTime();
         win.Show();
-        win.Topmost = false;
+        s_floatingHwnd = win.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         win.Topmost = true;
-        win.Activate();
+        BringToFront();
     }
 
     public static void HideOverlay()
@@ -53,6 +56,7 @@ public partial class RecordingFloatingWindow : Window
     /// </summary>
     public void CloseAndExitAnnotation()
     {
+        s_floatingHwnd = IntPtr.Zero;
         Hide();
         var vm = _attachedVm ?? (DataContext as RecordingViewModel);
         if (vm?.IsAnnotationActive == true)
@@ -70,22 +74,14 @@ public partial class RecordingFloatingWindow : Window
     /// </summary>
     public static void BringToFront()
     {
-        // 1. 先确保全屏透明光轨/标注图层处于 HWND_TOPMOST 顶层（高于浏览器、编辑器等一切第三方应用）
-        RecordingAnnotationWindow.BringToFront();
+        var handle = s_floatingHwnd != IntPtr.Zero
+            ? s_floatingHwnd
+            : (s_instance?.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
 
-        // 2. 再确保悬浮控制栏居于最顶层（高于透明屏幕标注层）
-        if (s_instance != null && s_instance.IsVisible)
+        if (handle != IntPtr.Zero)
         {
-            s_instance.Topmost = false;
-            s_instance.Topmost = true;
-            s_instance.Activate();
-
-            var handle = s_instance.TryGetPlatformHandle();
-            if (handle != null)
-            {
-                User32.SetWindowPos(handle.Handle, User32.HWND_TOPMOST, 0, 0, 0, 0,
-                    User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_SHOWWINDOW);
-            }
+            User32.SetWindowPos(handle, User32.HWND_TOPMOST, 0, 0, 0, 0,
+                User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOACTIVATE);
         }
     }
 
@@ -134,13 +130,7 @@ public partial class RecordingFloatingWindow : Window
         {
             if (active)
             {
-                var bounds = vm.CurrentTargetBounds;
-                if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
-                {
-                    bounds = vm.SelectedMonitor?.Bounds
-                        ?? (vm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? vm.Monitors.FirstOrDefault())?.Bounds
-                        ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
-                }
+                var bounds = vm.GetAnnotationBounds();
                 RecordingAnnotationWindow.ShowOverlay(bounds, vm);
                 BringToFront();
             }
@@ -159,6 +149,7 @@ public partial class RecordingFloatingWindow : Window
                 "Rectangle" => ScreenAnnotationTool.Rectangle,
                 "Ellipse" => ScreenAnnotationTool.Ellipse,
                 "Laser" => ScreenAnnotationTool.Laser,
+                "Text" => ScreenAnnotationTool.Text,
                 _ => ScreenAnnotationTool.Pen
             };
             RecordingAnnotationWindow.SetTool(screenTool);
@@ -171,6 +162,12 @@ public partial class RecordingFloatingWindow : Window
             {
                 RecordingAnnotationWindow.SetColor(col);
             }
+            BringToFront();
+        };
+
+        vm.AnnotationFontSizeChangeRequested += (s, fs) =>
+        {
+            RecordingAnnotationWindow.SetFontSize(fs);
             BringToFront();
         };
 
@@ -200,6 +197,7 @@ public partial class RecordingFloatingWindow : Window
 
     private void OnOpened(object? sender, EventArgs e)
     {
+        s_floatingHwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         ApplyWindowStyles();
     }
 

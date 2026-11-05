@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Windows.Win32;
@@ -15,7 +16,8 @@ public enum ScreenAnnotationTool
     Arrow = 1,
     Rectangle = 2,
     Ellipse = 3,
-    Laser = 4
+    Laser = 4,
+    Text = 5
 }
 
 public sealed class ScreenAnnotationStroke
@@ -26,6 +28,8 @@ public sealed class ScreenAnnotationStroke
     public List<Point> Points { get; } = new();
     public Point StartPoint { get; set; }
     public Point EndPoint { get; set; }
+    public string? Text { get; set; }
+    public double FontSize { get; set; } = 22.0;
 }
 
 public partial class RecordingAnnotationWindow : Window
@@ -37,12 +41,17 @@ public partial class RecordingAnnotationWindow : Window
     private ScreenAnnotationTool _currentTool = ScreenAnnotationTool.Pen;
     private Color _currentColor = Color.FromRgb(255, 77, 79); // 鲜亮红
     private double _currentStrokeWidth = 4.0;
+    private double _currentFontSize = 40.0;
     private bool _isClickThrough;
     private System.Threading.CancellationTokenSource? _clickMonitorCts;
     private bool _isLiveCursorActive;
+    private static IntPtr s_overlayHwnd = IntPtr.Zero;
+    private TextBox? _inlineTextBox;
+    private Point _textInsertPoint;
 
     public static bool IsOpen => s_sharedOverlay?.IsVisible == true;
     public static bool CurrentIsClickThrough => s_sharedOverlay?._isClickThrough ?? false;
+    public static IntPtr OverlayHwnd => s_overlayHwnd;
 
     public RecordingAnnotationWindow()
     {
@@ -52,27 +61,156 @@ public partial class RecordingAnnotationWindow : Window
         var root = this.FindControl<Panel>("RootPanel");
         if (root != null)
         {
-            root.Children.Add(_canvas);
+            root.Children.Insert(0, _canvas);
         }
         else
         {
             Content = _canvas;
         }
 
+        _inlineTextBox = this.FindControl<TextBox>("InlineTextBox");
+        if (_inlineTextBox != null)
+        {
+            _inlineTextBox.KeyDown += OnInlineTextBoxKeyDown;
+            _inlineTextBox.LostFocus += OnInlineTextBoxLostFocus;
+            _inlineTextBox.TextChanged += OnInlineTextBoxTextChanged;
+        }
+
         Opened += OnOpened;
+        Deactivated += OnWindowDeactivated;
         KeyDown += OnWindowKeyDown;
         Closing += OnWindowClosing;
     }
 
     private void OnOpened(object? sender, EventArgs e)
     {
+        s_overlayHwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         ApplyWindowStyles();
+        ReassertZOrder();
+    }
+
+    private void OnWindowDeactivated(object? sender, EventArgs e)
+    {
+        if (s_overlayHwnd != IntPtr.Zero)
+        {
+            ReassertZOrder();
+        }
+    }
+
+    public void BeginEditText(Point pt)
+    {
+        CommitInlineText();
+
+        if (_inlineTextBox == null) return;
+
+        _textInsertPoint = pt;
+        _inlineTextBox.Text = string.Empty;
+
+        _inlineTextBox.FontSize = _currentFontSize;
+        _inlineTextBox.FontWeight = _currentStrokeWidth <= 2.5 ? FontWeight.Normal : FontWeight.SemiBold;
+        _inlineTextBox.FontFamily = new FontFamily("Microsoft YaHei, Segoe UI, sans-serif");
+
+        var brush = new SolidColorBrush(_currentColor);
+        _inlineTextBox.Foreground = brush;
+        _inlineTextBox.CaretBrush = brush;
+
+        Canvas.SetLeft(_inlineTextBox, pt.X);
+        Canvas.SetTop(_inlineTextBox, pt.Y);
+
+        AdjustInlineTextBoxSize();
+        _inlineTextBox.IsVisible = true;
+        _inlineTextBox.Focus();
+    }
+
+    public void CommitInlineText()
+    {
+        if (_inlineTextBox == null || !_inlineTextBox.IsVisible) return;
+
+        string text = _inlineTextBox.Text?.TrimEnd() ?? string.Empty;
+        _inlineTextBox.IsVisible = false;
+
+        if (!string.IsNullOrWhiteSpace(text))
+        {
+            var stroke = new ScreenAnnotationStroke
+            {
+                Tool = ScreenAnnotationTool.Text,
+                Color = _currentColor,
+                StrokeWidth = _currentStrokeWidth,
+                StartPoint = _textInsertPoint,
+                EndPoint = _textInsertPoint,
+                Text = text,
+                FontSize = _inlineTextBox.FontSize
+            };
+            _canvas.AddStroke(stroke);
+        }
+    }
+
+    private void AdjustInlineTextBoxSize()
+    {
+        if (_inlineTextBox == null) return;
+        string text = _inlineTextBox.Text ?? string.Empty;
+        var lines = text.Split('\n');
+        double fontSize = _inlineTextBox.FontSize;
+        double lineH = fontSize * 1.35;
+
+        double maxLineLen = 0;
+        foreach (var line in lines)
+        {
+            double lineW = 0;
+            foreach (char ch in line)
+            {
+                lineW += (ch > 127) ? fontSize : (fontSize * 0.55);
+            }
+            if (lineW > maxLineLen) maxLineLen = lineW;
+        }
+
+        double w = Math.Max(50, maxLineLen + fontSize + 20);
+        double h = Math.Max(fontSize * 1.4, lines.Length * lineH + 12);
+
+        _inlineTextBox.Width = w;
+        _inlineTextBox.Height = h;
+    }
+
+    private void OnInlineTextBoxTextChanged(object? sender, TextChangedEventArgs e)
+    {
+        AdjustInlineTextBoxSize();
+    }
+
+    private void OnInlineTextBoxLostFocus(object? sender, RoutedEventArgs e)
+    {
+        CommitInlineText();
+    }
+
+    private void OnInlineTextBoxKeyDown(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter && (e.KeyModifiers & KeyModifiers.Shift) == 0)
+        {
+            CommitInlineText();
+            e.Handled = true;
+        }
+        else if (e.Key == Key.Escape)
+        {
+            CommitInlineText();
+            e.Handled = true;
+        }
     }
 
     private void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         if (e.Key == Key.Escape)
         {
+            if (_currentTool == ScreenAnnotationTool.Laser)
+            {
+                _canvas.ClearLaser();
+                _currentTool = ScreenAnnotationTool.Pen;
+                if (s_vm != null)
+                {
+                    s_vm.SelectedAnnotationToolIndex = 0;
+                }
+                e.Handled = true;
+                return;
+            }
+
             ExitAnnotation();
             e.Handled = true;
         }
@@ -126,14 +264,35 @@ public partial class RecordingAnnotationWindow : Window
     /// </summary>
     public static void BringToFront()
     {
-        if (s_sharedOverlay != null && s_sharedOverlay.IsVisible)
+        var handle = s_overlayHwnd != IntPtr.Zero
+            ? s_overlayHwnd
+            : (s_sharedOverlay?.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero);
+
+        if (handle != IntPtr.Zero)
         {
-            var handle = s_sharedOverlay.TryGetPlatformHandle();
-            if (handle != null)
-            {
-                User32.SetWindowPos(handle.Handle, User32.HWND_TOPMOST, 0, 0, 0, 0,
-                    User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOACTIVATE);
-            }
+            User32.SetWindowPos(handle, User32.HWND_TOPMOST, 0, 0, 0, 0,
+                User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOACTIVATE);
+        }
+    }
+
+    /// <summary>
+    /// 强行将标注图层与悬浮控制条均钉在 Windows 最前端 (HWND_TOPMOST)，确保点击任何底层应用都不被遮挡。
+    /// 纯粹基于 Win32 原生句柄，绝不调用任何 UI 线程相关对象，线程安全。
+    /// </summary>
+    public static void ReassertZOrder()
+    {
+        var overlay = s_overlayHwnd;
+        if (overlay != IntPtr.Zero)
+        {
+            User32.SetWindowPos(overlay, User32.HWND_TOPMOST, 0, 0, 0, 0,
+                User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOACTIVATE);
+        }
+
+        var floating = RecordingFloatingWindow.FloatingHwnd;
+        if (floating != IntPtr.Zero)
+        {
+            User32.SetWindowPos(floating, User32.HWND_TOPMOST, 0, 0, 0, 0,
+                User32.SWP_NOMOVE | User32.SWP_NOSIZE | User32.SWP_NOACTIVATE);
         }
     }
 
@@ -187,12 +346,51 @@ public partial class RecordingAnnotationWindow : Window
             s_sharedOverlay.StopClickMonitoring();
             s_sharedOverlay._canvas.ClearLiveEffects();
 
-            // 若当前未在使用屏幕标注画笔，则隐藏窗口
-            if (s_vm?.IsAnnotationActive != true)
+            // 若当前未在使用屏幕标注画笔且未在录屏中，则隐藏窗口
+            if (s_vm?.IsAnnotationActive != true && s_vm?.IsRecording != true)
             {
                 s_sharedOverlay.Hide();
             }
         }
+    }
+
+    /// <summary>
+    /// 确保涂鸦/光标透明覆盖窗口已创建并保持在最顶层穿透态（供窗口录制多源 WGC 抓取 HWND）。
+    /// </summary>
+    public static IntPtr EnsureInitialized(ScreenRect bounds, MuRecorder.ViewModels.RecordingViewModel? vm = null)
+    {
+        if (vm != null)
+        {
+            s_vm = vm;
+        }
+
+        if (s_sharedOverlay == null)
+        {
+            s_sharedOverlay = new RecordingAnnotationWindow();
+        }
+
+        var screen = s_sharedOverlay.Screens.ScreenFromPoint(new PixelPoint(bounds.X, bounds.Y))
+            ?? s_sharedOverlay.Screens.Primary;
+        double scaling = screen?.Scaling ?? 1.0;
+        s_sharedOverlay.Position = new PixelPoint(bounds.X, bounds.Y);
+        s_sharedOverlay.Width = bounds.Width / scaling;
+        s_sharedOverlay.Height = bounds.Height / scaling;
+
+        // 默认进入穿透模式：透明、不干扰任何底层点击
+        if (s_vm?.IsAnnotationActive != true)
+        {
+            s_sharedOverlay._isClickThrough = true;
+        }
+
+        if (!s_sharedOverlay.IsVisible)
+        {
+            s_sharedOverlay.Show();
+        }
+
+        s_sharedOverlay.ApplyWindowStyles();
+
+        var handle = s_sharedOverlay.TryGetPlatformHandle();
+        return handle?.Handle ?? IntPtr.Zero;
     }
 
     /// <summary>
@@ -227,14 +425,12 @@ public partial class RecordingAnnotationWindow : Window
 
         s_sharedOverlay.Activate();
         s_sharedOverlay.Focus();
+        s_overlayHwnd = s_sharedOverlay.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
         s_sharedOverlay.ApplyWindowStyles();
+        ReassertZOrder();
 
-        // 若处于录制中且开启了桌面实时特效，确保后台鼠标采集线程持续工作
-        if (s_sharedOverlay._clickMonitorCts == null && s_vm?.IsRecording == true &&
-            (s_vm?.LiveCursorEffect == true || s_vm?.CursorTrail == true))
-        {
-            s_sharedOverlay.StartClickMonitoring(bounds, scaling);
-        }
+        // 标注开启期间持续启动后台监测线程，保证在穿透模式或点击其它窗口时毫秒级维持 HWND_TOPMOST 绝不被遮盖
+        s_sharedOverlay.StartClickMonitoring(bounds, scaling);
     }
 
     /// <summary>
@@ -242,6 +438,7 @@ public partial class RecordingAnnotationWindow : Window
     /// </summary>
     public static void HideOverlay()
     {
+        s_overlayHwnd = IntPtr.Zero;
         if (s_sharedOverlay != null && s_sharedOverlay.IsVisible)
         {
             s_sharedOverlay.StopClickMonitoring();
@@ -258,27 +455,21 @@ public partial class RecordingAnnotationWindow : Window
     public static void ExitAnnotation()
     {
         bool shouldKeepLive = (s_sharedOverlay?._isLiveCursorActive == true) ||
-                              (s_vm?.IsRecording == true && (s_vm?.LiveCursorEffect == true || s_vm?.CursorTrail == true));
+                              (s_vm?.IsRecording == true);
 
         if (s_sharedOverlay != null)
         {
             if (shouldKeepLive)
             {
-                // 若仍在录屏且开启了实时光标特效，切回完全穿透模式继续展示光轨与波纹，清空墨迹但不关闭窗口
-                s_sharedOverlay._isLiveCursorActive = true;
+                // 若仍在录屏，切回完全穿透模式继续展示光标特效并维持捕获表面，清空墨迹但不关闭窗口
                 SetClickThrough(true);
                 Clear();
 
-                // 确保点击与光轨后台监控线程保持运行
-                if (s_sharedOverlay._clickMonitorCts == null && s_vm != null)
+                // 确保点击与光轨后台监控线程保持运行（若开启了实时光标特效）
+                if (s_sharedOverlay._clickMonitorCts == null && s_vm != null &&
+                    (s_vm.LiveCursorEffect || s_vm.CursorTrail))
                 {
-                    var bounds = s_vm.CurrentTargetBounds;
-                    if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
-                    {
-                        bounds = s_vm.SelectedMonitor?.Bounds
-                            ?? (s_vm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? s_vm.Monitors.FirstOrDefault())?.Bounds
-                            ?? new ScreenRect(0, 0, 1920, 1080);
-                    }
+                    var bounds = s_vm.GetAnnotationBounds();
                     var screen = s_sharedOverlay.Screens.ScreenFromPoint(new PixelPoint(bounds.X, bounds.Y)) ?? s_sharedOverlay.Screens.Primary;
                     double scaling = screen?.Scaling ?? 1.0;
                     s_sharedOverlay.StartClickMonitoring(bounds, scaling);
@@ -307,66 +498,88 @@ public partial class RecordingAnnotationWindow : Window
 
         var thread = new System.Threading.Thread(() =>
         {
-            bool wasLDown = false;
-            bool wasRDown = false;
-            int lastPtX = int.MinValue;
-            int lastPtY = int.MinValue;
-
-            while (!token.IsCancellationRequested)
+            try
             {
-                // 读取鼠标左键 (0x01) 与右键 (0x02) 的瞬时物理状态
-                bool isLDown = (User32.GetAsyncKeyState(0x01) & 0x8000) != 0;
-                bool isRDown = (User32.GetAsyncKeyState(0x02) & 0x8000) != 0;
+                bool wasLDown = false;
+                bool wasRDown = false;
+                int lastPtX = int.MinValue;
+                int lastPtY = int.MinValue;
+                IntPtr lastFg = IntPtr.Zero;
 
-                if (User32.GetCursorPos(out var pt))
+                while (!token.IsCancellationRequested)
                 {
-                    double localX = (pt.x - bounds.X) / scaling;
-                    double localY = (pt.y - bounds.Y) / scaling;
-                    bool inBounds = localX >= 0 && localX <= bounds.Width / scaling &&
-                                    localY >= 0 && localY <= bounds.Height / scaling;
+                    // 读取鼠标左键 (0x01) 与右键 (0x02) 的瞬时物理状态
+                    bool isLDown = (User32.GetAsyncKeyState(0x01) & 0x8000) != 0;
+                    bool isRDown = (User32.GetAsyncKeyState(0x02) & 0x8000) != 0;
 
-                    // 上升沿检测：从未按下变为按下瞬间（点击波纹）
-                    if (s_vm?.CursorClickEffect != false && ((isLDown && !wasLDown) || (isRDown && !wasRDown)))
+                    // 核心防护：当用户在穿透模式或后台点击了其它窗口，Windows 会将新窗口推向 Z 轴顶层。
+                    // 仅使用 Win32 原生句柄重置 HWND_TOPMOST，绝不跨线程访问任何 Avalonia UI 属性
+                    IntPtr currentFg = User32.GetForegroundWindow();
+                    bool clickOccurred = (isLDown && !wasLDown) || (isRDown && !wasRDown);
+                    if (lastFg == IntPtr.Zero)
                     {
-                        bool isRight = isRDown && !wasRDown;
-                        if (inBounds)
+                        lastFg = currentFg;
+                    }
+                    else if (currentFg != lastFg || clickOccurred)
+                    {
+                        lastFg = currentFg;
+                        ReassertZOrder();
+                    }
+
+                    if (User32.GetCursorPos(out var pt))
+                    {
+                        double localX = (pt.x - bounds.X) / scaling;
+                        double localY = (pt.y - bounds.Y) / scaling;
+                        bool inBounds = localX >= 0 && localX <= bounds.Width / scaling &&
+                                        localY >= 0 && localY <= bounds.Height / scaling;
+
+                        // 上升沿检测：从未按下变为按下瞬间（点击波纹）
+                        if (s_vm?.CursorClickEffect != false && clickOccurred)
                         {
-                            var clickPt = new Point(localX, localY);
-                            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                            bool isRight = isRDown && !wasRDown;
+                            if (inBounds)
                             {
-                                _canvas.AddClickRipple(clickPt, isRight);
-                            }, Avalonia.Threading.DispatcherPriority.Input);
+                                var clickPt = new Point(localX, localY);
+                                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                                {
+                                    _canvas.AddClickRipple(clickPt, isRight);
+                                }, Avalonia.Threading.DispatcherPriority.Input);
+                            }
+                        }
+
+                        // 实时光轨采集：开启光轨且光标在目标录屏区域内移动
+                        if (s_vm?.CursorTrail == true && inBounds)
+                        {
+                            if (pt.x != lastPtX || pt.y != lastPtY)
+                            {
+                                lastPtX = pt.x;
+                                lastPtY = pt.y;
+                                var trailPt = new Point(localX, localY);
+                                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                                {
+                                    _canvas.AddTrailPoint(trailPt);
+                                }, Avalonia.Threading.DispatcherPriority.Input);
+                            }
                         }
                     }
 
-                    // 实时光轨采集：开启光轨且光标在目标录屏区域内移动
-                    if (s_vm?.CursorTrail == true && inBounds)
+                    wasLDown = isLDown;
+                    wasRDown = isRDown;
+
+                    try
                     {
-                        if (pt.x != lastPtX || pt.y != lastPtY)
-                        {
-                            lastPtX = pt.x;
-                            lastPtY = pt.y;
-                            var trailPt = new Point(localX, localY);
-                            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-                            {
-                                _canvas.AddTrailPoint(trailPt);
-                            }, Avalonia.Threading.DispatcherPriority.Input);
-                        }
+                        // 8ms 轮询周期 (~125 Hz)，兼顾实时光轨高帧率追踪与按键响应，CPU 占用极低 (<0.02%)
+                        System.Threading.Thread.Sleep(8);
+                    }
+                    catch
+                    {
+                        break;
                     }
                 }
-
-                wasLDown = isLDown;
-                wasRDown = isRDown;
-
-                try
-                {
-                    // 8ms 轮询周期 (~125 Hz)，兼顾实时光轨高帧率追踪与按键响应，CPU 占用极低 (<0.02%)
-                    System.Threading.Thread.Sleep(8);
-                }
-                catch
-                {
-                    break;
-                }
+            }
+            catch
+            {
+                // 守护线程安全退出，严禁向外抛出任何未捕获异常导致宿主进程崩溃
             }
         })
         {
@@ -386,18 +599,42 @@ public partial class RecordingAnnotationWindow : Window
         }
     }
 
+    public static void CommitActiveText()
+    {
+        s_sharedOverlay?.CommitInlineText();
+    }
+
     public static void SetTool(ScreenAnnotationTool tool)
     {
         if (s_sharedOverlay == null) return;
+        CommitActiveText();
         s_sharedOverlay._currentTool = tool;
-        // 选择任何画笔工具时自动取消穿透
+        s_sharedOverlay._canvas.ClearLaser();
+        // 选择任何画笔/文字工具时自动取消穿透
         SetClickThrough(false);
+    }
+
+    public static void SetFontSize(double fontSize)
+    {
+        if (s_sharedOverlay == null) return;
+        s_sharedOverlay._currentFontSize = Math.Clamp(fontSize, 12.0, 96.0);
+        if (s_sharedOverlay._inlineTextBox != null && s_sharedOverlay._inlineTextBox.IsVisible)
+        {
+            s_sharedOverlay._inlineTextBox.FontSize = s_sharedOverlay._currentFontSize;
+            s_sharedOverlay.AdjustInlineTextBoxSize();
+        }
     }
 
     public static void SetColor(Color color)
     {
         if (s_sharedOverlay == null) return;
         s_sharedOverlay._currentColor = color;
+        if (s_sharedOverlay._inlineTextBox != null && s_sharedOverlay._inlineTextBox.IsVisible)
+        {
+            var brush = new SolidColorBrush(color);
+            s_sharedOverlay._inlineTextBox.Foreground = brush;
+            s_sharedOverlay._inlineTextBox.CaretBrush = brush;
+        }
     }
 
     public static void SetStrokeWidth(double width)
@@ -409,14 +646,31 @@ public partial class RecordingAnnotationWindow : Window
     public static void SetClickThrough(bool clickThrough)
     {
         if (s_sharedOverlay == null) return;
+        CommitActiveText();
         s_sharedOverlay._isClickThrough = clickThrough;
         s_sharedOverlay.ApplyWindowStyles();
-        RecordingFloatingWindow.BringToFront();
+        ReassertZOrder();
+
+        if (clickThrough && s_sharedOverlay._clickMonitorCts == null && s_vm != null)
+        {
+            var bounds = s_vm.GetAnnotationBounds();
+            var screen = s_sharedOverlay.Screens.ScreenFromPoint(new PixelPoint(bounds.X, bounds.Y)) ?? s_sharedOverlay.Screens.Primary;
+            double scaling = screen?.Scaling ?? 1.0;
+            s_sharedOverlay.StartClickMonitoring(bounds, scaling);
+        }
     }
 
-    public static void Undo() => s_sharedOverlay?._canvas.Undo();
+    public static void Undo()
+    {
+        CommitActiveText();
+        s_sharedOverlay?._canvas.Undo();
+    }
 
-    public static void Clear() => s_sharedOverlay?._canvas.Clear();
+    public static void Clear()
+    {
+        CommitActiveText();
+        s_sharedOverlay?._canvas.Clear();
+    }
 
     private double GetCurrentScreenScaling()
     {
@@ -571,6 +825,13 @@ public partial class RecordingAnnotationWindow : Window
             return !_owner._isClickThrough && new Rect(Bounds.Size).Contains(point);
         }
 
+        public void AddStroke(ScreenAnnotationStroke stroke)
+        {
+            _strokes.Add(stroke);
+            _redoStack.Clear();
+            InvalidateVisual();
+        }
+
         public void Undo()
         {
             if (_strokes.Count > 0)
@@ -580,6 +841,12 @@ public partial class RecordingAnnotationWindow : Window
                 _redoStack.Push(last);
                 InvalidateVisual();
             }
+        }
+
+        public void ClearLaser()
+        {
+            _isLaserActive = false;
+            InvalidateVisual();
         }
 
         public void Clear()
@@ -601,6 +868,16 @@ public partial class RecordingAnnotationWindow : Window
             InvalidateVisual();
         }
 
+        protected override void OnPointerExited(PointerEventArgs e)
+        {
+            base.OnPointerExited(e);
+            if (_owner._currentTool == ScreenAnnotationTool.Laser && _isLaserActive)
+            {
+                _isLaserActive = false;
+                InvalidateVisual();
+            }
+        }
+
         protected override void OnPointerPressed(PointerPressedEventArgs e)
         {
             base.OnPointerPressed(e);
@@ -609,6 +886,20 @@ public partial class RecordingAnnotationWindow : Window
             var ptProps = e.GetCurrentPoint(this).Properties;
             if (ptProps.IsRightButtonPressed)
             {
+                // 如果当前正在使用激光笔，右键单击优先关闭激光笔并切回画笔
+                if (_owner._currentTool == ScreenAnnotationTool.Laser)
+                {
+                    _isLaserActive = false;
+                    _owner._currentTool = ScreenAnnotationTool.Pen;
+                    if (s_vm != null)
+                    {
+                        s_vm.SelectedAnnotationToolIndex = 0;
+                    }
+                    InvalidateVisual();
+                    e.Handled = true;
+                    return;
+                }
+
                 // 鼠标右键单击：快速退出屏幕标注模式，一键恢复普通桌面鼠标操作
                 ExitAnnotation();
                 e.Handled = true;
@@ -618,6 +909,19 @@ public partial class RecordingAnnotationWindow : Window
             if (!ptProps.IsLeftButtonPressed) return;
 
             var pt = e.GetPosition(this);
+
+            if (_owner._currentTool == ScreenAnnotationTool.Text)
+            {
+                _owner.BeginEditText(pt);
+                e.Handled = true;
+                return;
+            }
+
+            if (_owner._inlineTextBox != null && _owner._inlineTextBox.IsVisible)
+            {
+                _owner.CommitInlineText();
+            }
+
             e.Pointer.Capture(this);
 
             if (_owner._currentTool == ScreenAnnotationTool.Laser)
@@ -646,7 +950,7 @@ public partial class RecordingAnnotationWindow : Window
         protected override void OnPointerMoved(PointerEventArgs e)
         {
             base.OnPointerMoved(e);
-            if (_owner._isClickThrough) return;
+            if (_owner._isClickThrough || _owner._currentTool == ScreenAnnotationTool.Text) return;
 
             var pt = e.GetPosition(this);
 
@@ -674,7 +978,7 @@ public partial class RecordingAnnotationWindow : Window
         protected override void OnPointerReleased(PointerReleasedEventArgs e)
         {
             base.OnPointerReleased(e);
-            if (_owner._isClickThrough) return;
+            if (_owner._isClickThrough || _owner._currentTool == ScreenAnnotationTool.Text) return;
 
             e.Pointer.Capture(null);
 
@@ -914,7 +1218,43 @@ public partial class RecordingAnnotationWindow : Window
                 case ScreenAnnotationTool.Ellipse:
                     DrawEllipse(context, pen, stroke.StartPoint, stroke.EndPoint);
                     break;
+                case ScreenAnnotationTool.Text:
+                    DrawText(context, stroke);
+                    break;
             }
+        }
+
+        private static readonly FontFamily s_fontFamily = new("Microsoft YaHei, Segoe UI, sans-serif");
+
+        private static void DrawText(DrawingContext context, ScreenAnnotationStroke stroke)
+        {
+            if (string.IsNullOrEmpty(stroke.Text)) return;
+
+            double fontSize = stroke.FontSize > 0 ? stroke.FontSize : 40.0;
+            var fontWeight = stroke.StrokeWidth <= 2.5 ? FontWeight.Normal : FontWeight.SemiBold;
+            var typeface = new Typeface(s_fontFamily, FontStyle.Normal, fontWeight);
+
+            // 绘制半透明黑底微阴影，确保在任何复杂桌面或纯白网页背景上均极度清晰可辨
+            var shadowBrush = new SolidColorBrush(Color.FromArgb(160, 0, 0, 0));
+            var shadowText = new FormattedText(
+                stroke.Text,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                typeface,
+                fontSize,
+                shadowBrush);
+
+            var mainBrush = new SolidColorBrush(stroke.Color);
+            var mainText = new FormattedText(
+                stroke.Text,
+                System.Globalization.CultureInfo.CurrentCulture,
+                FlowDirection.LeftToRight,
+                typeface,
+                fontSize,
+                mainBrush);
+
+            context.DrawText(shadowText, new Point(stroke.StartPoint.X + 1.2, stroke.StartPoint.Y + 1.2));
+            context.DrawText(mainText, stroke.StartPoint);
         }
 
         private static void DrawPen(DrawingContext context, Pen pen, IReadOnlyList<Point> points)

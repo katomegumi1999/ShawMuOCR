@@ -2,6 +2,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MuRecorder.ViewModels"
              xmlns:audio="using:MuRecorder.Audio"
+             xmlns:views="using:ShawMuOCR.Views"
              x:Class="ShawMuOCR.Views.Pages.RecordingPageView"
              x:DataType="vm:RecordingViewModel">
 
@@ -107,25 +108,7 @@
                                            TextWrapping="Wrap" />
                             </Border>
 
-                            <Grid ColumnDefinitions="*,Auto" Margin="0,2,0,0">
-                                <Button Grid.Column="0"
-                                        Content="🎨 开启自由画布录制（黑底全屏）"
-                                        Command="{Binding EnterCanvasModeCommand}"
-                                        Classes="accent"
-                                        IsVisible="{Binding !IsCanvasModeActive}"
-                                        HorizontalAlignment="Left"
-                                        ToolTip.Tip="以纯黑底画布全屏覆盖桌面，仅置顶展示所选窗口，未选中的其它窗口与桌面杂物完全被遮蔽不会录入！" />
-                                <Button Grid.Column="0"
-                                        Content="⏹ 退出自由画布模式"
-                                        Command="{Binding ExitCanvasModeCommand}"
-                                        Classes="subtle"
-                                        Background="#33FF4D4F"
-                                        Foreground="#FF7875"
-                                        IsVisible="{Binding IsCanvasModeActive}"
-                                        HorizontalAlignment="Left" />
-                            </Grid>
-
-                            <TextBlock Text="提示：勾选多个窗口将自动计算并集合成外接矩形区域；开启【自由画布】可在纯黑背景下全屏录制，自动排除所有未选中的杂乱窗口。"
+                            <TextBlock Text="提示：勾选多个窗口将自动计算并集合成外接矩形区域，点击下方【开始录制】即可录制所选窗口内容。"
                                        FontSize="11"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -216,6 +199,18 @@
                                 <ComboBox ItemsSource="{Binding AudioPresetOptions}"
                                           SelectedItem="{Binding SelectedAudioPreset}"
                                           HorizontalAlignment="Stretch" />
+                            </StackPanel>
+
+                            <!-- 麦克风叠加增益：仅在「系统声音 + 麦克风」时出现 -->
+                            <StackPanel Spacing="2" IsVisible="{Binding IsMicOverlayActive}">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="麦克风音量（与系统声音混合）" FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}" VerticalAlignment="Center" />
+                                    <TextBlock Grid.Column="1" Text="{Binding MicGainLabel}" FontSize="11"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" VerticalAlignment="Center" />
+                                </Grid>
+                                <Slider Minimum="10" Maximum="300" TickFrequency="10" IsSnapToTickEnabled="True"
+                                        Value="{Binding MicGainPercent}" />
                             </StackPanel>
 
                             <!-- 所有设备平铺遍历列表（带 CheckBox 多选勾选） -->
@@ -343,25 +338,99 @@
                             </Border>
                         </StackPanel>
 
-                        <!-- 实时统计 -->
+                        <!-- 实时统计 (每行四列) -->
                         <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
                             <TextBlock Text="实时统计" FontSize="13" FontWeight="SemiBold" />
-                            <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto,Auto" ColumnSpacing="10" RowSpacing="6">
-                                <TextBlock Grid.Row="0" Grid.Column="0" Text="帧率" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Grid.Row="0" Grid.Column="1" Text="{Binding StatFps}" FontSize="12" HorizontalAlignment="Right" />
-                                <TextBlock Grid.Row="1" Grid.Column="0" Text="码率" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding StatBitrate}" FontSize="12" HorizontalAlignment="Right" />
-                                <TextBlock Grid.Row="2" Grid.Column="0" Text="已编码帧数" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding StatFrames}" FontSize="12" HorizontalAlignment="Right" />
-                                <TextBlock Grid.Row="3" Grid.Column="0" Text="丢弃帧数" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding StatDropped}" FontSize="12" HorizontalAlignment="Right" />
-                                <TextBlock Grid.Row="4" Grid.Column="0" Text="编码积压" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding StatQueue}" FontSize="12" HorizontalAlignment="Right" />
-                                <TextBlock Grid.Row="5" Grid.Column="0" Text="已录制时长" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding StatElapsed}" FontSize="12" HorizontalAlignment="Right" />
-                                <TextBlock Grid.Row="6" Grid.Column="0" Text="编码器" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-                                <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding StatEncoder}" FontSize="12" HorizontalAlignment="Right" />
+                            <Grid ColumnDefinitions="*,*,*,*" RowDefinitions="Auto,Auto" ColumnSpacing="8" RowSpacing="6">
+                                <Border Grid.Row="0" Grid.Column="0" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="帧率" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatFps}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="码率" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatBitrate}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="2" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="已录时长" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatElapsed}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="0" Grid.Column="3" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="编码器" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatEncoder}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Row="1" Grid.Column="0" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="已编码帧" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatFrames}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="1" Grid.Column="1" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="丢弃帧数" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatDropped}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="1" Grid.Column="2" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="编码积压" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatQueue}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Border>
+                                <Border Grid.Row="1" Grid.Column="3" Background="{DynamicResource SubtleFillColorSecondaryBrush}" CornerRadius="6" Padding="6,6">
+                                    <StackPanel Spacing="2">
+                                        <TextBlock Text="目标尺寸" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" HorizontalAlignment="Center" />
+                                        <TextBlock Text="{Binding StatResolution}" FontSize="12" FontWeight="SemiBold" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" />
+                                    </StackPanel>
+                                </Border>
                             </Grid>
+                        </StackPanel>
+
+                        <!-- 实时录制画面硬件直通预览 (等比自适应缩放) -->
+                        <StackPanel Grid.Row="3" Spacing="8" Margin="0,16,0,0">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Grid.Column="0" Text="实时画面预览" FontSize="13" FontWeight="SemiBold" />
+                                <Border Grid.Column="1" Background="#2638D9A9" CornerRadius="4" Padding="5,1" IsVisible="{Binding IsRecording}">
+                                    <TextBlock Text="D3D11 直通" Foreground="#38D9A9" FontSize="10" FontWeight="SemiBold" />
+                                </Border>
+                            </Grid>
+
+                            <Border Background="#121214"
+                                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    ClipToBounds="True"
+                                    Height="230">
+                                <Panel>
+                                    <views:RecordingPreviewControl x:Name="PreviewHost"
+                                                                  TargetAspectRatio="{Binding TargetAspectRatio}"
+                                                                  HorizontalAlignment="Center"
+                                                                  VerticalAlignment="Center"
+                                                                  IsVisible="{Binding IsRecording}" />
+
+                                    <!-- 未在录制时的占位提示 -->
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6"
+                                                IsVisible="{Binding !IsRecording}">
+                                        <TextBlock Text="🎥" FontSize="26" HorizontalAlignment="Center" Opacity="0.5" />
+                                        <TextBlock Text="开录后在此硬件直通预览"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   HorizontalAlignment="Center" />
+                                        <TextBlock Text="原比例自适应缩放 · 0ms 显卡直通"
+                                                   FontSize="10"
+                                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                                   HorizontalAlignment="Center" />
+                                    </StackPanel>
+                                </Panel>
+                            </Border>
                         </StackPanel>
                     </Grid>
                 </Border>

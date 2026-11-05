@@ -8,28 +8,95 @@ namespace ShawMuOCR.Views.Pages;
 public partial class RecordingPageView : UserControl
 {
     private RecordingViewModel? _currentVm;
+    private Window? _observedWindow;
 
     public RecordingPageView()
     {
         InitializeComponent();
 
         DataContextChanged += OnDataContextChanged;
+
+        var host = this.FindControl<RecordingPreviewControl>("PreviewHost");
+        if (host != null)
+        {
+            host.HwndCreated += (_, _) => SyncPreviewState();
+            host.HwndDestroyed += (_, _) => SyncPreviewState();
+        }
+    }
+
+    private void UpdatePreviewHwnd(IntPtr hwnd)
+    {
+        _currentVm?.SetPreviewHwnd(hwnd);
+    }
+
+    private void SyncPreviewState()
+    {
+        var host = this.FindControl<RecordingPreviewControl>("PreviewHost");
+        if (host == null || host.Hwnd == IntPtr.Zero)
+        {
+            UpdatePreviewHwnd(IntPtr.Zero);
+            return;
+        }
+
+        bool active = ShouldPreviewBeActive();
+        UpdatePreviewHwnd(active ? host.Hwnd : IntPtr.Zero);
+    }
+
+    private bool ShouldPreviewBeActive()
+    {
+        if (_currentVm == null || !_currentVm.IsRecording) return false;
+        if (!IsEffectivelyVisible) return false;
+
+        var topLevel = _observedWindow ?? (TopLevel.GetTopLevel(this) as Window);
+        if (topLevel == null) return false;
+        if (!topLevel.IsVisible) return false;
+        if (topLevel.WindowState == WindowState.Minimized) return false;
+
+        return true;
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnAttachedToVisualTree(e);
         HookViewModel(DataContext as RecordingViewModel);
+
+        if (_observedWindow != null)
+        {
+            _observedWindow.PropertyChanged -= OnWindowPropertyChanged;
+        }
+
+        _observedWindow = TopLevel.GetTopLevel(this) as Window;
+        if (_observedWindow != null)
+        {
+            _observedWindow.PropertyChanged += OnWindowPropertyChanged;
+        }
+
+        SyncPreviewState();
         SyncOverlay();
     }
 
     protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
     {
         base.OnDetachedFromVisualTree(e);
+        if (_observedWindow != null)
+        {
+            _observedWindow.PropertyChanged -= OnWindowPropertyChanged;
+            _observedWindow = null;
+        }
+
+        UpdatePreviewHwnd(IntPtr.Zero);
         // 如果当前没有处于录制中，切离页面时隐藏边框
         if (_currentVm != null && !_currentVm.IsRecording)
         {
             RecordingRegionBorderWindow.HideOverlay();
+        }
+    }
+
+    private void OnWindowPropertyChanged(object? sender, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.Property == Window.WindowStateProperty || e.Property == Visual.IsVisibleProperty)
+        {
+            SyncPreviewState();
         }
     }
 
@@ -52,8 +119,6 @@ public partial class RecordingPageView : UserControl
             _currentVm.FloatingBarToggleRequested -= OnFloatingBarToggleRequested;
             _currentVm.LiveCursorEffectShowRequested -= OnLiveCursorEffectShowRequested;
             _currentVm.LiveCursorEffectHideRequested -= OnLiveCursorEffectHideRequested;
-            _currentVm.CanvasModeEnterRequested -= OnCanvasModeEnterRequested;
-            _currentVm.CanvasModeExitRequested -= OnCanvasModeExitRequested;
             _currentVm.AnnotationToggleRequested -= OnAnnotationToggleRequested;
             _currentVm.AnnotationToolChangeRequested -= OnAnnotationToolChangeRequested;
             _currentVm.AnnotationColorChangeRequested -= OnAnnotationColorChangeRequested;
@@ -71,10 +136,10 @@ public partial class RecordingPageView : UserControl
             _currentVm.FloatingBarShowRequested += OnFloatingBarShowRequested;
             _currentVm.FloatingBarHideRequested += OnFloatingBarHideRequested;
             _currentVm.FloatingBarToggleRequested += OnFloatingBarToggleRequested;
+            _currentVm.AnnotationOverlayHwndProvider = (bounds) =>
+                RecordingAnnotationWindow.EnsureInitialized(bounds, _currentVm);
             _currentVm.LiveCursorEffectShowRequested += OnLiveCursorEffectShowRequested;
             _currentVm.LiveCursorEffectHideRequested += OnLiveCursorEffectHideRequested;
-            _currentVm.CanvasModeEnterRequested += OnCanvasModeEnterRequested;
-            _currentVm.CanvasModeExitRequested += OnCanvasModeExitRequested;
             _currentVm.AnnotationToggleRequested += OnAnnotationToggleRequested;
             _currentVm.AnnotationToolChangeRequested += OnAnnotationToolChangeRequested;
             _currentVm.AnnotationColorChangeRequested += OnAnnotationColorChangeRequested;
@@ -88,13 +153,8 @@ public partial class RecordingPageView : UserControl
     {
         if (active)
         {
-            var bounds = _currentVm?.CurrentTargetBounds ?? default;
-            if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
-            {
-                bounds = _currentVm?.SelectedMonitor?.Bounds
-                    ?? (_currentVm?.Monitors.FirstOrDefault(m => m.IsPrimary) ?? _currentVm?.Monitors.FirstOrDefault())?.Bounds
-                    ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
-            }
+            var bounds = _currentVm?.GetAnnotationBounds()
+                ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
             RecordingAnnotationWindow.ShowOverlay(bounds, _currentVm);
             if (_currentVm != null)
             {
@@ -117,6 +177,7 @@ public partial class RecordingPageView : UserControl
             "Rectangle" => ScreenAnnotationTool.Rectangle,
             "Ellipse" => ScreenAnnotationTool.Ellipse,
             "Laser" => ScreenAnnotationTool.Laser,
+            "Text" => ScreenAnnotationTool.Text,
             _ => ScreenAnnotationTool.Pen
         };
         RecordingAnnotationWindow.SetTool(screenTool);
@@ -145,27 +206,6 @@ public partial class RecordingPageView : UserControl
         RecordingAnnotationWindow.Clear();
     }
 
-    private void OnCanvasModeEnterRequested(object? sender, EventArgs e)
-    {
-        if (_currentVm == null) return;
-        var selectedHwnds = _currentVm.Windows.Where(w => w.IsSelected).Select(w => w.Window.Hwnd).ToList();
-        var monitorBounds = _currentVm.SelectedMonitor?.Bounds
-            ?? (_currentVm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? _currentVm.Monitors.FirstOrDefault())?.Bounds
-            ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
-
-        CanvasBackdropWindow.ShowBackdrop(monitorBounds, selectedHwnds, () =>
-        {
-            if (_currentVm != null)
-            {
-                _currentVm.IsCanvasModeActive = false;
-            }
-        });
-    }
-
-    private void OnCanvasModeExitRequested(object? sender, EventArgs e)
-    {
-        CanvasBackdropWindow.CloseBackdrop();
-    }
 
     private void OnFloatingBarShowRequested(object? sender, EventArgs e)
     {
@@ -192,13 +232,7 @@ public partial class RecordingPageView : UserControl
     {
         if (_currentVm != null)
         {
-            var bounds = _currentVm.CurrentTargetBounds;
-            if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
-            {
-                bounds = _currentVm.SelectedMonitor?.Bounds
-                    ?? (_currentVm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? _currentVm.Monitors.FirstOrDefault())?.Bounds
-                    ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
-            }
+            var bounds = _currentVm.GetAnnotationBounds();
             RecordingAnnotationWindow.StartLiveCursorEffect(bounds, _currentVm);
         }
     }
@@ -206,17 +240,29 @@ public partial class RecordingPageView : UserControl
     private void OnLiveCursorEffectHideRequested(object? sender, EventArgs e)
     {
         RecordingAnnotationWindow.StopLiveCursorEffect();
+        if (_currentVm?.IsRecording != true)
+        {
+            RecordingAnnotationWindow.HideOverlay();
+        }
     }
 
     private void OnVmPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName is nameof(RecordingViewModel.CurrentTargetBounds)
+            or nameof(RecordingViewModel.TargetAspectRatio)
             or nameof(RecordingViewModel.ShowRegionBorder)
             or nameof(RecordingViewModel.IsRecording)
             or nameof(RecordingViewModel.StatElapsed)
             or nameof(RecordingViewModel.Source))
         {
             SyncOverlay();
+            var host = this.FindControl<RecordingPreviewControl>("PreviewHost");
+            host?.InvalidateMeasure();
+        }
+
+        if (e.PropertyName == nameof(RecordingViewModel.IsRecording))
+        {
+            SyncPreviewState();
         }
     }
 

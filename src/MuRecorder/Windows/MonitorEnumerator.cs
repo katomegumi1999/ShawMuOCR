@@ -13,6 +13,7 @@ public sealed record MonitorInfo(
     IntPtr Handle,
     string DeviceName,
     ScreenRect Bounds,
+    ScreenRect WorkingArea,
     uint DpiX,
     uint DpiY,
     bool IsPrimary)
@@ -118,6 +119,12 @@ public static partial class MonitorEnumerator
                 // 同上的降级路径。
             }
 
+            var workingArea = new ScreenRect(
+                info.rcWork.Left,
+                info.rcWork.Top,
+                info.rcWork.Right - info.rcWork.Left,
+                info.rcWork.Bottom - info.rcWork.Top);
+
             var bounds = new ScreenRect(
                 info.rcMonitor.Left,
                 info.rcMonitor.Top,
@@ -136,6 +143,7 @@ public static partial class MonitorEnumerator
                 hMonitor,
                 device.Length > 0 ? device : "显示器",
                 bounds,
+                workingArea,
                 dpiX,
                 dpiY,
                 (info.dwFlags & MONITORINFOF_PRIMARY) != 0));

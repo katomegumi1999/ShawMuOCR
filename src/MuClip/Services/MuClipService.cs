@@ -28,6 +28,13 @@ public partial class MuClipService : IMuClipService
     private readonly List<PairedDeviceInfo> _pairedDevices = new();
     private readonly object _lock = new();
     private Timer? _peerRefreshTimer;
+    private Timer? _autoBackupTimer;
+
+    /// <summary>滚动快照保留份数（配合 24h 间隔 ≈ 最近一周）。</summary>
+    private const int AutoBackupKeep = 7;
+
+    /// <summary>两次快照之间的最小间隔（小时）。</summary>
+    private const int AutoBackupIntervalHours = 24;
     private string? _lastCapturedText;
     private long _lastCapturedTick;
     private bool _disposed;
@@ -51,6 +58,13 @@ public partial class MuClipService : IMuClipService
     public string DataDirectory => string.IsNullOrWhiteSpace(_dbPath)
         ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR", "Muclip")
         : (Path.GetDirectoryName(_dbPath) ?? string.Empty);
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// 交由核心实测（<c>PRAGMA cipher_version</c>）而非按构建配置推断，因此明文构建的核心
+    /// 即使被要求带密钥打开也会如实返回 <c>false</c>。核心未初始化或已释放时返回 <c>null</c>。
+    /// </remarks>
+    public bool? IsEncrypted => _core?.IsEncrypted;
 
     // === 细粒度子服务门面访问入口 ===
     public IClipboardHistoryService History => this;
@@ -157,6 +171,42 @@ public partial class MuClipService : IMuClipService
         }
     }
 
+    /// <summary>
+    /// 滚动自动备份：把库文件整体快照到 <c>&lt;库目录&gt;\auto-backup</c>，并按数量清理旧的。
+    /// </summary>
+    /// <remarks>
+    /// 失败只记日志、绝不抛出——备份是保险，不能变成新的故障源。
+    /// 库已是密文，快照即密文；恢复时把文件放回原路径即可（沿用同一把 DPAPI 托管的 key）。
+    /// 节流在 Rust 侧做，所以这里可以放心地每小时调一次。
+    /// </remarks>
+    private void TryAutoBackup()
+    {
+        try
+        {
+            MuClipCore? core = _core;
+            if (core == null || string.IsNullOrWhiteSpace(_dbPath)) return;
+            string? dbDir = Path.GetDirectoryName(_dbPath);
+            if (string.IsNullOrWhiteSpace(dbDir)) return;
+
+            AutoBackupResult result = core.AutoBackup(
+                Path.Combine(dbDir, "auto-backup"), AutoBackupKeep, AutoBackupIntervalHours);
+
+            if (!string.IsNullOrEmpty(result.Error))
+            {
+                Console.WriteLine($"[MuClip] 自动备份失败: {result.Error}");
+            }
+            else if (result.Created)
+            {
+                Console.WriteLine(
+                    $"[MuClip] 自动备份完成: {result.Path} ({result.Size} B)，清理 {result.Pruned} 个，保留 {result.Kept} 个");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[MuClip] 自动备份异常: {ex.Message}");
+        }
+    }
+
     public bool RegisterQuickPanelHotkey(uint modifiers = 0x0002, uint vk = 0xC0)
     {
         if (_clipboardService.IsListening)
@@ -211,6 +261,10 @@ public partial class MuClipService : IMuClipService
         _dbPath = dbPath;
         string dbKey = GetOrCreateDatabaseKey(dbPath);
         _core = new MuClipCore(dbPath, dbKey);
+
+        // 启动即尝试一次滚动备份（Rust 侧按 24h 节流，不会每次启动都生成）。
+        TryAutoBackup();
+        _autoBackupTimer = new Timer(_ => TryAutoBackup(), null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
 
         if (!string.IsNullOrEmpty(customDeviceId))
         {
@@ -440,6 +494,7 @@ public partial class MuClipService : IMuClipService
         {
             _disposed = true;
             _peerRefreshTimer?.Dispose();
+            _autoBackupTimer?.Dispose();
             _clipboardService.ExternalTextChanged -= OnSystemClipboardTextChanged;
             _clipboardService.HotkeyTriggered -= OnQuickPanelHotkeyTriggered;
             _clipboardService.StopListening();

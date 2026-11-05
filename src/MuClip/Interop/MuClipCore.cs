@@ -461,6 +461,67 @@ public sealed class MuClipCore : IDisposable
     }
 
     /// <summary>
+    /// 本地数据库是否真正启用了 SQLCipher 静态加密。
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// 这个值不是根据「编译时用了哪个 feature」推断的，而是 Rust 侧在连接建立后
+    /// 用 <c>PRAGMA cipher_version</c> 实际探测出来的：以明文模式编译的核心即使被要求
+    /// 带密钥打开，也会如实返回 <c>false</c>，不会假装加密成功。
+    /// </para>
+    /// <para>
+    /// 返回 <c>null</c> 表示句柄无效、无法判断（例如已 <see cref="Dispose"/>）。
+    /// </para>
+    /// </remarks>
+    public bool? IsEncrypted
+    {
+        get
+        {
+            if (_handle == IntPtr.Zero) return null;
+            return MuClipNative.CoreIsEncrypted(_handle) switch
+            {
+                1 => true,
+                0 => false,
+                _ => null,
+            };
+        }
+    }
+
+    /// <summary>
+    /// 触发一次滚动自动备份：把库文件整体快照到 <paramref name="backupDir"/>，
+    /// 并按 <paramref name="keep"/> 清理更旧的快照。
+    /// </summary>
+    /// <remarks>
+    /// 快照是**同密钥加密的库文件本体**（库本身已是密文），恢复时把这个文件放回去即可，
+    /// 不需要用户记任何口令。Rust 侧会用 <paramref name="intervalHours"/> 做节流：
+    /// 距上次快照不足该小时数时直接返回 <c>Skipped</c>，因此可以放心地高频调用。
+    /// </remarks>
+    /// <param name="backupDir">快照目录（不存在会自动创建）</param>
+    /// <param name="keep">保留的最新快照数量（至少 1）</param>
+    /// <param name="intervalHours">节流间隔（小时）；传 0 表示不节流，立即备份</param>
+    public unsafe AutoBackupResult AutoBackup(string backupDir, int keep = 7, int intervalHours = 24)
+    {
+        ThrowIfDisposed();
+        if (string.IsNullOrWhiteSpace(backupDir))
+            return new AutoBackupResult { Error = "备份目录为空" };
+
+        byte[] dirBytes = Encoding.UTF8.GetBytes(backupDir + "\0");
+        fixed (byte* p = dirBytes)
+        {
+            IntPtr ptr = MuClipNative.CoreAutoBackup(_handle, p, (uint)Math.Max(1, keep), (uint)Math.Max(0, intervalHours));
+            if (ptr == IntPtr.Zero) return new AutoBackupResult { Error = "核心返回空指针" };
+            try
+            {
+                return AutoBackupResult.Parse(System.Runtime.InteropServices.Marshal.PtrToStringUTF8(ptr));
+            }
+            finally
+            {
+                MuClipNative.FreeString(ptr);
+            }
+        }
+    }
+
+    /// <summary>
     /// 导出全量加密数据库备份文件 (.mubc)
     /// </summary>
     /// <param name="exportPath">导出的备份文件目标路径</param>

@@ -62,20 +62,21 @@ public partial class MainWindow : Window
                 ShawMuOCR.Views.RecordingFloatingWindow.HideOverlay();
             };
 
+            _viewModel.RecordingVm.AnnotationOverlayHwndProvider = (bounds) =>
+                ShawMuOCR.Views.RecordingAnnotationWindow.EnsureInitialized(bounds, _viewModel.RecordingVm);
+
             _viewModel.RecordingVm.LiveCursorEffectShowRequested += (s, e) =>
             {
-                var bounds = _viewModel.RecordingVm.CurrentTargetBounds;
-                if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
-                {
-                    bounds = _viewModel.RecordingVm.SelectedMonitor?.Bounds
-                        ?? (_viewModel.RecordingVm.Monitors.FirstOrDefault(m => m.IsPrimary) ?? _viewModel.RecordingVm.Monitors.FirstOrDefault())?.Bounds
-                        ?? new ShawMuOCR.Core.Capture.ScreenRect(0, 0, 1920, 1080);
-                }
+                var bounds = _viewModel.RecordingVm.GetAnnotationBounds();
                 ShawMuOCR.Views.RecordingAnnotationWindow.StartLiveCursorEffect(bounds, _viewModel.RecordingVm);
             };
             _viewModel.RecordingVm.LiveCursorEffectHideRequested += (s, e) =>
             {
                 ShawMuOCR.Views.RecordingAnnotationWindow.StopLiveCursorEffect();
+                if (_viewModel.RecordingVm.IsRecording != true)
+                {
+                    ShawMuOCR.Views.RecordingAnnotationWindow.HideOverlay();
+                }
             };
         }
 

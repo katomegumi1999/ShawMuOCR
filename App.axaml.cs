@@ -1,4 +1,4 @@
-using System.Diagnostics.CodeAnalysis;
+﻿using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -18,6 +18,7 @@ using ShawMuOCR.Services;
 using ShawMuOCR.ViewModels;
 using ShawMuOCR.Views;
 using ShawMuOCR.Windows.Clipboard;
+using MuRecorder.Services;
 using ShawMuOCR.Windows.Hotkey;
 using ShawMuOCR.Windows.ScreenCapture;
 using ShawMuOCR.Windows.Startup;
@@ -184,6 +185,9 @@ public partial class App : Application
                 {
                     _mainWindow.PreloadRemainingPages();
                     ScreenshotEditorWindow.Prewarm(_loggerService, "程序启动");
+                    // 硬件编码器探测会让驱动枚举一次（实测 100–430 ms），必须离开 UI 线程。
+                    // 预热后录屏页的选项文案与录制启动的候选过滤都只读缓存。
+                    Task.Run(RecordingService.WarmHardwareProbe);
                 }, DispatcherPriority.Background);
             }
             else
@@ -196,6 +200,9 @@ public partial class App : Application
                 {
                     _mainWindow.PreloadRemainingPages();
                     ScreenshotEditorWindow.Prewarm(_loggerService, "程序启动");
+                    // 硬件编码器探测会让驱动枚举一次（实测 100–430 ms），必须离开 UI 线程。
+                    // 预热后录屏页的选项文案与录制启动的候选过滤都只读缓存。
+                    Task.Run(RecordingService.WarmHardwareProbe);
                 }, DispatcherPriority.Background);
             }
 
@@ -582,7 +589,15 @@ public partial class App : Application
 
     private SettingsViewModel CreateSettingsViewModel()
     {
-        return new SettingsViewModel(_settingsService!, _startupService!, _hotkeyService!, _modelProvider!, CreateAboutViewModel, _loggerService);
+        // 加密状态以核心实测为准：服务未初始化时返回 null，设置页会自动退回读库文件头。
+        return new SettingsViewModel(
+            _settingsService!,
+            _startupService!,
+            _hotkeyService!,
+            _modelProvider!,
+            CreateAboutViewModel,
+            _loggerService,
+            muClipEncryptionProbe: () => _muClipService?.IsEncrypted);
     }
 
     private AboutViewModel CreateAboutViewModel()

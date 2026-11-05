@@ -10,5 +10,43 @@
         TransparencyLevelHint="Transparent"
         CanResize="False"
         WindowStartupLocation="Manual">
-    <Panel Name="RootPanel" Background="Transparent" />
+
+    <Window.Styles>
+        <!-- 画布内联文字输入框样式 (完全复用截图标注同款样式与配色规范) -->
+        <Style Selector="TextBox#InlineTextBox">
+            <Setter Property="Background" Value="#35000000" />
+            <Setter Property="BorderBrush" Value="#CC40A9FF" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="3" />
+        </Style>
+        <Style Selector="TextBox#InlineTextBox /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#35000000" />
+            <Setter Property="BorderBrush" Value="#CC40A9FF" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="TextBox#InlineTextBox:focus /template/ Border#PART_BorderElement">
+            <Setter Property="Background" Value="#45000000" />
+            <Setter Property="BorderBrush" Value="#FF40A9FF" />
+            <Setter Property="BorderThickness" Value="1.5" />
+        </Style>
+    </Window.Styles>
+
+    <Panel Name="RootPanel" Background="Transparent">
+        <Canvas Name="OverlayCanvas" IsHitTestVisible="True">
+            <TextBox Name="InlineTextBox"
+                     IsVisible="False"
+                     AcceptsReturn="True"
+                     TextWrapping="NoWrap"
+                     Background="#35000000"
+                     BorderBrush="#CC40A9FF"
+                     BorderThickness="1"
+                     CornerRadius="3"
+                     Padding="3,2"
+                     MinWidth="40"
+                     MinHeight="26"
+                     ZIndex="999"
+                     FontFamily="Microsoft YaHei, Segoe UI, sans-serif"
+                     InputMethod.IsInputMethodEnabled="True" />
+        </Canvas>
+    </Panel>
 </Window>

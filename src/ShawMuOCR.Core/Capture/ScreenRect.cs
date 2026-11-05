@@ -9,6 +9,10 @@ public readonly record struct ScreenRect(int X, int Y, int Width, int Height)
 
     public bool IsEmpty => Width <= 0 || Height <= 0;
 
+    public bool IntersectsWith(ScreenRect other) =>
+        X < other.Right && Right > other.X &&
+        Y < other.Bottom && Bottom > other.Y;
+
     public static ScreenRect FromPoints(int x1, int y1, int x2, int y2)
     {
         int minX = Math.Min(x1, x2);

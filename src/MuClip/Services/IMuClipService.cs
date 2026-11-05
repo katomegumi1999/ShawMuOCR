@@ -18,6 +18,11 @@ public interface IMuClipService : IClipboardHistoryService, IClipboardPhraseServ
     string DatabasePath { get; }
     string DataDirectory { get; }
 
+    /// <summary>
+    /// 本地库是否真正启用了 SQLCipher 静态加密；核心未初始化时为 <c>null</c>。
+    /// </summary>
+    bool? IsEncrypted { get; }
+
     event Action? QuickPanelHotkeyTriggered;
 
     void Initialize(string? dbPath = null, bool startSync = true, ushort syncPort = 42424, string? pairingPin = null, bool startListener = true, string? customDeviceId = null, string? customDeviceName = null);

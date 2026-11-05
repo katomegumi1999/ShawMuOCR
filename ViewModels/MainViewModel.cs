@@ -335,6 +335,30 @@ public partial class MainViewModel : ViewModelBase
                            new ShawMuOCR.Windows.ScreenCapture.WindowsNativeScreenSelectionService(),
                            logger,
                            _settingsService);
+        RecordingVm.RecordingCompleted += (s, e) =>
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                var fileName = System.IO.Path.GetFileName(e.FilePath);
+                var filePath = e.FilePath;
+                ToastNotificationWindow.Show(
+                    $"已成功保存至：{fileName}\n(点击在文件夹中显示)",
+                    e.Duration,
+                    "🎬 录屏已完成",
+                    displaySeconds: 3.0,
+                    onClick: () =>
+                    {
+                        try
+                        {
+                            if (System.IO.File.Exists(filePath))
+                            {
+                                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{filePath}\"") { UseShellExecute = true });
+                            }
+                        }
+                        catch { }
+                    });
+            });
+        };
         Mark("录屏页");
 
         _currentHotkey = _settingsService.Current.Hotkey;
@@ -612,6 +636,10 @@ public partial class MainViewModel : ViewModelBase
 
         CurrentPage = page;
         ClipboardVm?.SetHostViewActive(page == AppNavPage.Clipboard);
+        if (page != AppNavPage.Recording)
+        {
+            RecordingVm.SetPreviewHwnd(IntPtr.Zero);
+        }
 
         if (page == AppNavPage.About)
         {

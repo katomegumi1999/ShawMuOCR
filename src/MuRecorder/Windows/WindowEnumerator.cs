@@ -98,6 +98,22 @@ public static partial class WindowEnumerator
             }
 
             // 明确排除系统输入法宿主及桌面管理器
+            // 过滤系统任务栏及外壳窗口（任务栏 Shell_TrayWnd、次级任务栏 Shell_SecondaryTrayWnd、Progman 等）
+            Span<char> classBuf = stackalloc char[256];
+            int classCopied;
+            fixed (char* pClass = classBuf)
+            {
+                classCopied = NativeMethods.GetClassNameW(hwnd, pClass, classBuf.Length);
+            }
+            if (classCopied > 0)
+            {
+                var className = new string(classBuf[..classCopied]);
+                if (className is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd" or "Progman" or "WorkerW" or "Windows.UI.Core.CoreWindow")
+                {
+                    return 1;
+                }
+            }
+
             if (string.Equals(processName, "TextInputHost", StringComparison.OrdinalIgnoreCase))
             {
                 return 1;
@@ -110,7 +126,7 @@ public static partial class WindowEnumerator
                 copied = NativeMethods.GetWindowTextW(hwnd, pTitle, titleBuf.Length);
             }
             string title = copied > 0 ? new string(titleBuf[..copied]).Trim() : string.Empty;
-            if (string.IsNullOrWhiteSpace(title) || title == "Program Manager")
+            if (string.IsNullOrWhiteSpace(title) || title is "Program Manager" or "任务栏" or "Taskbar")
             {
                 return 1;
             }
@@ -193,6 +209,10 @@ public static partial class WindowEnumerator
         [LibraryImport("user32.dll", EntryPoint = "GetWindowTextLengthW")]
         [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvStdcall) })]
         internal static partial int GetWindowTextLengthW(IntPtr hwnd);
+
+        [LibraryImport("user32.dll", EntryPoint = "GetClassNameW")]
+        [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvStdcall) })]
+        internal static unsafe partial int GetClassNameW(IntPtr hwnd, char* lpClassName, int nMaxCount);
 
         [LibraryImport("user32.dll", EntryPoint = "GetWindowTextW")]
         [UnmanagedCallConv(CallConvs = new[] { typeof(System.Runtime.CompilerServices.CallConvStdcall) })]

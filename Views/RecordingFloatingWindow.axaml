@@ -36,6 +36,16 @@
         <Style Selector="Border.annotation-bar Button.subtle">
             <Setter Property="Foreground" Value="#FFFFFF" />
         </Style>
+        <Style Selector="Button.subtle.tool-active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#4040A9FF" />
+            <Setter Property="BorderBrush" Value="#9940A9FF" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
+        <Style Selector="Button.subtle.laser-active /template/ ContentPresenter#PART_ContentPresenter">
+            <Setter Property="Background" Value="#4DFF4D4F" />
+            <Setter Property="BorderBrush" Value="#CCFF4D4F" />
+            <Setter Property="BorderThickness" Value="1" />
+        </Style>
     </Window.Styles>
 
     <Border Name="RootBorder"
@@ -72,11 +82,7 @@
                         <TextBlock Text="{Binding StatFps}" Foreground="#E0E0E0" FontSize="10" />
                     </Border>
 
-                    <!-- 画布模式指示徽标 -->
-                    <Border Background="#2B4CC2FF" CornerRadius="4" Padding="5,1" VerticalAlignment="Center"
-                            IsVisible="{Binding IsCanvasModeActive}">
-                        <TextBlock Text="🎨 画布" Foreground="#4CC2FF" FontSize="10" FontWeight="SemiBold" />
-                    </Border>
+
 
                     <!-- 未录制时的便携标题 -->
                     <TextBlock Text="录屏控制台"
@@ -133,17 +139,7 @@
                         </StackPanel>
                     </Button>
 
-                    <!-- 退出画布模式快捷按钮 -->
-                    <Button Content="✕ 退出画布"
-                            Command="{Binding ExitCanvasModeCommand}"
-                            Classes="subtle"
-                            Background="#33FF4D4F"
-                            Foreground="#FF7875"
-                            CornerRadius="14"
-                            Padding="8,4"
-                            FontSize="11"
-                            IsVisible="{Binding IsCanvasModeActive}"
-                            ToolTip.Tip="退出黑底自由画布模式，恢复桌面" />
+
                 </StackPanel>
 
                 <!-- 右侧控制区：关闭/隐藏按钮 -->
@@ -163,109 +159,164 @@
             <Border Classes="annotation-bar"
                     Background="#1CFFFFFF"
                     CornerRadius="12"
-                    Padding="8,4"
+                    Padding="8,5"
                     IsVisible="{Binding IsAnnotationActive}">
-                <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                    <Button Content="✏️ 画笔"
-                            Command="{Binding SetAnnotationToolCommand}"
-                            CommandParameter="Pen"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="6,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="自由画笔" />
-                    <Button Content="↗️ 箭头"
-                            Command="{Binding SetAnnotationToolCommand}"
-                            CommandParameter="Arrow"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="6,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="引导箭头" />
-                    <Button Content="▢ 矩形"
-                            Command="{Binding SetAnnotationToolCommand}"
-                            CommandParameter="Rectangle"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="6,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="矩形边框" />
-                    <Button Content="◯ 椭圆"
-                            Command="{Binding SetAnnotationToolCommand}"
-                            CommandParameter="Ellipse"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="6,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="椭圆边框" />
-                    <Button Content="🔴 激光笔"
-                            Command="{Binding SetAnnotationToolCommand}"
-                            CommandParameter="Laser"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="6,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="激光笔重点引导" />
+                <StackPanel Orientation="Vertical" Spacing="4">
+                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                        <Button Content="✏️ 画笔"
+                                Command="{Binding SetAnnotationToolCommand}"
+                                CommandParameter="Pen"
+                                Classes="subtle"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="自由画笔" />
+                        <Button Content="↗️ 箭头"
+                                Command="{Binding SetAnnotationToolCommand}"
+                                CommandParameter="Arrow"
+                                Classes="subtle"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="引导箭头" />
+                        <Button Content="▢ 矩形"
+                                Command="{Binding SetAnnotationToolCommand}"
+                                CommandParameter="Rectangle"
+                                Classes="subtle"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="矩形边框" />
+                        <Button Content="◯ 椭圆"
+                                Command="{Binding SetAnnotationToolCommand}"
+                                CommandParameter="Ellipse"
+                                Classes="subtle"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="椭圆边框" />
+                        <Button Content="🔴 激光笔"
+                                Command="{Binding SetAnnotationToolCommand}"
+                                CommandParameter="Laser"
+                                Classes="subtle"
+                                Classes.laser-active="{Binding IsAnnotationLaserSelected}"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="激光笔重点引导 (点击启闭，亦可在屏幕上按鼠标右键退出激光)" />
+                        <Button Content="🔤 文字"
+                                Command="{Binding SetAnnotationToolCommand}"
+                                CommandParameter="Text"
+                                Classes="subtle"
+                                Classes.tool-active="{Binding IsAnnotationTextToolSelected}"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="文字标注 (在屏幕上点击并输入文本，按 Enter 确定)" />
 
-                    <Rectangle Width="1" Height="14" Fill="#33FFFFFF" VerticalAlignment="Center" Margin="3,0" />
+                        <Rectangle Width="1" Height="14" Fill="#33FFFFFF" VerticalAlignment="Center" Margin="3,0" />
 
-                    <!-- 调色板快速切换 -->
-                    <Button Background="#FF4D4F" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
-                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FF4D4F"
-                            ToolTip.Tip="鲜艳红" />
-                    <Button Background="#FADB14" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
-                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FADB14"
-                            ToolTip.Tip="高亮黄" />
-                    <Button Background="#52C41A" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
-                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#52C41A"
-                            ToolTip.Tip="活力绿" />
-                    <Button Background="#1890FF" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
-                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#1890FF"
-                            ToolTip.Tip="科技蓝" />
-                    <Button Background="#FFFFFF" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
-                            Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FFFFFF"
-                            ToolTip.Tip="纯白色" />
+                        <!-- 调色板快速切换 -->
+                        <Button Background="#FF4D4F" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                                Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FF4D4F"
+                                ToolTip.Tip="鲜艳红" />
+                        <Button Background="#FADB14" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                                Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FADB14"
+                                ToolTip.Tip="高亮黄" />
+                        <Button Background="#52C41A" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                                Command="{Binding SetAnnotationColorCommand}" CommandParameter="#52C41A"
+                                ToolTip.Tip="活力绿" />
+                        <Button Background="#1890FF" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                                Command="{Binding SetAnnotationColorCommand}" CommandParameter="#1890FF"
+                                ToolTip.Tip="科技蓝" />
+                        <Button Background="#FFFFFF" Width="16" Height="16" CornerRadius="8" BorderThickness="0"
+                                Command="{Binding SetAnnotationColorCommand}" CommandParameter="#FFFFFF"
+                                ToolTip.Tip="纯白色" />
 
-                    <Rectangle Width="1" Height="14" Fill="#33FFFFFF" VerticalAlignment="Center" Margin="3,0" />
+                        <Rectangle Width="1" Height="14" Fill="#33FFFFFF" VerticalAlignment="Center" Margin="3,0" />
 
-                    <!-- 撤销 / 清屏 / 穿透 -->
-                    <Button Content="↩️"
-                            Command="{Binding AnnotationUndoCommand}"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="6,3"
+                        <!-- 撤销 / 清屏 / 穿透 -->
+                        <Button Content="↩️"
+                                Command="{Binding AnnotationUndoCommand}"
+                                Classes="subtle"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="撤销上一笔" />
+                        <Button Content="🧹"
+                                Command="{Binding AnnotationClearCommand}"
+                                Classes="subtle"
+                                Foreground="#FFFFFF"
+                                Padding="6,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="清空所有标注" />
+                        <Button Content="🖱️ 穿透"
+                                Command="{Binding ToggleAnnotationClickThroughCommand}"
+                                Classes="subtle"
+                                Classes.tool-active="{Binding IsAnnotationClickThrough}"
+                                Foreground="#FFFFFF"
+                                Padding="7,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                ToolTip.Tip="点击穿透模式：开启后可直接操作底层桌面与应用，屏幕上的标注继续保留" />
+                        <Button Content="✕ 退出"
+                                Command="{Binding ToggleAnnotationCommand}"
+                                Classes="subtle"
+                                Padding="7,3"
+                                CornerRadius="8"
+                                FontSize="11"
+                                Foreground="#FF7875"
+                                ToolTip.Tip="退出屏幕标注模式 (按 Esc 或鼠标右键亦可退出)" />
+                    </StackPanel>
+
+                    <!-- 选中文字标注工具时展开的字号调节滑动条 -->
+                    <Border IsVisible="{Binding IsAnnotationTextToolSelected}"
+                            Background="#18000000"
+                            BorderBrush="#30FFFFFF"
+                            BorderThickness="1"
                             CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="撤销上一笔" />
-                    <Button Content="🧹"
-                            Command="{Binding AnnotationClearCommand}"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="6,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="清空所有标注" />
-                    <Button Content="🖱️ 穿透"
-                            Command="{Binding ToggleAnnotationClickThroughCommand}"
-                            Classes="subtle"
-                            Foreground="#FFFFFF"
-                            Padding="7,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            ToolTip.Tip="点击穿透模式：开启后可直接操作底层桌面与应用，屏幕上的标注继续保留" />
-                    <Button Content="✕ 退出"
-                            Command="{Binding ToggleAnnotationCommand}"
-                            Classes="subtle"
-                            Padding="7,3"
-                            CornerRadius="8"
-                            FontSize="11"
-                            Foreground="#FF7875"
-                            ToolTip.Tip="退出屏幕标注模式 (按 Esc 或鼠标右键亦可退出)" />
+                            Padding="10,3"
+                            Margin="0,2,0,0">
+                        <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                <TextBlock Text="🔤" FontSize="11" VerticalAlignment="Center" />
+                                <TextBlock Text="文字字号" Foreground="#D0D0D0" FontSize="11" VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Slider Grid.Column="1"
+                                    Minimum="12"
+                                    Maximum="96"
+                                    Value="{Binding AnnotationFontSize}"
+                                    Height="22"
+                                    Margin="14,0"
+                                    VerticalAlignment="Center">
+                                <Slider.Resources>
+                                    <x:Double x:Key="SliderHorizontalThumbWidth">10</x:Double>
+                                    <x:Double x:Key="SliderHorizontalThumbHeight">10</x:Double>
+                                    <CornerRadius x:Key="SliderThumbCornerRadius">5</CornerRadius>
+                                    <x:Double x:Key="SliderHorizontalHeight">20</x:Double>
+                                    <GridLength x:Key="SliderPreContentMargin">*</GridLength>
+                                    <GridLength x:Key="SliderPostContentMargin">*</GridLength>
+                                    <x:Double x:Key="SliderTrackThemeHeight">3</x:Double>
+                                </Slider.Resources>
+                            </Slider>
+                            <TextBlock Grid.Column="2"
+                                       Text="{Binding AnnotationFontSizeText}"
+                                       Foreground="#40A9FF"
+                                       FontSize="11"
+                                       FontWeight="SemiBold"
+                                       Width="38"
+                                       TextAlignment="Right"
+                                       VerticalAlignment="Center" />
+                        </Grid>
+                    </Border>
                 </StackPanel>
             </Border>
         </StackPanel>

@@ -39,6 +39,19 @@ public sealed record NamedOption<T>(T Value, string Label)
     public override string ToString() => Label;
 }
 
+/// <summary>录屏完成事件参数。</summary>
+public sealed class RecordingSavedEventArgs : EventArgs
+{
+    public string FilePath { get; }
+    public TimeSpan Duration { get; }
+
+    public RecordingSavedEventArgs(string filePath, TimeSpan duration)
+    {
+        FilePath = filePath;
+        Duration = duration;
+    }
+}
+
 /// <summary>
 /// 录屏页面 ViewModel。职责边界（设计文档）：
 /// - 只做来源枚举、区域选择（复用原生遮罩）、配置组装与状态展示；
@@ -61,6 +74,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     private readonly ILoggerService? _logger;
     private readonly ISettingsService? _settingsService;
     private string _lastSavedFile = string.Empty;
+    private DateTime _recordingStartTime;
     private bool _disposed;
 
     /// <summary>recorder_core.dll 是否可用（缺失时录屏入口整体禁用，UI 显示降级提示）。</summary>
@@ -131,7 +145,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         OnPropertyChanged(nameof(IsSourceMonitor));
         OnPropertyChanged(nameof(IsSourceWindow));
         OnPropertyChanged(nameof(IsSourceRegion));
-        OnPropertyChanged(nameof(CurrentTargetBounds));
+        NotifyTargetBoundsChanged();
     }
 
     public RecordingViewModel(
@@ -219,6 +233,33 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _isAudioDeviceSelectorVisible;
 
+    /// <summary>是否正在做「系统声音 + 麦克风」叠加（勾了输入设备且同时有输出设备）。</summary>
+    [ObservableProperty]
+    private bool _isMicOverlayActive;
+
+    /// <summary>
+    /// 麦克风叠加增益（百分比）。100 = 原样，上限 300（约 +9.5 dB）。
+    /// 仅在 <see cref="IsMicOverlayActive"/> 为真时参与录制。
+    /// </summary>
+    [ObservableProperty]
+    private double _micGainPercent = 100;
+
+    partial void OnMicGainPercentChanged(double value)
+    {
+        // 滑块拖到 0 会让 Rust 侧当成「不叠加」——那会静默关掉麦克风，
+        // 与滑块「音量」的语义不符，所以这里把下限钉在 10%。
+        var clamped = Math.Clamp(value, 10d, 300d);
+        if (Math.Abs(clamped - value) > 0.01)
+        {
+            MicGainPercent = clamped;
+            return; // 递归回到这里时再通知标签，避免重复通知
+        }
+        OnPropertyChanged(nameof(MicGainLabel));
+    }
+
+    /// <summary>麦克风增益的可读文本（百分比取整）。</summary>
+    public string MicGainLabel => $"{Math.Round(MicGainPercent):0}%";
+
     [ObservableProperty]
     private string _audioDeviceLabel = "音频设备";
 
@@ -261,6 +302,39 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     /// <summary>当前录制或选定的目标矩形区域（物理像素）。</summary>
     public ScreenRect CurrentTargetBounds => ResolveTargetBounds();
 
+    /// <summary>当前录制画面的宽高比（宽 / 高），用于小窗预览自适应比例保持。</summary>
+    public double TargetAspectRatio
+    {
+        get
+        {
+            var bounds = CurrentTargetBounds;
+            if (bounds.Width > 0 && bounds.Height > 0)
+            {
+                return (double)bounds.Width / bounds.Height;
+            }
+            return 16.0 / 9.0;
+        }
+    }
+
+    /// <summary>当前录制目标分辨率文字描述。</summary>
+    public string StatResolution
+    {
+        get
+        {
+            var bounds = CurrentTargetBounds;
+            return (bounds.Width > 0 && bounds.Height > 0)
+                ? $"{bounds.Width} × {bounds.Height}"
+                : "--";
+        }
+    }
+
+    public void NotifyTargetBoundsChanged()
+    {
+        OnPropertyChanged(nameof(CurrentTargetBounds));
+        OnPropertyChanged(nameof(TargetAspectRatio));
+        OnPropertyChanged(nameof(StatResolution));
+    }
+
     /// <summary>请求区域边界呼吸灯高亮闪烁提示。</summary>
     public event EventHandler? RegionBorderPulseRequested;
 
@@ -279,14 +353,14 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     /// <summary>请求切换（显示/隐藏）录屏悬浮工具栏。</summary>
     public event EventHandler? FloatingBarToggleRequested;
 
-    /// <summary>请求进入自由画布黑幕模式。</summary>
-    public event EventHandler? CanvasModeEnterRequested;
+    /// <summary>录屏正常结束或中断且文件成功落盘时触发。</summary>
+    public event EventHandler<RecordingSavedEventArgs>? RecordingCompleted;
 
-    /// <summary>请求退出自由画布黑幕模式。</summary>
-    public event EventHandler? CanvasModeExitRequested;
-
-    [ObservableProperty]
-    private bool _isCanvasModeActive;
+    /// <summary>设置实时录制硬件预览宿主 HWND（传 IntPtr.Zero 暂停预览）。</summary>
+    public void SetPreviewHwnd(IntPtr hwnd)
+    {
+        _service.SetPreviewHwnd(hwnd);
+    }
 
     public void RequestRegionBorderPulse()
     {
@@ -307,50 +381,17 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         FloatingBarToggleRequested?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>启动自由画布模式（纯黑底全屏，仅选中的窗口置顶可见，其它未选窗口及桌面被遮蔽）。</summary>
-    [RelayCommand]
-    public void EnterCanvasMode()
-    {
-        if (Windows.Count > 0 && !Windows.Any(w => w.IsSelected))
-        {
-            Windows[0].IsSelected = true;
-            UpdateSelectedWindowsBounds();
-        }
-
-        var selected = Windows.Where(w => w.IsSelected).Select(w => w.Window).ToList();
-        if (selected.Count == 0)
-        {
-            ErrorMessage = "请至少勾选一个要在画布上展示的目标窗口";
-            return;
-        }
-
-        IsCanvasModeActive = true;
-        Source = RecordingSource.Screen; // 画布模式录制全屏
-        CanvasModeEnterRequested?.Invoke(this, EventArgs.Empty);
-        if (IsFloatingBarEnabled)
-        {
-            FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
-        }
-        StatusMessage = $"已进入自由画布模式（已置顶 {selected.Count} 个窗口，黑幕全屏录制）";
-    }
-
-    /// <summary>退出自由画布模式。</summary>
-    [RelayCommand]
-    public void ExitCanvasMode()
-    {
-        if (!IsCanvasModeActive) return;
-        IsCanvasModeActive = false;
-        CanvasModeExitRequested?.Invoke(this, EventArgs.Empty);
-        StatusMessage = "已退出自由画布模式";
-    }
 
     // ---------- 屏幕实时标注事件与状态 ----------
 
     /// <summary>请求切换屏幕实时标注覆盖层 (参数为是否启用)。</summary>
     public event EventHandler<bool>? AnnotationToggleRequested;
 
-    /// <summary>请求变更屏幕实时标注工具 (Pen/Arrow/Rectangle/Ellipse/Laser)。</summary>
+    /// <summary>请求变更屏幕实时标注工具 (Pen/Arrow/Rectangle/Ellipse/Laser/Text)。</summary>
     public event EventHandler<string>? AnnotationToolChangeRequested;
+
+    /// <summary>请求变更屏幕实时标注字号大小 (像素)。</summary>
+    public event EventHandler<double>? AnnotationFontSizeChangeRequested;
 
     /// <summary>请求变更屏幕标注颜色 (HEX 字符串)。</summary>
     public event EventHandler<string>? AnnotationColorChangeRequested;
@@ -364,6 +405,11 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     /// <summary>请求清空所有屏幕标注。</summary>
     public event EventHandler? AnnotationClearRequested;
 
+    /// <summary>
+    /// 标注/涂鸦图层窗口句柄提供委托（供 UI 层注入，使窗口录制模式能把标注图层作为顶层 AlphaBlend 源录入）。
+    /// </summary>
+    public Func<ScreenRect, IntPtr>? AnnotationOverlayHwndProvider { get; set; }
+
     [ObservableProperty]
     private bool _isAnnotationActive;
 
@@ -371,7 +417,23 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     private bool _isAnnotationClickThrough;
 
     [ObservableProperty]
-    private int _selectedAnnotationToolIndex; // 0: Pen, 1: Arrow, 2: Rect, 3: Ellipse, 4: Laser
+    [NotifyPropertyChangedFor(nameof(IsAnnotationTextToolSelected))]
+    [NotifyPropertyChangedFor(nameof(IsAnnotationLaserSelected))]
+    private int _selectedAnnotationToolIndex; // 0: Pen, 1: Arrow, 2: Rect, 3: Ellipse, 4: Laser, 5: Text
+
+    public bool IsAnnotationTextToolSelected => SelectedAnnotationToolIndex == 5;
+    public bool IsAnnotationLaserSelected => SelectedAnnotationToolIndex == 4;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(AnnotationFontSizeText))]
+    private double _annotationFontSize = 40.0;
+
+    public string AnnotationFontSizeText => $"{(int)Math.Round(AnnotationFontSize)}px";
+
+    partial void OnAnnotationFontSizeChanged(double value)
+    {
+        AnnotationFontSizeChangeRequested?.Invoke(this, value);
+    }
 
     [ObservableProperty]
     private string _selectedAnnotationColor = "#FF4D4F";
@@ -413,6 +475,16 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     [RelayCommand]
     public void SetAnnotationTool(string toolName)
     {
+        // 如果当前已经是激光笔，并且用户再次点击了激光笔，则切回普通画笔（一键启闭）
+        if (toolName == "Laser" && SelectedAnnotationToolIndex == 4)
+        {
+            toolName = "Pen";
+        }
+        else if (toolName == "Text" && SelectedAnnotationToolIndex == 5)
+        {
+            toolName = "Pen";
+        }
+
         SelectedAnnotationToolIndex = toolName switch
         {
             "Pen" => 0,
@@ -420,6 +492,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             "Rectangle" => 2,
             "Ellipse" => 3,
             "Laser" => 4,
+            "Text" => 5,
             _ => 0
         };
         IsAnnotationClickThrough = false;
@@ -457,15 +530,20 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         AnnotationClearRequested?.Invoke(this, EventArgs.Empty);
     }
 
+    partial void OnSelectedMonitorChanged(MonitorInfo? value)
+    {
+        NotifyTargetBoundsChanged();
+    }
+
     partial void OnRegionChanged(ScreenRect value)
     {
         UpdateRegionText();
-        OnPropertyChanged(nameof(CurrentTargetBounds));
+        NotifyTargetBoundsChanged();
     }
 
     partial void OnShowRegionBorderChanged(bool value)
     {
-        OnPropertyChanged(nameof(CurrentTargetBounds));
+        NotifyTargetBoundsChanged();
         if (_settingsService != null)
         {
             _settingsService.Current.RecordingShowRegionBorder = value;
@@ -696,21 +774,33 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         {
             AudioSelectedSummary = "未勾选设备 (静音录制)";
         }
+        else if (selectedRenders.Count > 0 && selectedCaptures.Count > 0)
+        {
+            AudioSelectedSummary = $"系统声音 + 麦克风 (输出 {selectedRenders.Count}，输入 {selectedCaptures.Count})";
+        }
         else
         {
             AudioSelectedSummary = $"已勾选 {selected.Count} 个设备 (输出 {selectedRenders.Count}，输入 {selectedCaptures.Count})";
         }
 
+        // 「系统声音 + 麦克风」才显示增益滑块：只勾输入设备时主音源本身就是麦克风，
+        // 叠加层不存在，滑到哪儿都没用。
+        IsMicOverlayActive = selectedRenders.Count > 0 && selectedCaptures.Count > 0;
+
         // 同步兼容历史字段
         if (selectedRenders.Count > 0)
         {
             SelectedAudioDevice = new AudioDeviceInfo(selectedRenders[0].Id, selectedRenders[0].Name, AudioDeviceFlow.Render, selectedRenders[0].IsDefault);
-            SelectedAudioSource = AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.System);
+            SelectedAudioSource = selectedRenders[0].IsDefault
+                ? AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.System)
+                : AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.Device);
         }
         else if (selectedCaptures.Count > 0)
         {
             SelectedAudioDevice = new AudioDeviceInfo(selectedCaptures[0].Id, selectedCaptures[0].Name, AudioDeviceFlow.Capture, selectedCaptures[0].IsDefault);
-            SelectedAudioSource = AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.Device);
+            // ★ 麦克风是采集端点，必须映射到 Mic 而不是 Device：
+            // Device 在 ABI 里表示「渲染端点环回」，两者不是同一条 WASAPI 路径。
+            SelectedAudioSource = AudioSourceOptions.FirstOrDefault(o => o.Value == AudioSourceType.Mic);
         }
         else
         {
@@ -818,14 +908,16 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             IsAudioDeviceSelectorVisible = true;
             SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.System);
         }
-        else if (source == AudioSourceType.Device)
-        {
-            IsAudioDeviceSelectorVisible = true;
-            SelectedAudioPreset = AudioPresetOptions.FirstOrDefault(p => p.Value == AudioPreset.Microphone);
-        }
         else if (source == AudioSourceType.Window)
         {
             IsAudioDeviceSelectorVisible = false;
+        }
+        else
+        {
+            // Device / Mic：预设已经由设备勾选列表推断好了（见
+            // UpdateAudioSummaryAndPresetFromList）。这里若再覆盖会把「系统声音 +
+            // 麦克风」直接压回单麦克风预设——选中两台设备被强制改成只留一台。
+            IsAudioDeviceSelectorVisible = true;
         }
     }
 
@@ -914,42 +1006,27 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             _windowUnionBounds = default;
             HasSelectedWindows = false;
             SelectedWindowsSummary = "未选择任何窗口（请勾选上方窗口列表）";
+            NotifyTargetBoundsChanged();
             return;
         }
 
-        int minX = int.MaxValue, minY = int.MaxValue;
-        int maxX = int.MinValue, maxY = int.MinValue;
-        foreach (var w in selected)
-        {
-            minX = Math.Min(minX, w.Bounds.X);
-            minY = Math.Min(minY, w.Bounds.Y);
-            maxX = Math.Max(maxX, w.Bounds.X + w.Bounds.Width);
-            maxY = Math.Max(maxY, w.Bounds.Y + w.Bounds.Height);
-        }
+        int minX = selected.Min(w => w.Bounds.X);
+        int minY = selected.Min(w => w.Bounds.Y);
+        int maxX = selected.Max(w => w.Bounds.Right);
+        int maxY = selected.Max(w => w.Bounds.Bottom);
+        _windowUnionBounds = new ScreenRect(minX, minY, maxX - minX, maxY - minY);
 
-        int unionW = Math.Max(2, ((maxX - minX) / 2) * 2);
-        int unionH = Math.Max(2, ((maxY - minY) / 2) * 2);
-        _windowUnionBounds = new ScreenRect(minX, minY, unionW, unionH);
         HasSelectedWindows = true;
-
-        bool spansMultipleMonitors = false;
-        if (Monitors.Count > 1)
+        if (selected.Count == 1)
         {
-            spansMultipleMonitors = !Monitors.Any(m =>
-                _windowUnionBounds.X >= m.Bounds.X &&
-                _windowUnionBounds.Y >= m.Bounds.Y &&
-                _windowUnionBounds.X + _windowUnionBounds.Width <= m.Bounds.X + m.Bounds.Width &&
-                _windowUnionBounds.Y + _windowUnionBounds.Height <= m.Bounds.Y + m.Bounds.Height);
-        }
-
-        if (spansMultipleMonitors)
-        {
-            SelectedWindowsSummary = $"已合并 {selected.Count} 个窗口：{unionW} × {unionH} ⚠️ 提示：窗口跨越了多个显示器，建议排列在同一屏幕下";
+            var w = selected[0];
+            SelectedWindowsSummary = $"已选择窗口「{w.Title}」({w.Bounds.Width} × {w.Bounds.Height})，走 WGC 独立表面采集";
         }
         else
         {
-            SelectedWindowsSummary = $"已合并 {selected.Count} 个窗口区域：{unionW} × {unionH} @ ({minX}, {minY})";
+            SelectedWindowsSummary = $"已选择 {selected.Count} 个窗口，走 WGC 多源采集并按屏幕坐标贴入画布";
         }
+        NotifyTargetBoundsChanged();
     }
 
     /// <summary>刷新显示器与窗口列表（窗口打开/关闭后手动刷新）。</summary>
@@ -1027,17 +1104,26 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             BitrateOptions.Add(new NamedOption<uint>(80000, "80 Mbps（母带级）"));
             BitrateOptions.Add(new NamedOption<uint>(100000, "100 Mbps（极速无损）"));
 
-            bool hasAv1 = RecordingService.HasHardwareEncoder(EncoderPreference.GpuAv1);
-            if (hasAv1)
+            // 硬件探测在启动时后台预热（单次 MFTEnumEx 实测 100–430 ms），这里**只读缓存**，
+            // 页面加载绝不阻塞在这上面。null = 还没探到，此时按普通文案显示，不谎报「未检测到」。
+            bool? hasAv1 = RecordingService.TryGetHardwareEncoder(EncoderPreference.GpuAv1);
+            bool? hasHevc = RecordingService.TryGetHardwareEncoder(EncoderPreference.GpuHevc);
+            bool? hasH264 = RecordingService.TryGetHardwareEncoder(EncoderPreference.GpuH264);
+
+            void AddHardwareOption(EncoderPreference pref, string name, string? tag, bool? available)
             {
-                EncoderOptions.Add(new NamedOption<EncoderPreference>(EncoderPreference.GpuAv1, "GPU · AV1 (硬件加速 · 超高压缩比)"));
+                var label = available switch
+                {
+                    false => $"{name} (未检测到硬件支持，将回退到 CPU 软编)",
+                    _ when tag is not null => $"{name} (硬件加速 · {tag})",
+                    _ => $"{name} (硬件加速)",
+                };
+                EncoderOptions.Add(new NamedOption<EncoderPreference>(pref, label));
             }
-            else
-            {
-                EncoderOptions.Add(new NamedOption<EncoderPreference>(EncoderPreference.GpuAv1, "GPU · AV1 (未检测到硬件支持，将自动降级)"));
-            }
-            EncoderOptions.Add(new NamedOption<EncoderPreference>(EncoderPreference.GpuHevc, "GPU · H.265 (HEVC 硬件加速 · 默认推荐)"));
-            EncoderOptions.Add(new NamedOption<EncoderPreference>(EncoderPreference.GpuH264, "GPU · H.264 (AVC 硬件加速)"));
+
+            AddHardwareOption(EncoderPreference.GpuAv1, "GPU · AV1", "超高压缩比", hasAv1);
+            AddHardwareOption(EncoderPreference.GpuHevc, "GPU · H.265 (HEVC)", "默认推荐", hasHevc);
+            AddHardwareOption(EncoderPreference.GpuH264, "GPU · H.264 (AVC)", null, hasH264);
             EncoderOptions.Add(new NamedOption<EncoderPreference>(EncoderPreference.Auto, "自动检测（智能降级）"));
             EncoderOptions.Add(new NamedOption<EncoderPreference>(EncoderPreference.Soft, "CPU · H.264 (软编兼容模式)"));
         }
@@ -1090,7 +1176,8 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         {
             AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.None, "🔇 无音频 (静音录制)"));
             AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.System, "🔊 系统声音 (扬声器内录)"));
-            AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.Device, "🎙️ 麦克风 (人声讲解)"));
+            AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.Device, "🔈 指定输出设备 (内录)"));
+            AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.Mic, "🎙️ 麦克风 (人声讲解)"));
             AudioSourceOptions.Add(new NamedOption<AudioSourceType>(AudioSourceType.Window, "🪟 仅目标窗口声音 (进程隔离)"));
         }
 
@@ -1181,9 +1268,13 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             RefreshSourcesCore(includeWindows: true);
         }
 
-        if (Source == RecordingSource.Window)
+        var isWindowMode = Source == RecordingSource.Window;
+        var selectedWindows = isWindowMode
+            ? Windows.Where(w => w.IsSelected).Select(w => w.Window).ToList()
+            : new List<WindowInfo>();
+
+        if (isWindowMode)
         {
-            var selectedWindows = Windows.Where(w => w.IsSelected).Select(w => w.Window).ToList();
             bool restoredAny = false;
             foreach (var w in selectedWindows)
             {
@@ -1201,11 +1292,17 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         }
 
         var bounds = ResolveTargetBounds();
-        if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+        if (isWindowMode)
         {
-            ErrorMessage = Source == RecordingSource.Window
-                ? "录制目标无效：请至少勾选一个目标窗口"
-                : "录制目标无效：请检查来源选择（窗口可能已关闭，或尚未框选区域）";
+            if (selectedWindows.Count == 0)
+            {
+                ErrorMessage = "录制目标无效：请至少勾选一个目标窗口";
+                return;
+            }
+        }
+        else if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            ErrorMessage = "录制目标无效：请检查来源选择（尚未框选有效区域）";
             return;
         }
 
@@ -1231,11 +1328,22 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
             AudioSourceType targetAudioSource = AudioSourceType.None;
             string? targetAudioDeviceId = null;
+            string? targetMicDeviceId = null;
+            uint targetMicGainPercent = 0;
             ulong targetWindowHwnd = 0;
             uint targetProcessId = 0;
 
+            // ★ 三条互斥的「主音源」分支 + 一条可叠加的麦克风。
+            //
+            // 历史实现是一条 if/else-if 链，`selectedRenders.Count > 0` 排在前面，
+            // 于是「🎧 系统声音 + 麦克风」这个预设（同时勾了输出与输入设备）永远
+            // 先命中渲染分支，麦克风**被静默丢掉**——录完只有系统声，没有任何提示。
+            //
+            // 现在把麦克风拆成独立的叠加层：主音源怎么定还是老规矩，只要不是
+            // 麦克风本身，勾了输入设备就再混一路进去。
             if (SelectedAudioSource?.Value == AudioSourceType.Window)
             {
+                // 进程环回：把窗口声当主音源，同样允许叠麦克风（解说 + 目标窗口声音）
                 var targetWin = Windows.FirstOrDefault(w => w.IsSelected)?.Window;
                 if (targetWin != null)
                 {
@@ -1247,6 +1355,8 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
                 {
                     targetAudioSource = AudioSourceType.System;
                 }
+
+                AppendMicOverlay(selectedCaptures, ref targetMicDeviceId, ref targetMicGainPercent);
             }
             else if (SelectedAudioPreset?.Value == AudioPreset.None && selectedRenders.Count == 0 && selectedCaptures.Count == 0)
             {
@@ -1257,6 +1367,8 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
                 var render = selectedRenders.FirstOrDefault(d => d.IsDefault) ?? selectedRenders[0];
                 if (render.IsDefault)
                 {
+                    // 默认端点用 System 而不是把 id 传下去：默认设备会随插拔漂移，
+                    // 传死 id 反而会在换耳机后打不开。
                     targetAudioSource = AudioSourceType.System;
                     targetAudioDeviceId = null;
                 }
@@ -1265,36 +1377,76 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
                     targetAudioSource = AudioSourceType.Device;
                     targetAudioDeviceId = render.Id;
                 }
+
+                AppendMicOverlay(selectedCaptures, ref targetMicDeviceId, ref targetMicGainPercent);
             }
             else if (selectedCaptures.Count > 0)
             {
-                targetAudioSource = AudioSourceType.Device;
-                targetAudioDeviceId = selectedCaptures[0].Id;
+                // 只勾了输入设备 → 主音源就是麦克风，走**采集端点**（AudioSourceType.Mic）。
+                // 早期这里传的是 AudioSourceType.Device，Rust 会按渲染端点环回打开
+                // 采集端点，Initialize 被拒——表现就是「选麦克风就报音频设备不可用」。
+                var mic = selectedCaptures.FirstOrDefault(d => d.IsDefault) ?? selectedCaptures[0];
+                targetAudioSource = AudioSourceType.Mic;
+                targetAudioDeviceId = mic.IsDefault ? null : mic.Id;
             }
 
             bool isLiveEffectActive = CaptureCursor && LiveCursorEffect;
+
+            List<WindowSourceOption> windowSources = new();
+            if (isWindowMode)
+            {
+                for (int idx = 0; idx < selectedWindows.Count; idx++)
+                {
+                    windowSources.Add(new WindowSourceOption
+                    {
+                        Hwnd = selectedWindows[idx].Hwnd,
+                        Z = (uint)idx,
+                        ClientAreaOnly = false,
+                    });
+                }
+
+                // 在指定窗口录制模式下，预先初始化全屏透明涂鸦标注窗口，并以最高 Z 序作为 AlphaBlend 源加入 WGC 捕获
+                var annotBounds = GetAnnotationBounds();
+                var annotHwnd = AnnotationOverlayHwndProvider?.Invoke(annotBounds) ?? IntPtr.Zero;
+                if (annotHwnd != IntPtr.Zero)
+                {
+                    windowSources.Add(new WindowSourceOption
+                    {
+                        Hwnd = annotHwnd,
+                        Z = (uint)(selectedWindows.Count + 100),
+                        AlphaBlend = true,
+                    });
+                }
+            }
+
             var options = new RecordingOptions
             {
-                Region = bounds,
+                CaptureMode = isWindowMode ? CaptureMode.Window : CaptureMode.Region,
+                Region = isWindowMode ? ScreenRect.Empty : bounds,
+                Sources = isWindowMode ? windowSources.ToArray() : Array.Empty<WindowSourceOption>(),
+                Canvas = new CanvasOptions { Width = 0, Height = 0, Background = 0 },
+                CaptureFlags = 1,
                 Fps = SelectedFps?.Value ?? 30,
                 BitrateKbps = SelectedBitrate?.Value ?? 8000,
                 Encoder = SelectedEncoder?.Value ?? EncoderPreference.GpuHevc,
                 CaptureCursor = CaptureCursor,
-                // 若开启桌面实时演示模式，由 C# 标注层在桌面直接渲染（DXGI 录制自然捕获录入），
-                // Rust 核心此时不重复硬烧录以防止双重重影；
-                // 若未开启桌面实时演示模式，则由 Rust 核心硬件直接将波纹与光轨合成烧录进录制视频！
-                CursorClickEffect = CaptureCursor && CursorClickEffect && !LiveCursorEffect,
-                CursorTrailMs = (CaptureCursor && CursorTrail && !LiveCursorEffect) ? Math.Clamp(CursorTrailMs, 40u, 3000u) : 0,
+                // 若开启桌面实时演示模式，在全屏/区域录屏时由 C# 标注层在桌面直接渲染（DXGI 录制自然捕获录入）；
+                // 但在窗口录屏模式（WGC 抓取窗口独立表面，无法截取外部桌面标注窗），必须由 Rust 核心硬件直接将波纹与光轨合成烧录进录制视频！
+                CursorClickEffect = CaptureCursor && CursorClickEffect && (!LiveCursorEffect || isWindowMode),
+                CursorTrailMs = (CaptureCursor && CursorTrail && (!LiveCursorEffect || isWindowMode)) ? Math.Clamp(CursorTrailMs, 40u, 3000u) : 0,
                 OutputPath = output,
                 AudioSource = targetAudioSource,
                 AudioDeviceId = targetAudioDeviceId,
                 AudioWindowHwnd = (IntPtr)targetWindowHwnd,
                 AudioProcessId = targetProcessId,
                 AudioBitrateKbps = SelectedAudioBitrate?.Value ?? 320,
+                MicDeviceId = targetMicDeviceId,
+                MicGainPercent = targetMicGainPercent,
             };
 
             await _service.StartAsync(options);
             _lastSavedFile = output;
+            _recordingStartTime = DateTime.UtcNow;
             _poller.Start();
             IsRecording = true;
             StatusMessage = "● 录制中…";
@@ -1322,6 +1474,35 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         }
     }
 
+    /// <summary>
+    /// 计算麦克风叠加参数：勾了输入设备就再混一路进主音轨。
+    /// </summary>
+    /// <remarks>
+    /// 用「增益百分比」而不是布尔开关来表达叠加，是 Rust ABI 的设计（v5）：
+    /// 两路 PCM 直接相加会削顶，增益必须跟着开关一起有着落。这里默认 100%，
+    /// 由 UI 上的滑块调整。
+    ///
+    /// 默认端点传 <c>null</c> 而不是它的 id：默认设备会随插拔漂移，传死 id
+    /// 在换耳机后就打不开了；而用户显式选的那台必须传 id，不能让它漂。
+    /// </remarks>
+    private void AppendMicOverlay(
+        List<SelectableAudioDevice> selectedCaptures,
+        ref string? micDeviceId,
+        ref uint micGainPercent)
+    {
+        if (selectedCaptures.Count == 0)
+        {
+            micDeviceId = null;
+            micGainPercent = 0;
+            return;
+        }
+
+        var mic = selectedCaptures.FirstOrDefault(d => d.IsDefault) ?? selectedCaptures[0];
+        micDeviceId = mic.IsDefault ? null : mic.Id;
+        // 夹到 [10, 300]：0 在 ABI 里等于「不叠加」，滑块拖到底会静默关麦。
+        micGainPercent = (uint)Math.Clamp(Math.Round(MicGainPercent), 10d, 300d);
+    }
+
     /// <summary>停止录制（阻塞到文件落定，自动写入 moov）。</summary>
     [RelayCommand]
     private async Task StopRecordingAsync()
@@ -1331,16 +1512,27 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             return;
         }
 
+        var duration = DateTime.UtcNow - _recordingStartTime;
+
         try
         {
             await _service.StopAsync();
             _poller.Stop();
             IsRecording = false;
+            if (IsAnnotationActive)
+            {
+                CloseAnnotation();
+            }
             LiveCursorEffectHideRequested?.Invoke(this, EventArgs.Empty);
             StatusMessage = File.Exists(_lastSavedFile)
                 ? $"✓ 已保存：{_lastSavedFile}"
                 : "✓ 录制已停止";
             _logger?.Info($"录屏停止: {_lastSavedFile}");
+
+            if (File.Exists(_lastSavedFile))
+            {
+                RecordingCompleted?.Invoke(this, new RecordingSavedEventArgs(_lastSavedFile, duration));
+            }
         }
         catch (RecordingException ex)
         {
@@ -1367,7 +1559,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             {
                 Region = default;
                 RegionText = "未选择";
-                OnPropertyChanged(nameof(CurrentTargetBounds));
+                NotifyTargetBoundsChanged();
             }
             // 自动换一个时间戳文件名，避免下一次录制覆盖刚保存的文件
             if (OutputPath == _lastSavedFile)
@@ -1496,6 +1688,33 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     private string BuildDefaultOutputPath() =>
         Path.Combine(EffectiveOutputDirectory, $"{SanitizeFilePrefix(FilePrefix)}_{DateTime.Now:yyyyMMdd_HHmmss}.mp4");
 
+    /// <summary>
+    /// 获取当前标注覆盖层的标准物理边界。
+    /// 在指定窗口录制模式下，返回目标窗口所在显示器的物理矩形，支持全屏范围涂鸦且与录制画布 1:1 对齐；
+    /// 在全屏/区域录制模式下，返回实际选定的目标边界。
+    /// </summary>
+    public ScreenRect GetAnnotationBounds()
+    {
+        if (Source == RecordingSource.Window)
+        {
+            var selectedWins = Windows.Where(w => w.IsSelected).Select(w => w.Window).ToList();
+            var first = selectedWins.FirstOrDefault();
+            var mon = (first != null ? Monitors.FirstOrDefault(m => m.Bounds.IntersectsWith(first.Bounds)) : null)
+                ?? SelectedMonitor
+                ?? Monitors.FirstOrDefault(m => m.IsPrimary)
+                ?? Monitors.FirstOrDefault();
+            return mon?.WorkingArea ?? CurrentTargetBounds;
+        }
+        var bounds = CurrentTargetBounds;
+        if (bounds.IsEmpty || bounds.Width <= 0 || bounds.Height <= 0)
+        {
+            bounds = SelectedMonitor?.Bounds
+                ?? (Monitors.FirstOrDefault(m => m.IsPrimary) ?? Monitors.FirstOrDefault())?.Bounds
+                ?? new ScreenRect(0, 0, 1920, 1080);
+        }
+        return bounds;
+    }
+
     private ScreenRect ResolveTargetBounds() => Source switch
     {
         RecordingSource.Screen => (Monitors.FirstOrDefault(m => m.IsPrimary) ?? SelectedMonitor)?.Bounds ?? default,
@@ -1566,12 +1785,17 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             {
                 Region = default;
                 RegionText = "未选择";
-                OnPropertyChanged(nameof(CurrentTargetBounds));
+                NotifyTargetBoundsChanged();
             }
             ErrorMessage = $"录制意外停止：{e.Message}";
             StatusMessage = File.Exists(_lastSavedFile)
                 ? $"⚠ 录制意外中断，已保存至 {_lastSavedFile}"
                 : "⚠ 录制意外中断";
+            if (File.Exists(_lastSavedFile))
+            {
+                var duration = DateTime.UtcNow - _recordingStartTime;
+                RecordingCompleted?.Invoke(this, new RecordingSavedEventArgs(_lastSavedFile, duration));
+            }
             _logger?.Warn($"录屏异常停止: {e.Result} {e.Message}");
         });
     }
