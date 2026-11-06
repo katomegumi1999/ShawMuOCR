@@ -26,7 +26,7 @@
 
         WindowStartupLocation="CenterScreen"
 
-        FontFamily="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif">
+        FontFamily="Microsoft YaHei UI, Segoe UI Emoji, Segoe UI, Apple Color Emoji, Noto Color Emoji, -apple-system, sans-serif">
 
 
 

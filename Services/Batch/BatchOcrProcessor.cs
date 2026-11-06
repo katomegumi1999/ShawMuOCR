@@ -232,8 +232,8 @@ public sealed class BatchOcrProcessor
             var result = await engine.RecognizeAsync(ocrImage, cancellationToken);
             ocrSw.Stop();
 
-            // CPU 利用率占空比节流调节
-            await lease.ThrottleAsync(ocrSw.ElapsedMilliseconds, cancellationToken);
+            // CPU 利用率占空比节流调节；远程 AI 引擎不占本机 CPU，跳过补偿休眠
+            await lease.ThrottleAsync(engine.UsesLocalCpu ? ocrSw.ElapsedMilliseconds : 0, cancellationToken);
 
             if (!result.IsSuccess)
             {
@@ -335,7 +335,7 @@ public sealed class BatchOcrProcessor
                                         var ocrRes = await engine.RecognizeAsync(ocrImg, cancellationToken);
                                         ocrSw.Stop();
 
-                                        await lease.ThrottleAsync(ocrSw.ElapsedMilliseconds, cancellationToken);
+                                        await lease.ThrottleAsync(engine.UsesLocalCpu ? ocrSw.ElapsedMilliseconds : 0, cancellationToken);
 
                                         if (ocrRes.IsSuccess)
                                         {
@@ -375,7 +375,7 @@ public sealed class BatchOcrProcessor
                                 var ocrRes = await engine.RecognizeAsync(ocrImg, cancellationToken);
                                 ocrSw.Stop();
 
-                                await lease.ThrottleAsync(ocrSw.ElapsedMilliseconds, cancellationToken);
+                                await lease.ThrottleAsync(engine.UsesLocalCpu ? ocrSw.ElapsedMilliseconds : 0, cancellationToken);
 
                                 if (ocrRes.IsSuccess)
                                 {

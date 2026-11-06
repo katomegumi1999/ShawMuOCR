@@ -115,7 +115,11 @@ public partial class TranslateFloatingWindow : Window
         if (_settingsService?.Current == null) return;
 
         var s = _settingsService.Current;
-        string? bgHex = s.ThemeFloatingWindowBackgroundColorHex;
+        // 未自定义时用默认浅灰，而不是清空资源「跟随系统」：
+        // 本窗口 Background 是 Transparent，清空后浮窗会整块透明，文字直接糊在桌面内容上。
+        string? bgHex = string.IsNullOrWhiteSpace(s.ThemeFloatingWindowBackgroundColorHex)
+            ? ThemeDefaults.FloatingWindowBackgroundHex
+            : s.ThemeFloatingWindowBackgroundColorHex;
         string? textHex = s.ThemeFloatingWindowTextColorHex;
 
         if (!string.IsNullOrWhiteSpace(bgHex) && ColorPaletteHelper.TryParseColor(bgHex, out var bg))
@@ -173,11 +177,21 @@ public partial class TranslateFloatingWindow : Window
         }
         else
         {
+            // 走到这里说明自定义色值非法（多为手改 settings.json 写坏）。
+            // 背景必须回落默认浅灰而不是清空 —— 窗口本身 Background="Transparent"，清空即整块浮窗透明。
+            if (ColorPaletteHelper.TryParseColor(ThemeDefaults.FloatingWindowBackgroundHex, out var fallbackBg))
+            {
+                Resources["FloatingWindowBackground"] = new SolidColorBrush(fallbackBg);
+                Resources["FloatingWindowCardBg"] = new SolidColorBrush(fallbackBg);
+                if (RootCardBorder != null)
+                {
+                    RootCardBorder.Background = new SolidColorBrush(fallbackBg);
+                }
+            }
+
             string[] keysToClear =
             [
-                "FloatingWindowBackground",
                 "FloatingWindowHeaderBg",
-                "FloatingWindowCardBg",
                 "FloatingWindowBorder",
                 "FloatingWindowDivider",
                 "FloatingWindowHoverBrush",
@@ -209,7 +223,6 @@ public partial class TranslateFloatingWindow : Window
 
             if (RootCardBorder != null)
             {
-                RootCardBorder.ClearValue(Border.BackgroundProperty);
                 RootCardBorder.ClearValue(Border.BorderBrushProperty);
             }
         }

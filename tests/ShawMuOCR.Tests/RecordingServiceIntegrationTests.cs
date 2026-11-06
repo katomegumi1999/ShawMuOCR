@@ -454,6 +454,9 @@ public class RecordingServiceIntegrationTests
         Assert.Equal(string.Empty, settings.RecordingOutputDir);
         Assert.Equal("MuRecorder", settings.RecordingFilePrefix);
         Assert.Equal("Alt+R", settings.RecordingHotkey);
+        // 开录后最小化默认开（老行为），悬浮控制条默认关 —— 两个开关互不联动
+        Assert.True(settings.RecordingMinimizeOnStart);
+        Assert.False(settings.RecordingShowFloatingBar);
     }
 
     [Fact]
@@ -468,6 +471,8 @@ public class RecordingServiceIntegrationTests
             RecordingOutputDir = @"C:\TestOutputDir",
             RecordingFilePrefix = "CustomPrefix",
             RecordingHotkey = "Alt+Shift+R",
+            RecordingMinimizeOnStart = false,
+            RecordingShowFloatingBar = true,
         };
 
         var json = System.Text.Json.JsonSerializer.Serialize(
@@ -480,6 +485,8 @@ public class RecordingServiceIntegrationTests
         Assert.Contains("\"ShowRegionBorder\": false", json);
         Assert.Contains("\"OutputDir\": \"C:\\\\TestOutputDir\"", json);
         Assert.Contains("\"FilePrefix\": \"CustomPrefix\"", json);
+        Assert.Contains("\"MinimizeOnStart\": false", json);
+        Assert.Contains("\"ShowFloatingBar\": true", json);
         Assert.Contains("\"Recording\":", json);
         Assert.Contains("Alt\\u002BShift\\u002BR", json);
 
@@ -495,6 +502,8 @@ public class RecordingServiceIntegrationTests
         Assert.Equal(@"C:\TestOutputDir", restored.RecordingOutputDir);
         Assert.Equal("CustomPrefix", restored.RecordingFilePrefix);
         Assert.Equal("Alt+Shift+R", restored.RecordingHotkey);
+        Assert.False(restored.RecordingMinimizeOnStart);
+        Assert.True(restored.RecordingShowFloatingBar);
     }
 
     [Theory]

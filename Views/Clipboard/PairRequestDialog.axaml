@@ -8,7 +8,7 @@
         WindowStartupLocation="CenterScreen"
         Topmost="True"
         Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-        FontFamily="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif">
+        FontFamily="Microsoft YaHei UI, Segoe UI Emoji, Segoe UI, Apple Color Emoji, Noto Color Emoji, -apple-system, sans-serif">
 
     <Border Padding="20">
         <StackPanel Spacing="14">

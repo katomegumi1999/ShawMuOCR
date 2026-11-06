@@ -64,16 +64,24 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
     [DllImport("user32.dll", EntryPoint = "DefWindowProcW")]
     private static extern IntPtr DefWindowProcW(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam);
 
+    private static IntPtr GetPreferredOwnerHwnd()
+    {
+        var hwnd = s_activeListener?._hwnd ?? IntPtr.Zero;
+        return hwnd != IntPtr.Zero ? hwnd : IntPtr.Zero;
+    }
+
     public async Task<bool> SetTextAsync(string text)
     {
         text ??= string.Empty;
-        for (int attempt = 0; attempt < 5; attempt++)
+        for (int attempt = 0; attempt < 8; attempt++)
         {
             if (TrySetTextOnce(text, suppressNotification: false))
             {
+                // 防御远程桌面工具（rdpclip / ToDesk / 向日葵）延迟反向覆写
+                _ = VerifyAndReassertAsync(text, 220);
                 return true;
             }
-            await Task.Delay(25 * (attempt + 1)).ConfigureAwait(false);
+            await Task.Delay(30 * (attempt + 1)).ConfigureAwait(false);
         }
         return false;
     }
@@ -85,9 +93,13 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
         {
             if (TrySetTextOnce(text, suppressNotification))
             {
+                if (!suppressNotification)
+                {
+                    _ = VerifyAndReassertAsync(text, 220);
+                }
                 return true;
             }
-            Thread.Sleep(25 * (attempt + 1));
+            Thread.Sleep(30 * (attempt + 1));
         }
         return false;
     }
@@ -108,19 +120,61 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
             return await SetTextAsync(text).ConfigureAwait(false);
         }
 
-        for (int attempt = 0; attempt < 5; attempt++)
+        for (int attempt = 0; attempt < 8; attempt++)
         {
             if (TrySetTextAndHtmlOnce(text, html, out bool htmlWritten))
             {
                 LastWriteIncludedHtml = htmlWritten;
+                _ = VerifyAndReassertAsync(text, 220);
                 return true;
             }
-            await Task.Delay(25 * (attempt + 1)).ConfigureAwait(false);
+            await Task.Delay(30 * (attempt + 1)).ConfigureAwait(false);
         }
 
         // 富文本通道不可用时至少保住纯文本
         LastWriteIncludedHtml = false;
         return await SetTextAsync(text).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 防御远程桌面与剪贴板同步工具的“延迟反向覆写”：
+    /// 当用户在远程电脑进行过复制/粘贴后，远程同步通道（rdpclip/ToDesk等）常有几十至数百毫秒的网络延迟包到达。
+    /// 本地 OCR 写入成功后，若在极短时间内被远程同步包篡改覆盖回旧内容，后台核验并自动抢回所有权。
+    /// </summary>
+    private static async Task VerifyAndReassertAsync(string expectedText, int delayMs)
+    {
+        if (string.IsNullOrEmpty(expectedText)) return;
+        try
+        {
+            await Task.Delay(delayMs).ConfigureAwait(false);
+
+            lock (s_clipboardLock)
+            {
+                // 若当前已被更新的自写操作接管，不打扰后续操作
+                if (s_suppressedText != null && !string.Equals(s_suppressedText, expectedText, StringComparison.Ordinal))
+                {
+                    return;
+                }
+            }
+
+            string? current = s_activeListener?.GetText();
+            if (current != null && !string.Equals(current, expectedText, StringComparison.Ordinal))
+            {
+                // 检测到已被外部程序（如 rdpclip 反向同步）覆盖回旧数据，重新确权写入，抑制二次广播通知
+                for (int attempt = 0; attempt < 4; attempt++)
+                {
+                    if (TrySetTextOnce(expectedText, suppressNotification: true))
+                    {
+                        break;
+                    }
+                    await Task.Delay(25 * (attempt + 1)).ConfigureAwait(false);
+                }
+            }
+        }
+        catch
+        {
+            // 容错处理，绝不影响主流程
+        }
     }
 
     public Task<string?> GetTextAsync()
@@ -287,7 +341,6 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
     private void OnNativeClipboardUpdated()
     {
         uint seq = User32.GetClipboardSequenceNumber();
-        long nowTick = Environment.TickCount64;
 
         lock (s_clipboardLock)
         {
@@ -307,8 +360,22 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
             }
         }
 
+        // 异步非阻塞防抖读取：绝不在消息循环中立即同步抢占 OpenClipboard！
+        // 留出 35ms 缓冲，让外部写入方（如 UU 远程、Office 等）完全写完并安全 CloseClipboard，
+        // 彻底杜绝与远程桌面同步程序的锁碰撞（解决用户在远程复制时无法同步回主控电脑的根因）
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            Thread.Sleep(35);
+            ProcessDelayedClipboardUpdate(seq);
+        });
+    }
+
+    private void ProcessDelayedClipboardUpdate(uint seq)
+    {
         string? text = GetText();
         if (string.IsNullOrWhiteSpace(text)) return;
+
+        long nowTick = Environment.TickCount64;
 
         lock (s_clipboardLock)
         {
@@ -356,7 +423,7 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
                 s_suppressedUntilTick = Environment.TickCount64 + 600;
             }
 
-            if (!User32.OpenClipboard(IntPtr.Zero))
+            if (!User32.OpenClipboard(GetPreferredOwnerHwnd()))
             {
                 return false;
             }
@@ -438,7 +505,7 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
 
         lock (s_clipboardLock)
         {
-            if (!User32.OpenClipboard(IntPtr.Zero))
+            if (!User32.OpenClipboard(GetPreferredOwnerHwnd()))
             {
                 return false;
             }
@@ -550,7 +617,7 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
                 return false;
             }
 
-            if (!User32.OpenClipboard(IntPtr.Zero))
+            if (!User32.OpenClipboard(GetPreferredOwnerHwnd()))
             {
                 return false;
             }
@@ -599,7 +666,7 @@ public sealed partial class WindowsClipboardService : IClipboardService, IDispos
 
         lock (s_clipboardLock)
         {
-            if (!User32.OpenClipboard(IntPtr.Zero))
+            if (!User32.OpenClipboard(GetPreferredOwnerHwnd()))
             {
                 return false;
             }

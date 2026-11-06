@@ -78,6 +78,13 @@ public sealed class RecordingSettings
     public bool ShowFloatingBar { get; set; } = false;
 
     /// <summary>
+    /// 开始录制后是否自动最小化主窗口（默认 true）。
+    /// 关掉后主窗口留在原地，适合需要边看界面边讲解、或录制目标就是本程序的场景。
+    /// 与 <see cref="ShowFloatingBar"/> 完全独立：一个管"窗口收不收"，一个管"桌面弹不弹控制条"。
+    /// </summary>
+    public bool MinimizeOnStart { get; set; } = true;
+
+    /// <summary>
     /// 录屏时是否在桌面实时呈现鼠标点击波纹（演示模式，默认 false）
     /// </summary>
     public bool LiveCursorEffect { get; set; } = false;
@@ -97,6 +104,7 @@ public sealed class RecordingSettings
         CursorTrailMs = CursorTrailMs,
         ExcludeFloatingBarFromCapture = ExcludeFloatingBarFromCapture,
         ShowFloatingBar = ShowFloatingBar,
+        MinimizeOnStart = MinimizeOnStart,
         LiveCursorEffect = LiveCursorEffect
     };
 }

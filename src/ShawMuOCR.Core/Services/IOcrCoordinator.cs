@@ -31,4 +31,5 @@ public interface IOcrCoordinator : IDisposable
     Task StartOcrPopupAsync();
     Task RunOcrAsync(OcrImage image);
     Task<OcrResult> RecognizeDirectAsync(OcrImage image);
+    void PreloadEngineInBackground(string scene = "启动预载", int delayMs = 0);
 }

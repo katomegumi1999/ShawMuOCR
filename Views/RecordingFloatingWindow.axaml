@@ -118,7 +118,7 @@
 
                     <!-- 空闲状态：框选并录制 -->
                     <Button Content="📐 框选录制"
-                            Command="{Binding SelectRegionCommand}"
+                            Command="{Binding SelectRegionAndRecordCommand}"
                             Classes="accent"
                             CornerRadius="14"
                             Padding="10,4"

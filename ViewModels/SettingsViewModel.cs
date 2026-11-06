@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.ComponentModel;
 using System.Diagnostics;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -135,7 +136,13 @@ public partial class SettingsViewModel : ViewModelBase
 
     public IReadOnlyList<LanguageItem> TranslateSourceLanguages { get; } = TranslationLanguages.All;
     public IReadOnlyList<LanguageItem> TranslateTargetLanguages { get; } = TranslationLanguages.AllTargets;
-    public IReadOnlyList<TranslationProviderItem> AvailableTranslateProviders { get; } = TranslationProviders.All;
+
+    /// <summary>
+    /// 翻译提供商列表 = 内置云厂商 + AI 节点池中的节点。
+    /// 用 ObservableCollection 而非只读列表，节点增删后要能同步刷新。
+    /// </summary>
+    public ObservableCollection<TranslationProviderItem> AvailableTranslateProviders { get; } =
+        new(TranslationProviders.All);
 
     // 百度翻译
     [ObservableProperty]
@@ -293,11 +300,61 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _selectedExternalModelTypeDisplay = "外部本地目录 (ONNX)";
 
+    /// <summary>
+    /// 是否启用 AI 视觉接口作为 OCR 引擎（替代本地 PaddleOCR 模型）
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SelectedExternalModelType))]
+    [NotifyPropertyChangedFor(nameof(ShowAiOcrSettings))]
+    [NotifyPropertyChangedFor(nameof(ShowNoModelsWarning))]
+    private bool _useAiApiOcr;
+
+    public bool ShowAiOcrSettings => UseAiApiOcr;
+
+    /// <summary>
+    /// 选择 AI 引擎时不再提示"未检测到本地模型"，因为该模式下根本不需要本地模型文件
+    /// </summary>
+    public bool ShowNoModelsWarning => HasNoModels && !UseAiApiOcr;
+
+    // ==========================================
+    // 统一 AI 接口池（翻译与 OCR 共用）
+    // ==========================================
+
+    /// <summary>全部节点，设置页直接编辑</summary>
+    public ObservableCollection<AiNodeViewModel> AiNodes { get; } = new();
+
+    /// <summary>支持图片输入的节点子集，供 OCR 引擎选择</summary>
+    public ObservableCollection<AiNodeViewModel> VisionAiNodes { get; } = new();
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasSelectedAiNode))]
+    private AiNodeViewModel? _selectedAiNode;
+
+    public bool HasSelectedAiNode => SelectedAiNode != null;
+
+    /// <summary>OCR 当前使用的节点</summary>
+    [ObservableProperty]
+    private AiNodeViewModel? _selectedOcrAiNode;
+
+    /// <summary>
+    /// 识别提示词。默认只做文字识别，用户可改为表格提取、公式转写等任务描述。
+    /// </summary>
+    [ObservableProperty]
+    private string _aiVisionPromptText = AiOcrPrompt.Default;
+
+    public bool HasAiNodes => AiNodes.Count > 0;
+    public bool HasVisionAiNodes => VisionAiNodes.Count > 0;
+
     public string SelectedExternalModelType
     {
-        get => SelectedExternalModelTypeDisplay.Contains("Web API", StringComparison.OrdinalIgnoreCase) ? "WebApi" : "LocalDirectory";
+        get
+        {
+            if (UseAiApiOcr) return "AiApi";
+            return SelectedExternalModelTypeDisplay.Contains("Web API", StringComparison.OrdinalIgnoreCase) ? "WebApi" : "LocalDirectory";
+        }
         set
         {
+            UseAiApiOcr = string.Equals(value, "AiApi", StringComparison.OrdinalIgnoreCase);
             SelectedExternalModelTypeDisplay = string.Equals(value, "WebApi", StringComparison.OrdinalIgnoreCase)
                 ? "外部 Web API 接口 (HTTP)"
                 : "外部本地目录 (ONNX)";
@@ -533,11 +590,27 @@ public partial class SettingsViewModel : ViewModelBase
         _showCaptureImageNotification = current.ShowCaptureImageNotification;
         _showWindowAfterOcr = current.ShowWindowAfterOcr;
         _startWithWindows = _startupService.IsEnabled();
-        _selectedModel = current.Model;
+        // AI / WebApi 模式下 Model 是带前缀的伪标识（External:AiApi (...)），
+        // 不能直接塞进本地模型下拉框，否则会把用户选择的本地模型覆盖成 null
+        bool isRemoteEngine = string.Equals(current.ExternalModelType, "AiApi", StringComparison.OrdinalIgnoreCase)
+                              || string.Equals(current.ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase);
+        _selectedModel = isRemoteEngine ? current.EmbeddedModel : current.Model;
         _scanExternalModels = current.ScanExternalModels;
         _externalModelPath = current.ExternalModelPath;
         _externalApiUrl = current.ExternalApiUrl;
         SelectedExternalModelType = current.ExternalModelType;
+
+        // 统一 AI 节点池
+        // 重建会换掉节点对象，所以先记下"用户当前正在看哪一条"，重载后按 Id 还原；
+        // 否则后台额度记账触发重载时，选中项会被悄悄跳到第一个节点。
+        string keepAiNodeId = _selectedAiNode?.Id ?? string.Empty;
+        ResetNodes(current.Ai.Profiles);
+        _aiVisionPromptText = current.Ocr.AiVisionPrompt;
+        _selectedOcrAiNode = VisionAiNodes.FirstOrDefault(n => string.Equals(n.Id, current.Ocr.AiProfileId, StringComparison.Ordinal))
+                             ?? VisionAiNodes.FirstOrDefault();
+        _selectedAiNode = AiNodes.FirstOrDefault(n => string.Equals(n.Id, keepAiNodeId, StringComparison.Ordinal))
+                          ?? AiNodes.FirstOrDefault();
+        RefreshTranslateProviderItems();
         _ocrBackend = NormalizeBackendValue(current.OcrBackend);
         _selectedGpuIndex = current.SelectedGpuIndex;
         InitializeGpuDevices();
@@ -603,7 +676,45 @@ public partial class SettingsViewModel : ViewModelBase
     private void OnExternalSettingsChanged(AppSettings settings)
     {
         if (_isSaving || _isInitializing || IsRecordingAnyHotkey) return;
+
+        // 额度记账会频繁触发保存。若节点池除用量外没有任何变化，只回填数字，
+        // 不重建节点对象 —— 否则用户在设置页输入到一半，焦点与光标会被整体重置。
+        if (TryRefreshAiUsageOnly(settings)) return;
+
         ReloadSettings();
+    }
+
+    /// <summary>
+    /// 外部保存若只改了各节点的用量，就地更新数字而不重载整页。
+    /// 返回 false 表示确有结构性变化，需要走完整重载。
+    /// </summary>
+    private bool TryRefreshAiUsageOnly(AppSettings settings)
+    {
+        if (AiNodes.Count != settings.Ai.Profiles.Count) return false;
+
+        for (int i = 0; i < AiNodes.Count; i++)
+        {
+            var vm = AiNodes[i];
+            var p = settings.Ai.Profiles[i];
+
+            if (!string.Equals(vm.Id, p.Id, StringComparison.Ordinal) ||
+                !string.Equals(vm.Name, p.Name, StringComparison.Ordinal) ||
+                !string.Equals(vm.BaseUrl, p.BaseUrl, StringComparison.Ordinal) ||
+                !string.Equals(vm.ApiKey, p.ApiKey, StringComparison.Ordinal) ||
+                !string.Equals(vm.Model, p.Model, StringComparison.Ordinal) ||
+                vm.SupportsVision != p.SupportsVision ||
+                vm.MonthlyTokenLimit != p.MonthlyTokenLimit)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < AiNodes.Count; i++)
+        {
+            AiNodes[i].UsedTokens = settings.Ai.Profiles[i].UsedTokens;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -786,6 +897,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         OnPropertyChanged(nameof(HasNoModels));
         OnPropertyChanged(nameof(HasAvailableModels));
+        OnPropertyChanged(nameof(ShowNoModelsWarning));
         OnPropertyChanged(nameof(ModelSelectionHint));
     }
 
@@ -796,6 +908,157 @@ public partial class SettingsViewModel : ViewModelBase
         StatusMessage = HasNoModels
             ? "⚠️ 未在 models 文件夹下检测到任何可用模型，请确认模型已放入同级 models 目录"
             : $"✓ 模型列表已刷新，共加载 {AvailableModels.Count} 个可用模型 (当前生效: {SelectedModel})";
+    }
+
+    [RelayCommand]
+    public void ResetAiOcrPrompt()
+    {
+        AiVisionPromptText = AiOcrPrompt.Default;
+        StatusMessage = "✓ AI 识别提示词已恢复为默认文字识别模板";
+    }
+
+    [RelayCommand]
+    public void AddAiNode()
+    {
+        var node = AiNodeViewModel.CreateDefault(AiNodes.Count + 1);
+        AttachNode(node);
+        AiNodes.Add(node);
+        SelectedAiNode = node;
+        RebuildVisionNodes();
+        RefreshTranslateProviderItems();
+        OnPropertyChanged(nameof(HasAiNodes));
+        StatusMessage = "✓ 已添加 AI 节点，填写地址、模型与密钥后即可在翻译与 OCR 中选用";
+        TriggerAutoSave();
+    }
+
+    [RelayCommand]
+    public void RemoveAiNode(AiNodeViewModel? node)
+    {
+        var target = node ?? SelectedAiNode;
+        if (target == null) return;
+
+        DetachNode(target);
+        AiNodes.Remove(target);
+        SelectedAiNode = AiNodes.FirstOrDefault();
+        RebuildVisionNodes();
+        RefreshTranslateProviderItems();
+        OnPropertyChanged(nameof(HasAiNodes));
+        StatusMessage = $"✓ 已删除节点「{target.Name}」";
+        TriggerAutoSave();
+    }
+
+    /// <summary>
+    /// 重建"支持图片输入"的节点列表。
+    /// 清空集合会把 ComboBox 的 SelectedItem 置为 null（docs/agents.md 3.2 的坑），
+    /// 必须先记住再恢复，否则会静默把 OCR 选择的节点写成空。
+    /// </summary>
+    private void RebuildVisionNodes()
+    {
+        var previous = SelectedOcrAiNode;
+
+        VisionAiNodes.Clear();
+        foreach (var node in AiNodes.Where(n => n.SupportsVision))
+        {
+            VisionAiNodes.Add(node);
+        }
+
+        SelectedOcrAiNode = previous != null && VisionAiNodes.Contains(previous)
+            ? previous
+            : VisionAiNodes.FirstOrDefault();
+
+        OnPropertyChanged(nameof(HasVisionAiNodes));
+    }
+
+    /// <summary>
+    /// 订阅节点的字段变更。不订阅会有两个实际故障：
+    /// 1) 用户的节点默认不勾"支持图片输入"，勾上后 OCR 的可选列表仍然是空的，功能等于不可用；
+    /// 2) 编辑密钥/地址/模型不会触发落盘，改完直接关窗口就丢了。
+    /// </summary>
+    private void AttachNode(AiNodeViewModel node) => node.PropertyChanged += OnNodePropertyChanged;
+
+    private void DetachNode(AiNodeViewModel node) => node.PropertyChanged -= OnNodePropertyChanged;
+
+    /// <summary>整池替换：旧节点必须退订，否则已删除的节点仍会拖住本 ViewModel 并被自动保存写回。</summary>
+    private void ResetNodes(IEnumerable<AiApiProfile> profiles)
+    {
+        foreach (var node in AiNodes)
+        {
+            DetachNode(node);
+        }
+
+        AiNodes.Clear();
+        foreach (var profile in profiles)
+        {
+            var node = new AiNodeViewModel(profile);
+            AttachNode(node);
+            AiNodes.Add(node);
+        }
+
+        OnPropertyChanged(nameof(HasAiNodes));
+        RebuildVisionNodes();
+    }
+
+    private void OnNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // 加载/重置期间属性是代码在写，不是用户在编辑，不能触发自动保存
+        if (_isInitializing) return;
+
+        // 用量是额度服务写进来的显示值，不该由界面回写（会与并发记账互相覆盖）
+        if (e.PropertyName == nameof(AiNodeViewModel.UsedTokens)) return;
+
+        switch (e.PropertyName)
+        {
+            case nameof(AiNodeViewModel.SupportsVision):
+                RebuildVisionNodes();
+                break;
+
+            // 下拉框里显示的是"名称 · 模型"，两者变化都要重建翻译提供商项
+            case nameof(AiNodeViewModel.Name):
+            case nameof(AiNodeViewModel.Model):
+                RefreshTranslateProviderItems();
+                break;
+        }
+
+        TriggerAutoSave(debounce: true);
+    }
+
+    /// <summary>
+    /// 重建翻译提供商列表中的 AI 节点项，并按 Id 恢复当前选择。
+    /// </summary>
+    private void RefreshTranslateProviderItems()
+    {
+        string currentId = TranslateProvider;
+
+        for (int i = AvailableTranslateProviders.Count - 1; i >= 0; i--)
+        {
+            if (AvailableTranslateProviders[i].Id.StartsWith(AiSettings.TranslateProviderPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                AvailableTranslateProviders.RemoveAt(i);
+            }
+        }
+
+        foreach (var node in AiNodes)
+        {
+            AvailableTranslateProviders.Add(new TranslationProviderItem(
+                AiSettings.TranslateProviderPrefix + node.Id,
+                node.DisplayName));
+        }
+
+        var restored = AvailableTranslateProviders.FirstOrDefault(
+            p => string.Equals(p.Id, currentId, StringComparison.OrdinalIgnoreCase));
+
+        // 当前选中的节点已被删除：退回第一个可用提供商。
+        // 若不退回，设置里会留下指向已删节点的 "ai:xxx"，之后每次翻译都报「节点已被删除」，
+        // 而用户在下拉框里已看不到那一项，无从改回。
+        if (restored == null && AvailableTranslateProviders.Count > 0)
+        {
+            restored = AvailableTranslateProviders[0];
+        }
+
+        if (restored != null)
+        {
+            SelectedTranslateProvider = restored;
+        }
     }
 
     [RelayCommand]
@@ -1284,6 +1547,7 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(EnableLogAutoClean):
             case nameof(LogRetentionDays):
             case nameof(SelectedExternalModelTypeDisplay):
+            case nameof(UseAiApiOcr):
             case nameof(TranslateProvider):
             case nameof(SelectedTranslateProvider):
             case nameof(SelectedTranslateSourceLang):
@@ -1337,7 +1601,14 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(AliyunMonthlyLimit):
             case nameof(ExternalModelPath):
             case nameof(ExternalApiUrl):
+            case nameof(AiVisionPromptText):
+            case nameof(SelectedOcrAiNode):
                 TriggerAutoSave(debounce: true);
+                break;
+
+            // 节点编辑是即时动作，直接落盘
+            case nameof(SelectedAiNode):
+                TriggerAutoSave(debounce: false);
                 break;
         }
     }
@@ -1497,6 +1768,20 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.ExternalModelType = SelectedExternalModelType;
         newSettings.ExternalModelPath = ExternalModelPath;
         newSettings.ExternalApiUrl = ExternalApiUrl;
+
+        // 节点池整体回写：列表中每个节点都要落盘，删除的节点自然消失。
+        // 用量除外 —— 它由 IAiQuotaService 记账并即时落盘，本页持有的是加载时的快照，
+        // 直接回写会把期间翻译/OCR 产生的用量覆盖掉（设置页开着时必现）。
+        newSettings.Ai.Profiles = AiNodes.Select(n =>
+        {
+            var profile = n.ToProfile();
+            profile.UsedTokens = current.Ai.Find(profile.Id)?.UsedTokens ?? profile.UsedTokens;
+            return profile;
+        }).ToList();
+        newSettings.Ocr.AiProfileId = SelectedOcrAiNode?.Id ?? string.Empty;
+        newSettings.Ocr.AiVisionPrompt = string.IsNullOrWhiteSpace(AiVisionPromptText)
+            ? AiOcrPrompt.Default
+            : AiVisionPromptText;
         newSettings.OcrBackend = NormalizeBackendValue(OcrBackend);
         newSettings.SelectedGpuIndex = SelectedGpuIndex;
         newSettings.EnableAngleDetection = EnableAngleDetection;
@@ -1645,6 +1930,15 @@ public partial class SettingsViewModel : ViewModelBase
             ExternalModelPath = current.ExternalModelPath;
             ExternalApiUrl = current.ExternalApiUrl;
             SelectedExternalModelType = current.ExternalModelType;
+
+            string keepAiNodeId = SelectedAiNode?.Id ?? string.Empty;
+            ResetNodes(current.Ai.Profiles);
+            AiVisionPromptText = current.Ocr.AiVisionPrompt;
+            SelectedOcrAiNode = VisionAiNodes.FirstOrDefault(n => string.Equals(n.Id, current.Ocr.AiProfileId, StringComparison.Ordinal))
+                                ?? VisionAiNodes.FirstOrDefault();
+            SelectedAiNode = AiNodes.FirstOrDefault(n => string.Equals(n.Id, keepAiNodeId, StringComparison.Ordinal))
+                             ?? AiNodes.FirstOrDefault();
+            RefreshTranslateProviderItems();
             OcrBackend = NormalizeBackendValue(current.OcrBackend);
             SelectedGpuIndex = current.SelectedGpuIndex;
             EnableAngleDetection = current.EnableAngleDetection;

@@ -144,7 +144,9 @@ ShawMuOCR/
    - 位图解码必须放在 `scheduler.ExecuteAsync(...)` **内部**，保证排队等待期间不持有解码后的位图内存。
 
 5. **所有云厂商凭据必须加密落盘**。
-   - 当前加密字段清单：`BaiduAppId`、`BaiduSecretKey`、`BaiduApiKey`、`GoogleApiKey`、`OpenAiApiKey`、`VolcengineAccessKey`、`VolcengineSecretKey`、`AliyunAccessKeyId`、`AliyunAccessKeySecret`、`HttpApiAccessToken`。
+   - 当前加密字段清单：`BaiduAppId`、`BaiduSecretKey`、`BaiduApiKey`、`GoogleApiKey`、`OpenAiApiKey`、`VolcengineAccessKey`、`VolcengineSecretKey`、`AliyunAccessKeyId`、`AliyunAccessKeySecret`、`HttpApiAccessToken`，以及 **AI 节点池里每个 `AiApiProfile.ApiKey`**。
+   - 节点池密钥的密文索引是 `AiProfile:{节点Id}:ApiKey`（见 `JsonSettingsService.ProfileKeyField`），**必须按节点 `Id` 索引，绝不能按列表下标**：用下标时删除首条会让全部密文错位，表现为「B 节点静默拿到 A 的密钥」，不报任何错、无日志。`SettingsPersistenceSecurityTests` 有专门用例守这条（删首节点后其余节点密钥不得错位）。
+   - 节点被删除后，`EncryptSensitiveFields` 通过 `PruneStaleProfileCiphertexts` 清掉其密文副本，否则"不可解密文"字典会随编辑次数无限增长。
    - **新增任何凭据字段时，必须同时加入 `JsonSettingsService.DecryptSensitiveFields` 与 `EncryptSensitiveFields` 两处**，否则就是明文落盘。
    - 兼容规则：无 `enc:` 前缀的旧明文原样读入（下次保存自动加密升级）；`enc:` 密文解不开时（换机/换账户）内存返回空但**落盘原样写回**，绝不销毁用户凭据。
 
@@ -235,11 +237,97 @@ Release AOT 实测（本机，含自定义背景图）：
 
 ---
 
+### 3.13 统一 AI 接口池（单一节点池 + 公共额度）
+
+**铁律：AI 接口的连接信息只有一个事实来源 —— `AppSettings.Ai.Profiles`。** 翻译与 OCR 都只保存
+「选了哪一个节点」（`OcrSettings.AiProfileId` / `TranslateProvider = "ai:<节点Id>"`），
+**禁止**为某个功能单开一套 baseUrl/apiKey/model 配置，也**禁止**在功能模块里各自发 HTTP。
+
+分层：
+
+| 层 | 文件 | 职责 |
+| --- | --- | --- |
+| 数据 | `Settings/Sections/AiSettings.cs` | `AiApiProfile` 节点池 + 全局用量月份标记 |
+| 协议 | `Ai/OpenAiCompatibleClient.cs` | `/chat/completions`、Bearer、重试、限流、JSON 读写 |
+| 额度 | `Ai/AiQuotaService.cs` | `TryCheck` / `Commit` / `GetSnapshot`，跨月统一清零 |
+| 消费 | `OCR/AiApiOcrEngine.cs`、`Translation/Providers/AiNodeTranslator.cs` | 只做「准备输入 + 调客户端 + 记账」 |
+
+不可破坏的约束：
+
+1. **凭据按节点 `Id` 索引**（`AiProfile:{Id}:ApiKey`），不得用列表下标 —— 用下标时删除首条会让全部密文错位，
+   B 节点静默拿到 A 的密钥且不报错。见 3.9 与 `SettingsPersistenceSecurityTests`。
+2. **迁移用 `AiSettings.Migrated` 做幂等标记**，不能用「池子为空」判断，否则用户删光节点后迁移会复活节点。
+3. **限流信号量必须按节点 Id 静态共享**（`OpenAiCompatibleClient.s_gates`）。批量 OCR 会按 CPU 核数创建多个
+   引擎实例，实例级信号量会把并发放大到「实例数 × 上限」，直接撞供应商 429。
+4. **AI 引擎必须声明 `UsesLocalCpu => false`**。否则 `CpuThrottleScheduler` 把 3 秒网络延迟当成 CPU 占用，
+   再空等 3 秒（`CalculateDutyCyclePauseMs(3000, 50) == 3000`），批量速度直接腰斩。
+5. **AI 引擎不给坐标**：`Blocks` 恒为空。大模型的位置不可靠，伪造坐标会污染对外 HTTP 接口的框选结果；
+   下游批量导出会自动退化为纯文本路径。
+6. **用量只能由 `IAiQuotaService` 写**。界面持有的是加载时快照，保存设置时**不得**回写 `UsedTokens`
+   （`SettingsViewModel` 已改为从 `_settingsService.Current` 取实时值），否则设置页开着时会把期间产生的
+   用量覆盖掉。`SettingsViewModel` 对节点 `UsedTokens` 的变更也不触发自动保存。
+7. **图片上传前统一 JPEG q85 + 最长边 1536**（`AiMaxImageSide` / `AiJpegQuality`）。PNG 截图上 MB 很常见，
+   base64 后体积再乘 1.33，直接决定延迟与图片 token 数；透明区必须先铺白底，否则 JPEG 里成黑块。
+8. **超时/断网/401 要给可执行的中文提示**，不能笼统报「调用异常」：401/403 立即失败不重试，
+   429/5xx 退避 1.2 秒重试一次，本地超时报「超过 N 秒未响应」。
+
+消费端一致性（改动时必须同步）：
+
+- 设置页与翻译页的下拉框都要包含节点（`SettingsViewModel.AvailableTranslateProviders`、
+  `TranslateViewModel.AvailableProviders`）。翻译页若只列内置厂商，设置里选了 AI 节点后本页会显示成
+  「百度翻译」，而实际调用的是 AI 接口 —— 显示与行为不一致，且用户在此页改选会静默改掉全局设置。
+- `TranslationService.GetQuotaInfo("ai:<id>")` 必须返回该节点的 Token 用量，否则会落到百度默认分支，
+  额度条显示成百度的数。
+- 节点选择变化要能被 `OcrCoordinator.SelectedAiNodeChanged` 感知（比对 BaseUrl/ApiKey/Model），
+  否则改完密钥不重建引擎，用户会以为没生效。
+
+---
+
+### 3.14 录屏页与浮窗的三个交互约束
+
+1. **开录后的两个界面开关，各管各的**：`StartRecordingAsync` 成功后按设置分别处理，**互不联动**。
+   - `MinimizeOnStart`（设置项 `RecordingMinimizeOnStart`，**默认 true**）→ 为真时发
+     `HostWindowMinimizeRequested`，由 `RecordingPageView` 设 `WindowState.Minimized`
+     （VM 不持有 Window）。为假时主窗口留在原地，适合边看界面边讲解、或录制目标就是本程序。
+   - `IsFloatingBarEnabled`（设置项 `RecordingShowFloatingBar`，**默认 false**）→ 为真时才发
+     `FloatingBarShowRequested`。历史实现是 `IsFloatingBarEnabled || minimizeHost`，
+     等于把用户关掉的开关在开录瞬间强行打开一次，屏幕上凭空多出一条控制栏 —— 已改掉，别再耦合回去。
+   - 有 <b>两个开关</b>是用户 2026-11-07 的裁定：先要求「最小化后别自动弹东西」，
+     再补「干脆最小化也让我自己决定」。两个开关都在录屏页「开录后的桌面行为」里。
+   - **录屏热键（默认 `Alt+R`）的语义是「呼出 / 收起悬浮控制条」，不是直接停止录制**。
+     它是用户主动行为，因此「不自动弹」不限制它；控制条关着时按一次热键仍能临时叫出来停止。
+   - 录制目标是本窗口时（窗口模式下勾选了自己）页面会跳过最小化，否则会录出一段空画面。
+   - 顺带收益：最小化后 `ShouldPreviewBeActive()` 为 false，预览 HWND 归零，预览画面不会被录进 MP4；
+     恢复窗口时靠 `WindowStateProperty` / `LayoutUpdated` 自动重新激活。
+
+2. **随动浮窗（选区翻译 / OCR）背景不得透明**：`TranslateFloatingWindow` 的窗口本身是
+   `Background="Transparent"`，实色底由 `FloatingWindowBackground` 资源提供。未自定义时必须回落
+   `ThemeDefaults.FloatingWindowBackgroundHex`（默认浅灰 `#F3F3F3`），**不能清空资源** ——
+   一清空整个浮窗就完全透明，桌面内容直接透上来、文字糊在背景上。
+   守卫测试：`ThemeViewModel_FloatingWindowBackground_DefaultsToOpaqueGrey`、
+   `RecordingStartUiPolicyTests`。
+
+3. **编码器探针必须与 Rust 候选表同规则**：`MuRecorder/Services/EncoderProbe.cs` 在开录前把
+   「自动检测」的落点算出来显示。判定规则是取第一个 `!= Some(false)` 的格式，顺序 AV1 → HEVC → H.264，
+   三者都明确不可用才写软编。三个坑：
+   - **`null`（未探测 / 问不出来）必须当作"可能可用"继续尝试**，与 Rust
+     `filter_candidates_by_cached_probe` 一致；当成 `false` 会把「还没探完」错报成「不支持」。
+   - 探针**只读缓存**（`RecordingService.TryGetHardwareEncoder`），绝不现场枚举 —— 单次
+     `MFTEnumEx` 100–430 ms，压在下拉框切换上就是肉眼可见的卡顿。
+   - 录制中隐藏探针：那时统计区显示的是真实 `stats.encoder_type`，探针仍写「预计」会与事实打架。
+   - **提示文案必须体现「分片优先」**：真实候选表是「编码器 × 容器」的 7 项展开，分片档全试完
+     才进普通 MP4，所以 AV1 的普通 MP4 排在 H.264 的分片之后。写成「AV1 → HEVC → H.264 → 软编」
+     会让用户以为 AV1 会一路试到底。文案由 `AutoCodecChain` + `ChainFrom()` 生成，起点随判定裁剪
+     （AV1 已确认不可用时链里不再出现 AV1）。
+   守卫测试：`EncoderProbeTests`（含「未知不跳过 AV1」「全不可用才告警」「文案含分片优先」三条关键分支）。
+
+---
+
 ## 4. 常用构建与验证命令
 
 验证分**快档**与**全量**两档。**不要每次改动都跑全量** —— 全量约 2 分钟，而其中 98% 的耗时来自真实推理/内存池测试，其余纯逻辑测试只需 4 秒。
 
-### 4.1 改动期间：快档（约 4 秒 / 315 项）
+### 4.1 改动期间：快档（约 8 秒 / 422 项）
 
 ```bash
 # 1. 编译（必须 0 警告、0 错误）
@@ -274,6 +362,7 @@ dotnet test --filter "FullyQualifiedName~TableLineDetector"
 | MuClip 同步 | `MuClipMemoryPoolTests`（慢） |
 | `src/ShawMuOCR.Windows/ScreenCapture/`、`src/ShawMuOCR.Windows/Win32/` | `ScreenCaptureServiceTests`、`DibBufferPackerTests`、`ScreenRectTests`（含 GDI 句柄泄漏校验，需真实桌面会话） |
 | 长截图（位移估计 / 拼接 / 采集循环） | `LongScreenshotStitcherTests`、`LongScreenshotCapturerTests`、`OcrCoordinatorLongScreenshotTests` |
+| `src/MuRecorder/`、录屏页与浮窗 | `EncoderProbeTests`、`RecordingStartUiPolicyTests`、`RecordingServiceIntegrationTests`（真机链路为 `Category=Slow`） |
 | `.axaml` / 纯样式 | 只需 `dotnet build`；行为改动再看对应 ViewModel 的测试 |
 
 ### 4.3 收尾：全量（约 2 分钟 / 345 项）

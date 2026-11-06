@@ -89,8 +89,110 @@ public class SettingsPersistenceSecurityTests : IDisposable
     }
 
     [Fact]
-    public void Save_EncryptsBaiduGoogleAndOpenAiKeys()
+    public void Save_EncryptsEveryAiProfileApiKey()
     {
+        var service = new JsonSettingsService(_path);
+        var settings = service.Current;
+        settings.Ai.Profiles.Add(new AiApiProfile
+        {
+            Id = "node-a",
+            Name = "通义千问",
+            BaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            ApiKey = "sk-node-a-plain",
+            Model = "qwen-vl-max",
+            SupportsVision = true
+        });
+        settings.Ai.Profiles.Add(new AiApiProfile
+        {
+            Id = "node-b",
+            Name = "内网网关",
+            ApiKey = "sk-node-b-plain",
+            Model = "gpt-4o-mini"
+        });
+        settings.Ocr.ExternalModelType = "AiApi";
+        settings.Ocr.AiProfileId = "node-a";
+        settings.Ocr.AiVisionPrompt = "只输出表格";
+        service.Save(settings);
+
+        string json = File.ReadAllText(_path);
+
+        // 节点池里每个节点的密钥都不能以明文落盘（docs/agents.md 3.9 红线）
+        Assert.DoesNotContain("sk-node-a-plain", json);
+        Assert.DoesNotContain("sk-node-b-plain", json);
+        Assert.Contains("enc:", json);
+
+        // 模型名与提示词不是凭据，落盘保持可读（中文会被 JSON 源生成器转义为 \uXXXX，
+        // 属全局既有行为，因此这里通过重新加载来验证内容完整而不是断言字面量）
+        Assert.Contains("qwen-vl-max", json);
+
+        // 内存中仍是明文，供运行期直接使用
+        Assert.Equal("sk-node-a-plain", service.Current.Ai.Profiles[0].ApiKey);
+        Assert.Equal("sk-node-b-plain", service.Current.Ai.Profiles[1].ApiKey);
+
+        // 重新加载（模拟重启）后每个节点必须拿回自己的密钥
+        var reloaded = new JsonSettingsService(_path);
+        Assert.Equal(2, reloaded.Current.Ai.Profiles.Count);
+        Assert.Equal("sk-node-a-plain", reloaded.Current.Ai.Find("node-a")!.ApiKey);
+        Assert.Equal("sk-node-b-plain", reloaded.Current.Ai.Find("node-b")!.ApiKey);
+        Assert.Equal("qwen-vl-max", reloaded.Current.Ai.Find("node-a")!.Model);
+        Assert.Equal("只输出表格", reloaded.Current.Ocr.AiVisionPrompt);
+        Assert.Equal("node-a", reloaded.Current.Ocr.AiProfileId);
+        Assert.Equal("AiApi", reloaded.Current.Ocr.ExternalModelType);
+    }
+
+    [Fact]
+    public void Save_AfterRemovingFirstProfile_KeepsRemainingKeyAligned()
+    {
+        var service = new JsonSettingsService(_path);
+        var settings = service.Current;
+        settings.Ai.Profiles.Add(new AiApiProfile { Id = "node-a", Name = "A", ApiKey = "sk-aaa", Model = "gpt-4o-mini" });
+        settings.Ai.Profiles.Add(new AiApiProfile { Id = "node-b", Name = "B", ApiKey = "sk-bbb", Model = "gpt-4o" });
+        service.Save(settings);
+
+        // 删掉首节点再保存 —— 这正是「按列表下标索引密文」会错位的场景：
+        // 错位时 B 会静默拿到 A 的密钥，没有异常、没有日志。
+        var reloaded = new JsonSettingsService(_path);
+        var edited = reloaded.Current;
+        edited.Ai.Profiles.RemoveAll(p => p.Id == "node-a");
+        reloaded.Save(edited);
+
+        string json = File.ReadAllText(_path);
+        Assert.DoesNotContain("sk-aaa", json);
+
+        var again = new JsonSettingsService(_path);
+        Assert.Single(again.Current.Ai.Profiles);
+        Assert.Equal("node-b", again.Current.Ai.Profiles[0].Id);
+        Assert.Equal("sk-bbb", again.Current.Ai.Profiles[0].ApiKey);
+    }
+
+    /// <summary>
+    /// 换电脑 / 换系统账户后 DPAPI 解不开节点密钥：内存里只能置空，但原密文绝不能被销毁，
+    /// 否则用户换回原账户时会发现密钥凭空消失。
+    /// </summary>
+    [Fact]
+    public void Save_KeepsUnreadableProfileCiphertextInsteadOfDestroyingIt()
+    {
+        var token = "enc:not-a-valid-dpapi-blob";
+
+        var service = new JsonSettingsService(_path);
+        var settings = service.Current;
+        // 已经是 enc: 前缀的内容不会被重复加密，原样落盘，用它模拟「本机解不开的密文」
+        settings.Ai.Profiles.Add(new AiApiProfile { Id = "node-broken", Name = "异机", ApiKey = token });
+        settings.Ai.Profiles.Add(new AiApiProfile { Id = "node-ok", Name = "本机", ApiKey = "sk-ok-plain" });
+        service.Save(settings);
+
+        var loaded = new JsonSettingsService(_path);
+        Assert.Equal(string.Empty, loaded.Current.Ai.Find("node-broken")!.ApiKey);
+        Assert.Equal("sk-ok-plain", loaded.Current.Ai.Find("node-ok")!.ApiKey);
+
+        // 不做任何编辑直接再存一次：解不开的那份密文必须原样写回
+        loaded.Save(loaded.Current);
+        Assert.Contains(token, File.ReadAllText(_path));
+        Assert.Equal("sk-ok-plain", new JsonSettingsService(_path).Current.Ai.Find("node-ok")!.ApiKey);
+    }
+
+    [Fact]
+    public void Save_EncryptsBaiduGoogleAndOpenAiKeys()    {
         var service = new JsonSettingsService(_path);
         var settings = service.Current;
         settings.BaiduAppId = "baidu_app_id_plain";

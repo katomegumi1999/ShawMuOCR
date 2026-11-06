@@ -260,7 +260,37 @@ public partial class MuClipService : IMuClipService
 
         _dbPath = dbPath;
         string dbKey = GetOrCreateDatabaseKey(dbPath);
-        _core = new MuClipCore(dbPath, dbKey);
+        try
+        {
+            _core = new MuClipCore(dbPath, dbKey);
+        }
+        catch (Exception ex)
+        {
+            // 核心数据库打开失败：极大概率是用户从其他电脑/系统迁移了旧库，
+            // 导致当前机器的 DPAPI 无法解密旧密钥，或者旧数据库文件损坏。
+            // 自动重命名归档损坏/无法解密的旧库，生成新的干净数据库自愈，防止程序永久闪退。
+            Console.WriteLine($"[MuClip] 核心数据库打开失败，启动自动归档与自愈流程: {ex.Message}");
+            if (File.Exists(dbPath))
+            {
+                string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+                string bakPath = dbPath + $".corrupted_{timestamp}.bak";
+                try { File.Move(dbPath, bakPath, true); } catch { }
+
+                string keyPath = dbPath + ".key";
+                if (File.Exists(keyPath))
+                {
+                    try { File.Move(keyPath, keyPath + $".corrupted_{timestamp}.bak", true); } catch { }
+                }
+
+                // 重新生成新的合法密钥并重试创建新数据库
+                dbKey = GetOrCreateDatabaseKey(dbPath);
+                _core = new MuClipCore(dbPath, dbKey);
+            }
+            else
+            {
+                throw;
+            }
+        }
 
         // 启动即尝试一次滚动备份（Rust 侧按 24h 节流，不会每次启动都生成）。
         TryAutoBackup();

@@ -21,7 +21,11 @@ public partial class TranslateViewModel : ViewModelBase
     public IReadOnlyList<LanguageItem> SourceLanguages { get; } = TranslationLanguages.All;
     public IReadOnlyList<LanguageItem> TargetLanguages { get; } = TranslationLanguages.AllTargets;
 
-    public IReadOnlyList<TranslationProviderItem> AvailableProviders { get; } = TranslationProviders.All;
+    /// <summary>
+    /// 提供商列表 = 内置云厂商 + AI 节点池中的节点。
+    /// 必须是可观察集合：节点在设置里增删后，本页下拉要跟着变。
+    /// </summary>
+    public ObservableCollection<TranslationProviderItem> AvailableProviders { get; } = new(TranslationProviders.All);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasSourceText))]
@@ -88,13 +92,75 @@ public partial class TranslateViewModel : ViewModelBase
         _coordinator = coordinator;
 
         var s = _settingsService.Current;
-        _selectedProviderItem = AvailableProviders.FirstOrDefault(p => string.Equals(p.Id, s.TranslateProvider, StringComparison.OrdinalIgnoreCase)) ?? AvailableProviders[0];
+        _selectedProviderItem = AvailableProviders[0];
+        RebuildProviders(s.TranslateProvider);
         _selectedSourceLang = SourceLanguages.FirstOrDefault(x => x.Code == s.TranslateSourceLang) ?? SourceLanguages[0];
         _selectedTargetLang = TargetLanguages.FirstOrDefault(x => x.Code == s.TranslateTargetLang) ?? TargetLanguages[0];
 
         UpdateQuotaInfo();
 
         _translationService.QuotaUpdated += OnQuotaUpdated;
+        _settingsService.SettingsChanged += OnSettingsChanged;
+    }
+
+    /// <summary>
+    /// 重建提供商下拉里的 AI 节点项，并按 Id 还原选择。
+    /// 不追加节点的话，设置里选了 AI 节点后本页会显示成"百度翻译" ——
+    /// 用户看到的选择与实际调用的接口不一致，且在此页改选任何一项都会悄悄改掉全局设置。
+    /// </summary>
+    private void RebuildProviders(string? preferredId)
+    {
+        for (int i = AvailableProviders.Count - 1; i >= 0; i--)
+        {
+            if (AvailableProviders[i].Id.StartsWith(AiSettings.TranslateProviderPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                AvailableProviders.RemoveAt(i);
+            }
+        }
+
+        foreach (var node in _settingsService.Current.Ai.Profiles)
+        {
+            AvailableProviders.Add(new TranslationProviderItem(
+                AiSettings.TranslateProviderPrefix + node.Id,
+                BuildNodeLabel(node)));
+        }
+
+        var restored = AvailableProviders.FirstOrDefault(
+                           p => string.Equals(p.Id, preferredId, StringComparison.OrdinalIgnoreCase))
+                       ?? AvailableProviders.FirstOrDefault();
+
+        if (restored != null)
+        {
+            SelectedProviderItem = restored;
+        }
+    }
+
+    private static string BuildNodeLabel(AiApiProfile node)
+    {
+        string name = string.IsNullOrWhiteSpace(node.Name) ? "(未命名)" : node.Name.Trim();
+        return string.IsNullOrWhiteSpace(node.Model) ? name : $"{name} · {node.Model.Trim()}";
+    }
+
+    private void OnSettingsChanged(AppSettings settings)
+    {
+        Dispatcher.UIThread.Post(() =>
+        {
+            // 额度记账几乎每次保存都会触发本事件；节点没变就只刷新用量数字，
+            // 否则下拉框会被反复重建，用户正在展开选择时会被打断。
+            var expected = settings.Ai.Profiles
+                .Select(p => new TranslationProviderItem(AiSettings.TranslateProviderPrefix + p.Id, BuildNodeLabel(p)))
+                .ToList();
+            var listed = AvailableProviders
+                .Where(p => p.Id.StartsWith(AiSettings.TranslateProviderPrefix, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (!expected.SequenceEqual(listed))
+            {
+                RebuildProviders(SelectedProvider);
+            }
+
+            UpdateQuotaInfo();
+        });
     }
 
     private void OnQuotaUpdated()

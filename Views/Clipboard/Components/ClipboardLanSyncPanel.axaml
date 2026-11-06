@@ -29,10 +29,56 @@
                                 <Button DockPanel.Dock="Right" Content="取消" Padding="6,2" FontSize="10.5" Command="{Binding CancelOutgoingPairCommand}" VerticalAlignment="Center" />
                             </DockPanel>
                             <TextBlock Text="{Binding PendingPairDeviceName, StringFormat='目标设备: {0}'}" FontSize="11.5" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" />
-                            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}" BorderThickness="1" CornerRadius="6" Padding="8,4" HorizontalAlignment="Center">
-                                <TextBlock Text="{Binding PendingPairPin}" FontSize="20" FontWeight="Bold" LetterSpacing="4" TextAlignment="Center" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-                            </Border>
-                            <TextBlock Text="请在对方设备上弹出窗口中输入上述 6 位数字以完成配对" FontSize="10.5" Foreground="{DynamicResource TextFillColorTertiaryBrush}" TextWrapping="Wrap" />
+                            <!-- 点击 PIN 数字直接复制到剪贴板 -->
+                            <Button Command="{Binding CopyPendingPairPinCommand}"
+                                    Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                                    BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="14,5"
+                                    HorizontalAlignment="Center"
+                                    Cursor="Hand"
+                                    ToolTip.Tip="点击直接复制配对码">
+                                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding PendingPairPin}"
+                                               FontSize="22"
+                                               FontWeight="Bold"
+                                               LetterSpacing="4"
+                                               TextAlignment="Center"
+                                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                               VerticalAlignment="Center" />
+                                    <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                            CornerRadius="4"
+                                            Padding="6,2"
+                                            VerticalAlignment="Center">
+                                        <Panel>
+                                            <TextBlock IsVisible="{Binding !IsPendingPinCopied}"
+                                                       Text="📋 复制"
+                                                       FontSize="11"
+                                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                       VerticalAlignment="Center" />
+                                            <TextBlock IsVisible="{Binding IsPendingPinCopied}"
+                                                       Text="✓ 已复制"
+                                                       FontSize="11"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#10B981"
+                                                       VerticalAlignment="Center" />
+                                        </Panel>
+                                    </Border>
+                                </StackPanel>
+                            </Button>
+                            <TextBlock IsVisible="{Binding IsPendingPinCopied}"
+                                       Text="✓ 配对码已复制到剪贴板"
+                                       FontSize="10.5"
+                                       FontWeight="SemiBold"
+                                       Foreground="#10B981"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock IsVisible="{Binding !IsPendingPinCopied}"
+                                       Text="请在对方设备上弹出窗口中输入上述 6 位数字 (点击上方数字可直接复制)"
+                                       FontSize="10.5"
+                                       Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                       TextWrapping="Wrap"
+                                       HorizontalAlignment="Center" />
                         </StackPanel>
                     </Border>
 

@@ -237,6 +237,44 @@ public class ThemeAndSchedulerTests
     }
 
     [Fact]
+    public void ThemeViewModel_FloatingWindowBackground_DefaultsToOpaqueGrey()
+    {
+        var fakeSettings = new FakeSettingsService();
+        var themeService = new ThemeService(fakeSettings);
+        var vm = new ThemeViewModel(themeService);
+
+        var expected = Avalonia.Media.Color.Parse(ThemeDefaults.FloatingWindowBackgroundHex);
+
+        // 未自定义时必须仍然有一个实色，而不是留空。
+        // 留空会让浮窗把背景资源整个清掉，而窗口本身是 Transparent → 整块浮窗透明。
+        Assert.Null(vm.FloatingWindowBackgroundColorHex);
+        Assert.False(vm.HasCustomFloatingWindowBackgroundColor);
+        Assert.Equal(expected, vm.SelectedFloatingWindowBackgroundColor);
+
+        var brush = Assert.IsType<Avalonia.Media.SolidColorBrush>(vm.FloatingWindowBackgroundColorPreviewBrush);
+        Assert.Equal(expected, brush.Color);
+        Assert.Equal(0xFF, brush.Color.A); // 必须完全不透明，否则桌面内容会透上来
+
+        // 自定义后再点「恢复默认」，仍要回到同一个浅灰
+        vm.SelectFloatingWindowBackgroundColorCommand.Execute("#1E1E1E");
+        Assert.Equal("#1E1E1E", vm.FloatingWindowBackgroundColorHex);
+
+        vm.ResetFloatingWindowBackgroundColorCommand.Execute(null);
+        Assert.Null(vm.FloatingWindowBackgroundColorHex);
+        Assert.Equal(expected, vm.SelectedFloatingWindowBackgroundColor);
+        Assert.Equal(expected, ((Avalonia.Media.SolidColorBrush)vm.FloatingWindowBackgroundColorPreviewBrush!).Color);
+    }
+
+    [Fact]
+    public void ThemeDefaults_FloatingWindowBackground_HasNoAlphaChannel()
+    {
+        // 6 位十六进制 = 无 alpha 通道，任何情况下都不会半透明
+        string hex = ThemeDefaults.FloatingWindowBackgroundHex;
+        Assert.StartsWith("#", hex);
+        Assert.Equal(7, hex.Length);
+    }
+
+    [Fact]
     public void ThemeViewModel_ColorAndHexTwoWaySynchronization()
     {
         var fakeSettings = new FakeSettingsService();

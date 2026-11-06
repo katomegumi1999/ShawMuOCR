@@ -81,7 +81,7 @@ public static partial class WindowEnumerator
 
             uint pid = 0;
             _ = NativeMethods.GetWindowThreadProcessId(hwnd, ref pid);
-            if (pid == 0 || pid == t_selfPid)
+            if (pid == 0)
             {
                 return 1; // 本进程窗口（主界面自身）不录
             }
@@ -129,6 +129,17 @@ public static partial class WindowEnumerator
             if (string.IsNullOrWhiteSpace(title) || title is "Program Manager" or "任务栏" or "Taskbar")
             {
                 return 1;
+            }
+
+            if (pid == t_selfPid)
+            {
+                // 允许录制软件自身的主界面与功能窗口，但明确排除透明标注层、悬浮工具栏、高亮边界等辅助工具窗
+                if (string.Equals(title, "屏幕实时标注", StringComparison.Ordinal) ||
+                    string.Equals(title, "录屏桌面工具栏", StringComparison.Ordinal) ||
+                    string.Equals(title, "录制区域边界高亮", StringComparison.Ordinal))
+                {
+                    return 1;
+                }
             }
 
             bool isIconic = NativeMethods.IsIconic(hwnd);

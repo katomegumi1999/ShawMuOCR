@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using Avalonia;
 using Avalonia.Threading;
+using ShawMuOCR.Core.Ai;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.Logging;
@@ -64,7 +65,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
         IScreenSelectionService? selectionService = null,
         ILoggerService? logger = null,
         ITranslationService? translationService = null,
-        IIdleSleepService? idleSleepService = null)
+        IIdleSleepService? idleSleepService = null,
+        IAiQuotaService? aiQuota = null)
     {
         _captureService = captureService;
         _selectionService = selectionService ?? new AvaloniaScreenSelectionFallback();
@@ -72,7 +74,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
         _clipboardService = clipboardService;
         _settingsService = settingsService;
         _logger = logger;
-        _translationService = translationService ?? new TranslationService(settingsService);
+        _translationService = translationService
+                              ?? new TranslationService(settingsService, aiQuota: aiQuota ?? new AiQuotaService(settingsService));
         _idleSleepService = idleSleepService;
 
         // 引擎改为惰性 + 后台线程实例化：启动路径上不再同步加载 ONNX 会话，
@@ -274,6 +277,25 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
     private AppSettings _cachedSettings;
 
+    /// <summary>
+    /// 判断 OCR 所选 AI 节点的连接参数是否发生变化。
+    /// 只改节点 Id 的比对不够：用户可能就地编辑同一个节点的地址/密钥/模型。
+    /// </summary>
+    private static bool SelectedAiNodeChanged(AppSettings before, AppSettings after)
+    {
+        string? id = after.Ocr.AiProfileId;
+        if (string.IsNullOrWhiteSpace(id)) return false;
+
+        var a = before.Ai.Find(id);
+        var b = after.Ai.Find(id);
+        if (a == null && b == null) return false;
+        if (a == null || b == null) return true;
+
+        return !string.Equals(a.BaseUrl, b.BaseUrl, StringComparison.Ordinal)
+               || !string.Equals(a.ApiKey, b.ApiKey, StringComparison.Ordinal)
+               || !string.Equals(a.Model, b.Model, StringComparison.Ordinal);
+    }
+
     private void OnSettingsChanged(AppSettings settings)
     {
         lock (_stateLock)
@@ -285,6 +307,13 @@ public sealed class OcrCoordinator : IOcrCoordinator
                 _cachedSettings.ExternalModelType != settings.ExternalModelType ||
                 _cachedSettings.ExternalModelPath != settings.ExternalModelPath ||
                 _cachedSettings.ExternalApiUrl != settings.ExternalApiUrl ||
+                _cachedSettings.Ocr.AiProfileId != settings.Ocr.AiProfileId ||
+                _cachedSettings.Ocr.AiVisionPrompt != settings.Ocr.AiVisionPrompt ||
+                _cachedSettings.Ocr.AiMaxConcurrency != settings.Ocr.AiMaxConcurrency ||
+                _cachedSettings.Ocr.AiTimeoutSeconds != settings.Ocr.AiTimeoutSeconds ||
+                _cachedSettings.Ocr.AiMaxImageSide != settings.Ocr.AiMaxImageSide ||
+                _cachedSettings.Ocr.AiJpegQuality != settings.Ocr.AiJpegQuality ||
+                SelectedAiNodeChanged(_cachedSettings, settings) ||
                 _cachedSettings.EnableAngleDetection != settings.EnableAngleDetection ||
                 _cachedSettings.MaxSideLen != settings.MaxSideLen ||
                 !string.Equals(_cachedSettings.OcrBackend, settings.OcrBackend, StringComparison.OrdinalIgnoreCase) ||

@@ -468,10 +468,139 @@
                     <StackPanel Spacing="14">
                         <TextBlock Text="OCR 引擎与模型设置" FontWeight="SemiBold" FontSize="15" />
 
-                        <!-- 模型选择：直接读取同目录下的 models 文件夹 -->
+                        <!-- 统一 AI 接口池：翻译与 OCR 共用的节点列表 -->
                         <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
                                 CornerRadius="6"
                                 Padding="12">
+                            <StackPanel Spacing="10">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,16,0" VerticalAlignment="Center">
+                                        <TextBlock Text="AI 接口池" FontWeight="Medium" />
+                                        <TextBlock Text="在这里添加任意多个 OpenAI 兼容接口（地址填到 /v1 为止）。翻译与 OCR 各自从中选一个节点，用量按节点统一记账。"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Button Content="＋ 添加节点" Command="{Binding AddAiNodeCommand}" Padding="10,5" FontSize="12" />
+                                        <Button Content="删除" Command="{Binding RemoveAiNodeCommand}" CommandParameter="{Binding SelectedAiNode}" Padding="10,5" FontSize="12" />
+                                    </StackPanel>
+                                </Grid>
+
+                                <ComboBox ItemsSource="{Binding AiNodes}"
+                                          SelectedItem="{Binding SelectedAiNode}"
+                                          PlaceholderText="还没有节点，点右上角「添加节点」"
+                                          HorizontalAlignment="Stretch">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:AiNodeViewModel">
+                                            <TextBlock Text="{Binding DisplayName}" />
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+
+                                <StackPanel Spacing="8" IsVisible="{Binding HasSelectedAiNode}">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="名称" VerticalAlignment="Center" FontSize="12" Width="56" />
+                                        <TextBox Grid.Column="1" Text="{Binding SelectedAiNode.Name}" FontSize="12" PlaceholderText="例如：通义千问" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="接口地址" VerticalAlignment="Center" FontSize="12" Width="56" />
+                                        <TextBox Grid.Column="1" Text="{Binding SelectedAiNode.BaseUrl}" FontSize="12" PlaceholderText="https://api.openai.com/v1" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="Auto,*,Auto,*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="模型" VerticalAlignment="Center" FontSize="12" Width="56" />
+                                        <TextBox Grid.Column="1" Text="{Binding SelectedAiNode.Model}" FontSize="12" PlaceholderText="qwen-vl-max" />
+                                        <TextBlock Grid.Column="2" Text="月额度" VerticalAlignment="Center" FontSize="12" />
+                                        <NumericUpDown Grid.Column="3"
+                                                       Value="{Binding SelectedAiNode.MonthlyTokenLimit}"
+                                                       Minimum="0" Maximum="100000000" Increment="10000"
+                                                       FormatString="N0" FontSize="12" Width="130" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="API Key" VerticalAlignment="Center" FontSize="12" Width="56" />
+                                        <TextBox Grid.Column="1" Text="{Binding SelectedAiNode.ApiKey}" PasswordChar="*" FontSize="12" PlaceholderText="sk-..." />
+                                    </Grid>
+                                    <CheckBox Content="支持图片输入（可被 OCR 选用）"
+                                              IsChecked="{Binding SelectedAiNode.SupportsVision}"
+                                              FontSize="12" />
+                                    <TextBlock Text="{Binding SelectedAiNode.QuotaText}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- OCR 使用哪个节点 -->
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6"
+                                Padding="12">
+                            <StackPanel Spacing="12">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <StackPanel Grid.Column="0" Spacing="2" VerticalAlignment="Center" Margin="0,0,16,0">
+                                        <TextBlock Text="使用 AI 视觉接口识别" FontWeight="Medium" />
+                                        <TextBlock Text="把图片直接发给多模态大模型，由提示词决定要做什么。适用于复杂版面、手写、公式；单次延迟与费用均高于本地模型。批量转换会自动使用同一设置。"
+                                                   FontSize="12"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <ToggleSwitch Grid.Column="1"
+                                                  IsChecked="{Binding UseAiApiOcr}"
+                                                  OnContent="AI 接口"
+                                                  OffContent="本地模型"
+                                                  VerticalAlignment="Center" />
+                                </Grid>
+
+                                <StackPanel Spacing="10" IsVisible="{Binding ShowAiOcrSettings}">
+                                    <Grid ColumnDefinitions="Auto,*" ColumnSpacing="10">
+                                        <TextBlock Grid.Column="0" Text="选用节点" VerticalAlignment="Center" FontSize="12" Width="56" />
+                                        <ComboBox Grid.Column="1"
+                                                  ItemsSource="{Binding VisionAiNodes}"
+                                                  SelectedItem="{Binding SelectedOcrAiNode}"
+                                                  PlaceholderText="没有勾选「支持图片输入」的节点"
+                                                  HorizontalAlignment="Stretch">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:AiNodeViewModel">
+                                                    <TextBlock Text="{Binding DisplayName}" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </Grid>
+
+                                    <StackPanel Spacing="4">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Grid.Column="0" Text="识别提示词" FontSize="12" />
+                                            <Button Grid.Column="1"
+                                                    Content="恢复默认"
+                                                    Command="{Binding ResetAiOcrPromptCommand}"
+                                                    Padding="8,2"
+                                                    FontSize="11"
+                                                    Classes="subtle" />
+                                        </Grid>
+                                        <TextBox Text="{Binding AiVisionPromptText}"
+                                                 AcceptsReturn="True"
+                                                 TextWrapping="Wrap"
+                                                 MinHeight="96"
+                                                 MaxHeight="160"
+                                                 FontSize="12"
+                                                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+                                        <TextBlock Text="提示词决定输出内容：默认只做文字识别；也可以改成「提取表格并输出 CSV」「把公式转成 LaTeX」等任务。"
+                                                   FontSize="11"
+                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                   TextWrapping="Wrap" />
+                                    </StackPanel>
+
+                                    <TextBlock Text="注意：启用后所有识别（截图、批量转换、对外 HTTP 接口）都会把图片发送到所选节点，不再在本机完成。"
+                                               FontSize="11"
+                                               Foreground="#D83B01"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <!-- 模型选择：直接读取同目录下的 models 文件夹 -->
+                        <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                CornerRadius="6"
+                                Padding="12"
+                                IsVisible="{Binding !UseAiApiOcr}">
                             <Grid ColumnDefinitions="*,Auto">
                                 <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
                                     <TextBlock Text="OCR 推理模型" FontWeight="Medium" />
@@ -505,7 +634,7 @@
                                 BorderThickness="1"
                                 CornerRadius="6"
                                 Padding="12,10"
-                                IsVisible="{Binding HasNoModels}">
+                                IsVisible="{Binding ShowNoModelsWarning}">
                             <Grid ColumnDefinitions="Auto,*,Auto">
                                 <TextBlock Grid.Column="0" Text="⚠️" FontSize="15" VerticalAlignment="Center" Margin="0,0,10,0" />
                                 <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">

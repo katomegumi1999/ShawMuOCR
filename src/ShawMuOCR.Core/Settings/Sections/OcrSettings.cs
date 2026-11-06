@@ -25,9 +25,49 @@ public sealed class OcrSettings
     }
 
     /// <summary>
-    /// 外部模型类型："LocalDirectory" (本地自定义目录) 或 "WebApi" (HTTP 接口)
+    /// 外部模型类型："LocalDirectory" (本地自定义目录)、"WebApi" (HTTP OCR 接口)
+    /// 或 "AiApi" (多模态大模型接口)
     /// </summary>
     public string ExternalModelType { get; set; } = "LocalDirectory";
+
+    /// <summary>
+    /// 选用的 AI 接口节点 Id：指向 <see cref="AiSettings.Profiles"/> 池中的某个节点。
+    /// OCR 只保存"选了哪一个"，连接信息全部由池统一管理。
+    /// </summary>
+    public string AiProfileId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// AI 视觉识别的提示词。属于 OCR 自身的行为配置，不随节点走 ——
+    /// 同一个节点可以被翻译和 OCR 同时使用，但两者的指令完全不同。
+    /// </summary>
+    public string AiVisionPrompt { get; set; } = AiOcrPrompt.Default;
+
+    /// <summary>
+    /// 上传前的最长边像素。超过则等比缩小，避免无谓的 token 消耗与上传耗时。
+    /// </summary>
+    public int AiMaxImageSide { get; set; } = 1536;
+
+    /// <summary>
+    /// 上传图片的 JPEG 质量。默认 85，在体积与文字清晰度之间取平衡。
+    /// </summary>
+    public int AiJpegQuality { get; set; } = 85;
+
+    /// <summary>
+    /// 单次 AI 识别请求超时（秒）。视觉模型推理比纯文本慢，且大图 prefill 耗时更长。
+    /// </summary>
+    public int AiTimeoutSeconds { get; set; } = 60;
+
+    /// <summary>
+    /// 同时在途的 AI 请求数上限。云端接口有速率限制，超过后会被拒绝（429），
+    /// 因此该值独立于批量任务的 CPU 并发度，默认保守取 3。
+    /// </summary>
+    public int AiMaxConcurrency { get; set; } = 3;
+
+    /// <summary>
+    /// 【旧版】单节点配置，仅用于读取历史 settings.json 完成迁移。
+    /// 迁移后置 null，新代码不应再读写它。
+    /// </summary>
+    public AiOcrSettings? AiApi { get; set; }
 
     /// <summary>
     /// 外部本地模型目录路径（默认 "models/v6"）
@@ -46,6 +86,11 @@ public sealed class OcrSettings
     {
         get
         {
+            if (string.Equals(ExternalModelType, "AiApi", StringComparison.OrdinalIgnoreCase))
+            {
+                // 具体节点名由界面按 AiProfileId 从池里解析，这里只给出类型标记
+                return "External:AiApi";
+            }
             if (string.Equals(ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) && !string.IsNullOrWhiteSpace(ExternalApiUrl))
             {
                 return $"External:WebApi ({ExternalApiUrl})";
@@ -64,7 +109,12 @@ public sealed class OcrSettings
                 _model = "PP-OCRv6_small";
                 return;
             }
-            if (value.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase))
+            if (value.StartsWith("External:AiApi", StringComparison.OrdinalIgnoreCase))
+            {
+                ScanExternalModels = true;
+                ExternalModelType = "AiApi";
+            }
+            else if (value.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase))
             {
                 ScanExternalModels = true;
                 ExternalModelType = "WebApi";
@@ -126,6 +176,13 @@ public sealed class OcrSettings
     {
         ScanExternalModels = ScanExternalModels,
         ExternalModelType = ExternalModelType,
+        AiProfileId = AiProfileId,
+        AiVisionPrompt = AiVisionPrompt,
+        AiMaxImageSide = AiMaxImageSide,
+        AiJpegQuality = AiJpegQuality,
+        AiTimeoutSeconds = AiTimeoutSeconds,
+        AiMaxConcurrency = AiMaxConcurrency,
+        AiApi = AiApi?.Clone(),
         ExternalModelPath = ExternalModelPath,
         ExternalApiUrl = ExternalApiUrl,
         Model = Model,

@@ -436,7 +436,7 @@
                         </Border>
                     </DockPanel>
 
-                    <TextBlock Text="单独为选区翻译与 OCR 随动浮窗定制背景底色与文字色彩。浮窗拥有专属样式隔离通道，不受全局主题透明度影响，您可为其设定独特的极简黑曜石深色、典雅暖白或科技暗蓝质感。"
+                    <TextBlock Text="单独为选区翻译与 OCR 随动浮窗定制背景底色与文字色彩。浮窗拥有专属样式隔离通道，不受全局主题透明度影响，您可为其设定独特的极简黑曜石深色、典雅暖白或科技暗蓝质感。未自定义时使用默认浅灰底（不透明），不会出现背景穿透。"
                                FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" TextWrapping="Wrap" />
 
                     <!-- 浮窗背景色标题与推荐色板 -->
@@ -503,7 +503,7 @@
                                 FontSize="11"
                                 Margin="4,0,0,0"
                                 VerticalAlignment="Center"
-                                ToolTip.Tip="恢复随动浮窗系统默认背景色" />
+                                ToolTip.Tip="恢复随动浮窗默认浅灰背景" />
                     </StackPanel>
 
                     <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,4" />

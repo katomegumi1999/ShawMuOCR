@@ -427,6 +427,9 @@ public partial class ClipboardViewModel : ObservableObject
     private string _pendingPairPin = string.Empty;
 
     [ObservableProperty]
+    private bool _isPendingPinCopied;
+
+    [ObservableProperty]
     private string _pendingPairIp = string.Empty;
 
     [ObservableProperty]
@@ -1866,11 +1869,13 @@ public partial class ClipboardViewModel : ObservableObject
         PendingPairPin = randomPin;
         PendingPairIp = peer.Ip;
         PendingPairPort = peer.SyncPort;
+        IsPendingPinCopied = false;
         IsWaitingForPeerPinConfirmation = true;
         StatusMessage = $"已向 [{peer.DeviceName}] 发起配对，配对码为: 【{randomPin}】，等待对方输入确认...";
 
         var result = await _service.RequestPairAsync(peer.Ip, peer.SyncPort, randomPin, 60);
         IsWaitingForPeerPinConfirmation = false;
+        IsPendingPinCopied = false;
 
         if (result.Success)
         {
@@ -1886,12 +1891,32 @@ public partial class ClipboardViewModel : ObservableObject
     }
 
     [RelayCommand]
+    public void CopyPendingPairPin()
+    {
+        if (string.IsNullOrWhiteSpace(PendingPairPin)) return;
+
+        try
+        {
+            _service.CopyToSystemClipboard(PendingPairPin);
+            IsPendingPinCopied = true;
+            StatusMessage = $"✓ 配对码【{PendingPairPin}】已复制到系统剪贴板";
+
+            _ = Task.Delay(2000).ContinueWith(_ =>
+            {
+                Dispatcher.UIThread.Post(() => IsPendingPinCopied = false);
+            });
+        }
+        catch { }
+    }
+
+    [RelayCommand]
     public void CancelOutgoingPair()
     {
         IsWaitingForPeerPinConfirmation = false;
         PendingPairDeviceName = string.Empty;
         PendingPairDeviceId = string.Empty;
         PendingPairPin = string.Empty;
+        IsPendingPinCopied = false;
         StatusMessage = "已取消配对请求";
     }
 

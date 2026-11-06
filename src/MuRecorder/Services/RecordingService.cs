@@ -37,6 +37,12 @@ public sealed class RecordingService : IAsyncDisposable
     public static bool HardwareProbeReady => s_hardwareProbeReady;
 
     /// <summary>
+    /// 硬件探测完成（或失败）时触发一次。订阅方必须自己切回 UI 线程。
+    /// 探针在启动早期只能显示「待确认」，靠这个事件在预热完成后刷新成真实结论。
+    /// </summary>
+    public static event Action? HardwareProbeCompleted;
+
+    /// <summary>
     /// 预热硬件探测。**必须在后台线程调用**：单次 MFTEnumEx 实测 100–430 ms，
     /// 放在 UI 线程会直接卡住窗口。
     /// </summary>
@@ -62,6 +68,11 @@ public sealed class RecordingService : IAsyncDisposable
         catch
         {
             s_hardwareProbeReady = false;
+        }
+        finally
+        {
+            // 失败也要通知：探针要能从「待确认」收敛到某个结论，不能永远停在探测中。
+            HardwareProbeCompleted?.Invoke();
         }
     }
 

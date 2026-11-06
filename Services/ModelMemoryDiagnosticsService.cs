@@ -175,10 +175,24 @@ public sealed class ModelMemoryDiagnosticsService : IModelMemoryDiagnosticsServi
 
         string modelStatus = "引擎就绪";
         var provider = _modelProvider ?? new OcrModelProvider();
+        bool isAiApi = string.Equals(current.ExternalModelType, "AiApi", StringComparison.OrdinalIgnoreCase) ||
+                       activeModel.StartsWith("External:AiApi", StringComparison.OrdinalIgnoreCase);
         bool isWebApi = string.Equals(current.ExternalModelType, "WebApi", StringComparison.OrdinalIgnoreCase) ||
                         activeModel.StartsWith("External:WebApi", StringComparison.OrdinalIgnoreCase);
 
-        if (isWebApi)
+        if (isAiApi)
+        {
+            // 连接信息全部在节点池里：Ocr.AiApi 是迁移前旧字段，迁移后为 null
+            var node = current.Ai.Find(current.Ocr.AiProfileId);
+            modelName = node == null
+                ? "AI 视觉接口 (未选择节点)"
+                : $"AI 视觉接口 ({node.Name} · {node.Model})";
+            modelWeights = "云端推理 · 本地无模型权重与显存占用";
+            engineDesc = node == null
+                ? "AI Vision API (未选择节点)"
+                : $"AI Vision API ({node.BaseUrl})";
+        }
+        else if (isWebApi)
         {
             modelName = $"外部接口 ({current.ExternalApiUrl})";
             modelWeights = "远程 / 自定义 Web 服务 (本地无模型权重占用)";

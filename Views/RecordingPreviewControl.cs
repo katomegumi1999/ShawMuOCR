@@ -93,12 +93,13 @@ public class RecordingPreviewControl : NativeControlHost
             const uint WS_CHILD = 0x40000000;
             const uint WS_VISIBLE = 0x10000000;
             const uint WS_CLIPSIBLINGS = 0x04000000;
+            const uint SS_BLACKRECT = 0x00000004;
 
             var hwnd = User32.CreateWindowEx(
                 0,
                 "static",
                 string.Empty,
-                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS | SS_BLACKRECT,
                 0, 0, 100, 100,
                 parent.Handle,
                 IntPtr.Zero,

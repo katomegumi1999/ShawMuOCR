@@ -19,9 +19,13 @@ public partial class MuClipService
     {
         get
         {
+            if (_core == null && string.IsNullOrEmpty(_pairingPin))
+            {
+                throw new InvalidOperationException("MuClipService 尚未初始化，无法读取配对凭据。");
+            }
             if (string.IsNullOrEmpty(_pairingPin))
             {
-                throw new InvalidOperationException("MuClipService.PairingPin 尚未初始化，请先调用 Initialize()。");
+                return "未初始化";
             }
             return _pairingPin;
         }
@@ -592,7 +596,23 @@ public partial class MuClipService
         // 存入 Rust 核心与 LRU 缓存（重复项自动前移）
         _core?.AddHistory(e.Content);
 
-        // 写入本机系统剪贴板供用户直接 Ctrl+V 使用，同时通过序列号精确抑制回显防止监听器重复广播
+        // 关键防回环与防锁碰撞：检查本地系统剪贴板当前内容是否已一致
+        // （例如当 UU 远程 / 向日葵等远程工具已完成同步，或者本地最后一次捕获就是它）
+        // 若内容已一致，绝对不重复清空并重写系统剪贴板，彻底掐断与远程软件的踩踏死循环与浏览器卡死
+        bool alreadyInClipboard = false;
+        try
+        {
+            string? current = _clipboardService.GetText();
+            if (string.Equals(current, e.Content, StringComparison.Ordinal))
+            {
+                alreadyInClipboard = true;
+            }
+        }
+        catch
+        {
+            // 忽略读取异常
+        }
+
         lock (_lock)
         {
             _lastCapturedText = e.Content;
@@ -608,7 +628,11 @@ public partial class MuClipService
                 SavePairedDevices();
             }
         }
-        _clipboardService.SetText(e.Content, suppressNotification: true);
+
+        if (!alreadyInClipboard)
+        {
+            _clipboardService.SetText(e.Content, suppressNotification: true);
+        }
 
         // 刷新列表并触发事件
         RefreshHistory();

@@ -48,6 +48,8 @@ public class FileOcrTests
             });
         }
 
+        public void PreloadEngineInBackground(string scene = "启动预载", int delayMs = 0) { }
+
         public void Dispose() { }
     }
 

@@ -1,4 +1,4 @@
-﻿using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -6,6 +6,7 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using System.IO;
 using ShawMuOCR.Core.Capture;
+using ShawMuOCR.Core.Ai;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.Hotkey;
 using ShawMuOCR.Core.Logging;
@@ -117,12 +118,15 @@ public partial class App : Application
             _clipboardService = WindowsClipboardService.Shared;
             _modelProvider = new OcrModelProvider();
             _textSorter = new DefaultOcrTextSorter();
-            _engineFactory = new OcrEngineFactory(_textSorter, _modelProvider);
+            // AI 额度服务必须全进程只有一个实例：OCR 与翻译共用同一本账，
+            // 各自 new 一个的话 QuotaUpdated 事件互不相通，另一个界面的额度条不会刷新。
+            var aiQuota = new AiQuotaService(settingsService);
+            _engineFactory = new OcrEngineFactory(_textSorter, _modelProvider, aiQuota);
             _memoryDiagnosticsService = new ModelMemoryDiagnosticsService(_settingsService, _modelProvider);
 
             var captureService = new WindowsScreenCaptureService();
             var selectionService = new WindowsNativeScreenSelectionService();
-            _coordinator = new OcrCoordinator(captureService, _engineFactory, _clipboardService, _settingsService, selectionService, _loggerService);
+            _coordinator = new OcrCoordinator(captureService, _engineFactory, _clipboardService, _settingsService, selectionService, _loggerService, aiQuota: aiQuota);
             _hotkeyService = new WindowsGlobalHotkeyService();
             _idleSleepService = new IdleSleepService(_settingsService, _memoryDiagnosticsService, _coordinator);
             _coordinator.AttachIdleSleepService(_idleSleepService);
@@ -185,9 +189,11 @@ public partial class App : Application
                 {
                     _mainWindow.PreloadRemainingPages();
                     ScreenshotEditorWindow.Prewarm(_loggerService, "程序启动");
+                    PrewarmTextShaping();
                     // 硬件编码器探测会让驱动枚举一次（实测 100–430 ms），必须离开 UI 线程。
                     // 预热后录屏页的选项文案与录制启动的候选过滤都只读缓存。
                     Task.Run(RecordingService.WarmHardwareProbe);
+                    _coordinator?.PreloadEngineInBackground("程序启动");
                 }, DispatcherPriority.Background);
             }
             else
@@ -200,9 +206,11 @@ public partial class App : Application
                 {
                     _mainWindow.PreloadRemainingPages();
                     ScreenshotEditorWindow.Prewarm(_loggerService, "程序启动");
+                    PrewarmTextShaping();
                     // 硬件编码器探测会让驱动枚举一次（实测 100–430 ms），必须离开 UI 线程。
                     // 预热后录屏页的选项文案与录制启动的候选过滤都只读缓存。
                     Task.Run(RecordingService.WarmHardwareProbe);
+                    _coordinator?.PreloadEngineInBackground("程序启动");
                 }, DispatcherPriority.Background);
             }
 
@@ -277,12 +285,14 @@ public partial class App : Application
     private void EnsureMuClipServiceInitialized()
     {
         if (_muClipService != null) return;
+        MuClipService? service = null;
         try
         {
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string clipDbPath = Path.Combine(appData, "ShawMuOCR", "Muclip", "muclip.db");
-            _muClipService = new MuClipService(_clipboardService);
-            _muClipService.Initialize(clipDbPath, startSync: true, syncPort: 42424);
+            service = new MuClipService(_clipboardService);
+            service.Initialize(clipDbPath, startSync: true, syncPort: 42424);
+            _muClipService = service;
             _loggerService?.Info($"小沐剪贴板服务已就绪，当前配对信任凭证已加载 (PIN: {_muClipService.PairingPin})");
 
             _muClipService.IncomingPairRequested += (reqId, devId, devName, ip) =>
@@ -298,6 +308,8 @@ public partial class App : Application
         catch (Exception ex)
         {
             _loggerService?.Error("初始化小沐剪贴板服务失败", ex);
+            try { service?.Dispose(); } catch { }
+            _muClipService = null;
         }
     }
 
@@ -727,5 +739,29 @@ public partial class App : Application
         _idleSleepService?.Dispose();
         _hotkeyService?.Dispose();
         _coordinator?.Dispose();
+    }
+
+    /// <summary>
+    /// 后台预热 DirectWrite / TextShaper 的彩色 Emoji 字体栈（COLR/CPAL 通道），
+    /// 确保静默启动下直接呼出剪贴板/便笺悬浮面板时 Emoji 能立即呈现绚丽色彩，不退化为黑白符号。
+    /// </summary>
+    private static void PrewarmTextShaping()
+    {
+        try
+        {
+            var typeface = new Avalonia.Media.Typeface("Segoe UI Emoji, Noto Color Emoji, Apple Color Emoji, Microsoft YaHei UI, sans-serif");
+            var formatted = new Avalonia.Media.FormattedText(
+                "📋💬📌🌐⭐",
+                System.Globalization.CultureInfo.InvariantCulture,
+                Avalonia.Media.FlowDirection.LeftToRight,
+                typeface,
+                12.0,
+                Avalonia.Media.Brushes.Black);
+            _ = formatted.Width;
+        }
+        catch
+        {
+            // 忽略预热异常
+        }
     }
 }

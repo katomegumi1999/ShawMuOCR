@@ -21,7 +21,35 @@ public partial class RecordingPageView : UserControl
         {
             host.HwndCreated += (_, _) => SyncPreviewState();
             host.HwndDestroyed += (_, _) => SyncPreviewState();
+            host.PropertyChanged += (s, e) =>
+            {
+                if (e.Property == Visual.IsVisibleProperty)
+                {
+                    SyncPreviewState();
+                }
+            };
         }
+
+        PropertyChanged += (s, e) =>
+        {
+            if (e.Property == Visual.IsVisibleProperty)
+            {
+                SyncPreviewState();
+            }
+        };
+
+        // 页面每次加载/重绘布局时做一次状态同步，确保切换页面或最小化恢复后 100% 恢复渲染
+        LayoutUpdated += (s, e) =>
+        {
+            if (ShouldPreviewBeActive())
+            {
+                var h = this.FindControl<RecordingPreviewControl>("PreviewHost");
+                if (h != null && h.Hwnd != IntPtr.Zero)
+                {
+                    UpdatePreviewHwnd(h.Hwnd);
+                }
+            }
+        };
     }
 
     private void UpdatePreviewHwnd(IntPtr hwnd)
@@ -117,6 +145,7 @@ public partial class RecordingPageView : UserControl
             _currentVm.FloatingBarShowRequested -= OnFloatingBarShowRequested;
             _currentVm.FloatingBarHideRequested -= OnFloatingBarHideRequested;
             _currentVm.FloatingBarToggleRequested -= OnFloatingBarToggleRequested;
+            _currentVm.HostWindowMinimizeRequested -= OnHostWindowMinimizeRequested;
             _currentVm.LiveCursorEffectShowRequested -= OnLiveCursorEffectShowRequested;
             _currentVm.LiveCursorEffectHideRequested -= OnLiveCursorEffectHideRequested;
             _currentVm.AnnotationToggleRequested -= OnAnnotationToggleRequested;
@@ -136,6 +165,7 @@ public partial class RecordingPageView : UserControl
             _currentVm.FloatingBarShowRequested += OnFloatingBarShowRequested;
             _currentVm.FloatingBarHideRequested += OnFloatingBarHideRequested;
             _currentVm.FloatingBarToggleRequested += OnFloatingBarToggleRequested;
+            _currentVm.HostWindowMinimizeRequested += OnHostWindowMinimizeRequested;
             _currentVm.AnnotationOverlayHwndProvider = (bounds) =>
                 RecordingAnnotationWindow.EnsureInitialized(bounds, _currentVm);
             _currentVm.LiveCursorEffectShowRequested += OnLiveCursorEffectShowRequested;
@@ -226,6 +256,31 @@ public partial class RecordingPageView : UserControl
         {
             RecordingFloatingWindow.ToggleOverlay(_currentVm);
         }
+    }
+
+    /// <summary>
+    /// 开录后把主窗口最小化，让出桌面给录制内容。
+    /// </summary>
+    private void OnHostWindowMinimizeRequested(object? sender, EventArgs e)
+    {
+        var window = _observedWindow ?? (TopLevel.GetTopLevel(this) as Window);
+        if (window == null) return;
+
+        // 录制目标包含本窗口时绝不能最小化：最小化后画面是空的，
+        // 用户会得到一段纯黑/纯桌面的录像，且很难察觉。
+        if (IsRecordingOwnWindow(window)) return;
+
+        window.WindowState = WindowState.Minimized;
+    }
+
+    private bool IsRecordingOwnWindow(Window window)
+    {
+        if (_currentVm == null || !_currentVm.IsSourceWindow) return false;
+
+        var handle = window.TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        if (handle == IntPtr.Zero) return false;
+
+        return _currentVm.Windows.Any(w => w.IsSelected && w.Window.Hwnd == handle);
     }
 
     private void OnLiveCursorEffectShowRequested(object? sender, EventArgs e)

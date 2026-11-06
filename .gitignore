@@ -57,7 +57,10 @@ settings.user.json
 ## ==========================================
 .workbuddy/
 scratch/
+.tmp/
 Properties/
+# 本机录制的测试/样片视频，体积大且不属于源码
+videos/
 
 ## ==========================================
 ## Crash dumps and Test outputs

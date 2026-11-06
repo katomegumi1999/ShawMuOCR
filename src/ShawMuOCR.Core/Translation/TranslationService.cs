@@ -1,3 +1,4 @@
+using ShawMuOCR.Core.Ai;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation.Providers;
 
@@ -6,6 +7,7 @@ namespace ShawMuOCR.Core.Translation;
 public sealed class TranslationService : ITranslationService, IDisposable
 {
     private readonly ISettingsService _settingsService;
+    private readonly IAiQuotaService? _aiQuota;
     private readonly Dictionary<string, ITranslator> _translators = new(StringComparer.OrdinalIgnoreCase);
     private readonly HttpClient? _httpClient;
     private readonly object _lock = new();
@@ -14,10 +16,14 @@ public sealed class TranslationService : ITranslationService, IDisposable
 
     public string CurrentProviderName => _settingsService.Current.TranslateProvider;
 
-    public TranslationService(ISettingsService settingsService, HttpClient? httpClient = null)
+    public TranslationService(
+        ISettingsService settingsService,
+        HttpClient? httpClient = null,
+        IAiQuotaService? aiQuota = null)
     {
         _settingsService = settingsService;
         _httpClient = httpClient;
+        _aiQuota = aiQuota;
 
         _translators["Baidu"] = new BaiduTranslator(
             () => _settingsService.Current.BaiduAppId,
@@ -82,11 +88,26 @@ public sealed class TranslationService : ITranslationService, IDisposable
         string source = !string.IsNullOrWhiteSpace(sourceLanguage) ? sourceLanguage : _settingsService.Current.TranslateSourceLang;
         string target = !string.IsNullOrWhiteSpace(targetLanguage) ? targetLanguage : _settingsService.Current.TranslateTargetLang;
 
-        if (!_translators.TryGetValue(providerName, out var translator))
+        ITranslator? translator;
+        if (providerName.StartsWith(AiSettings.TranslateProviderPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            // "ai:<节点Id>"：从统一节点池解析连接信息，额度由 AiQuotaService 记账
+            string nodeId = providerName[AiSettings.TranslateProviderPrefix.Length..];
+            var profile = _settingsService.Current.Ai.Find(nodeId);
+            if (profile == null)
+            {
+                return TranslationResult.Failed(
+                    text, source, target, providerName,
+                    "所选 AI 节点已被删除，请到【设置 ➔ AI 接口】重新选择。");
+            }
+
+            translator = new AiNodeTranslator(OpenAiCompatibleClient.FromProfile(profile), _aiQuota);
+        }
+        else if (!_translators.TryGetValue(providerName, out translator))
         {
             return TranslationResult.Failed(
                 text, source, target, providerName,
-                $"未知的翻译提供商: {providerName}，请在设置中选择 百度/谷歌/OpenAI。");
+                $"未知的翻译提供商: {providerName}，请在设置中选择 百度/谷歌/OpenAI 或一个 AI 节点。");
         }
 
         // 1. 检查并处理跨月额度重置
@@ -204,6 +225,29 @@ public sealed class TranslationService : ITranslationService, IDisposable
         {
             double pct = s.AliyunMonthlyLimit > 0 ? Math.Min(100.0, (double)s.AliyunUsedCount / s.AliyunMonthlyLimit * 100.0) : 0;
             return new ProviderQuotaInfo("Aliyun", s.AliyunUsedCount, s.AliyunMonthlyLimit, "字符", pct);
+        }
+
+        // AI 节点：额度挂在节点池上，且跨月清零由 IAiQuotaService 统一负责。
+        // 不走这里会落到下面的百度默认分支，显示成百度的用量。
+        if (providerName.StartsWith(AiSettings.TranslateProviderPrefix, StringComparison.OrdinalIgnoreCase))
+        {
+            string nodeId = providerName[AiSettings.TranslateProviderPrefix.Length..];
+            if (_aiQuota != null)
+            {
+                var snapshot = _aiQuota.GetSnapshot(nodeId);
+                return new ProviderQuotaInfo(snapshot.ProfileName, snapshot.UsedTokens, snapshot.MonthlyLimit, "Token", snapshot.Percent);
+            }
+
+            var node = s.Ai.Find(nodeId);
+            if (node == null)
+            {
+                return new ProviderQuotaInfo("(已删除的节点)", 0, 0, "Token", 0);
+            }
+
+            double nodePct = node.MonthlyTokenLimit > 0
+                ? Math.Min(100.0, (double)node.UsedTokens / node.MonthlyTokenLimit * 100.0)
+                : 0;
+            return new ProviderQuotaInfo(node.Name, node.UsedTokens, node.MonthlyTokenLimit, "Token", nodePct);
         }
 
         // Default Baidu

@@ -30,6 +30,18 @@ public sealed class AppSettings
         set => _ocr = value ?? new();
     }
 
+    private AiSettings _ai = new();
+
+    /// <summary>
+    /// 统一的 AI 接口节点池。翻译与 OCR 各自只保存"选了哪个节点 Id"，
+    /// 连接信息、密钥与用量全部集中在这里。
+    /// </summary>
+    public AiSettings Ai
+    {
+        get => _ai;
+        set => _ai = value ?? new();
+    }
+
     private RecordingSettings _recording = new();
     public RecordingSettings Recording
     {
@@ -471,6 +483,13 @@ public sealed class AppSettings
     {
         get => Recording.ShowFloatingBar;
         set => Recording.ShowFloatingBar = value;
+    }
+
+    [JsonIgnore]
+    public bool RecordingMinimizeOnStart
+    {
+        get => Recording.MinimizeOnStart;
+        set => Recording.MinimizeOnStart = value;
     }
 
     [JsonIgnore]
@@ -921,6 +940,7 @@ public sealed class AppSettings
         General = General.Clone(),
         Hotkeys = Hotkeys.Clone(),
         Ocr = Ocr.Clone(),
+        Ai = Ai.Clone(),
         Recording = Recording.Clone(),
         Translation = Translation.Clone(),
         Theme = Theme.Clone(),

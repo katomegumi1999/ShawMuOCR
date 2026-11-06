@@ -73,7 +73,7 @@ public sealed class JsonSettingsService : ISettingsService
                     if (settings != null)
                     {
                         MigrateLegacyFlatJsonIfNeeded(json, settings);
-                        DecryptSensitiveFields(settings);
+                        NormalizeAfterLoad(settings);
                         LastLoadError = null;
                         _current = settings;
                         return settings;
@@ -92,7 +92,7 @@ public sealed class JsonSettingsService : ISettingsService
                     if (settings != null)
                     {
                         MigrateLegacyFlatJsonIfNeeded(json, settings);
-                        DecryptSensitiveFields(settings);
+                        NormalizeAfterLoad(settings);
                         LastLoadError = null;
                         _current = settings;
                         Save(settings);
@@ -109,7 +109,7 @@ public sealed class JsonSettingsService : ISettingsService
                     if (settings != null)
                     {
                         MigrateLegacyFlatJsonIfNeeded(json, settings);
-                        DecryptSensitiveFields(settings);
+                        NormalizeAfterLoad(settings);
                         LastLoadError = null;
                         _current = settings;
                         Save(settings);
@@ -265,7 +265,127 @@ public sealed class JsonSettingsService : ISettingsService
         settings.AliyunAccessKeyId = DecryptOrPreserve(nameof(settings.AliyunAccessKeyId), settings.AliyunAccessKeyId);
         settings.AliyunAccessKeySecret = DecryptOrPreserve(nameof(settings.AliyunAccessKeySecret), settings.AliyunAccessKeySecret);
         settings.HttpApiAccessToken = DecryptOrPreserve(nameof(settings.HttpApiAccessToken), settings.HttpApiAccessToken);
+
+        // 旧版单节点配置（迁移完成后置 null），字段名沿用当时落盘时的名字
+        if (settings.Ocr.AiApi != null)
+        {
+            settings.Ocr.AiApi.ApiKey = DecryptOrPreserve(LegacyAiOcrKeyField, settings.Ocr.AiApi.ApiKey);
+        }
+
+        // API 池中的每个节点：按 GUID 索引，绝不能用列表下标
+        foreach (var profile in settings.Ai.Profiles)
+        {
+            string field = ProfileKeyField(profile.Id);
+            profile.ApiKey = DecryptOrPreserve(field, profile.ApiKey);
+        }
     }
+
+    /// <summary>
+    /// 加载后的统一处理：先解密（迁移前的旧密文用的还是旧字段名），再执行节点池迁移。
+    /// 顺序不能颠倒 —— 迁移会把旧字段的明文搬进新节点，之后才由统一逻辑加密。
+    /// </summary>
+    private void NormalizeAfterLoad(AppSettings settings)
+    {
+        DecryptSensitiveFields(settings);
+        MigrateAiProfilesIfNeeded(settings);
+    }
+
+    /// <summary>
+    /// 把旧版的「翻译 OpenAI 单配置」和「OCR AI 单配置」搬进统一节点池。
+    /// 用 <see cref="AiSettings.Migrated"/> 做幂等标记，而不是判断池子是否为空 ——
+    /// 否则用户删光节点后，迁移会再次触发并凭空造出一个节点。
+    /// </summary>
+    private static void MigrateAiProfilesIfNeeded(AppSettings settings)
+    {
+        var ai = settings.Ai;
+        if (ai.Migrated) return;
+
+        // 1. 旧版 OCR 视觉单配置
+        var legacyOcr = settings.Ocr.AiApi;
+        if (legacyOcr != null && !string.IsNullOrWhiteSpace(legacyOcr.ApiKey))
+        {
+            const string ocrId = "legacy-aiocr";
+            if (ai.Find(ocrId) == null)
+            {
+                ai.Profiles.Add(new AiApiProfile
+                {
+                    Id = ocrId,
+                    Name = "AI 视觉（原 OCR 配置）",
+                    BaseUrl = NormalizeBaseUrl(legacyOcr.BaseUrl),
+                    ApiKey = legacyOcr.ApiKey,
+                    Model = string.IsNullOrWhiteSpace(legacyOcr.Model) ? "qwen-vl-max" : legacyOcr.Model,
+                    SupportsVision = true
+                });
+            }
+
+            if (string.IsNullOrWhiteSpace(settings.Ocr.AiProfileId))
+            {
+                settings.Ocr.AiProfileId = ocrId;
+            }
+            if (!string.IsNullOrWhiteSpace(legacyOcr.Prompt))
+            {
+                settings.Ocr.AiVisionPrompt = legacyOcr.Prompt;
+            }
+        }
+        settings.Ocr.AiApi = null;
+
+        // 2. 旧版翻译 OpenAI 单配置
+        if (!string.IsNullOrWhiteSpace(settings.OpenAiApiKey))
+        {
+            const string openAiId = "legacy-openai";
+            if (ai.Find(openAiId) == null)
+            {
+                ai.Profiles.Add(new AiApiProfile
+                {
+                    Id = openAiId,
+                    Name = "OpenAI（原翻译配置）",
+                    BaseUrl = NormalizeBaseUrl(settings.OpenAiApiEndpoint),
+                    ApiKey = settings.OpenAiApiKey,
+                    Model = string.IsNullOrWhiteSpace(settings.OpenAiModel) ? "gpt-4o-mini" : settings.OpenAiModel,
+                    SupportsVision = true,
+                    MonthlyTokenLimit = settings.OpenAiMonthlyLimit > 0 ? settings.OpenAiMonthlyLimit : 200000,
+                    UsedTokens = settings.OpenAiUsedCount
+                });
+            }
+        }
+
+        // 3. 翻译选择器从 "OpenAI" 改为指向节点
+        if (string.Equals(settings.TranslateProvider, "OpenAI", StringComparison.OrdinalIgnoreCase))
+        {
+            var target = ai.Find("legacy-openai") ?? ai.Profiles.FirstOrDefault();
+            if (target != null)
+            {
+                settings.TranslateProvider = AiSettings.TranslateProviderPrefix + target.Id;
+            }
+        }
+
+        ai.Migrated = true;
+    }
+
+    /// <summary>
+    /// 历史配置里的地址可能已经带 /chat/completions，节点池统一只存到 /v1
+    /// </summary>
+    private static string NormalizeBaseUrl(string? url)
+    {
+        string value = string.IsNullOrWhiteSpace(url) ? "https://api.openai.com/v1" : url.Trim();
+        const string suffix = "/chat/completions";
+        if (value.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+        {
+            value = value[..^suffix.Length];
+        }
+        return value.TrimEnd('/');
+    }
+
+    /// <summary>
+    /// 旧版 AI OCR 单配置的密文字段名
+    /// </summary>
+    private const string LegacyAiOcrKeyField = "AiOcrApiKey";
+
+    /// <summary>
+    /// 节点密钥的密文索引名。用 GUID 而非下标：
+    /// 若用下标，删除首条会让全部密文错位，B 节点静默拿到 A 的密钥且不报错。
+    /// </summary>
+    public static string ProfileKeyField(string profileId) => $"AiProfile:{profileId}:ApiKey";
 
     /// <summary>
     /// 解密单个字段：
@@ -310,6 +430,40 @@ public sealed class JsonSettingsService : ISettingsService
         settings.AliyunAccessKeyId = ProtectOrKeep(nameof(settings.AliyunAccessKeyId), settings.AliyunAccessKeyId);
         settings.AliyunAccessKeySecret = ProtectOrKeep(nameof(settings.AliyunAccessKeySecret), settings.AliyunAccessKeySecret);
         settings.HttpApiAccessToken = ProtectOrKeep(nameof(settings.HttpApiAccessToken), settings.HttpApiAccessToken);
+
+        if (settings.Ocr.AiApi != null)
+        {
+            settings.Ocr.AiApi.ApiKey = ProtectOrKeep(LegacyAiOcrKeyField, settings.Ocr.AiApi.ApiKey);
+        }
+
+        // 已被删除的节点要清掉其密文副本，否则字典会随编辑次数无限增长
+        PruneStaleProfileCiphertexts(settings);
+
+        foreach (var profile in settings.Ai.Profiles)
+        {
+            string field = ProfileKeyField(profile.Id);
+            profile.ApiKey = ProtectOrKeep(field, profile.ApiKey);
+        }
+    }
+
+    private void PruneStaleProfileCiphertexts(AppSettings settings)
+    {
+        if (_unreadableCiphertexts.Count == 0) return;
+
+        var alive = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var profile in settings.Ai.Profiles)
+        {
+            alive.Add(ProfileKeyField(profile.Id));
+        }
+
+        var stale = _unreadableCiphertexts.Keys
+            .Where(k => k.StartsWith("AiProfile:", StringComparison.Ordinal) && !alive.Contains(k))
+            .ToList();
+
+        foreach (var key in stale)
+        {
+            _unreadableCiphertexts.Remove(key);
+        }
     }
 
     /// <summary>

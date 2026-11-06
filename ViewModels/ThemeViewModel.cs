@@ -7,6 +7,7 @@ using Avalonia.Media;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Services;
 
 namespace ShawMuOCR.ViewModels;
@@ -73,7 +74,7 @@ public partial class ThemeViewModel : ViewModelBase
     private string? _floatingWindowBackgroundColorHex;
 
     [ObservableProperty]
-    private Color _selectedFloatingWindowBackgroundColor = Colors.White;
+    private Color _selectedFloatingWindowBackgroundColor = DefaultFloatingWindowBackground;
 
     [ObservableProperty]
     private IBrush? _floatingWindowBackgroundColorPreviewBrush;
@@ -97,6 +98,15 @@ public partial class ThemeViewModel : ViewModelBase
     private string _statusMessage = "就绪：可自定义个性背景图片、纯色背景底色、卡片组件色彩与随动浮窗独立配色";
 
     private bool _isSyncingColor;
+
+    /// <summary>
+    /// 随动浮窗未自定义时的背景色（默认浅灰）。与 <see cref="ThemeDefaults.FloatingWindowBackgroundHex"/>
+    /// 同源，取不到时退回同一个色值，保证预览与实际渲染一致。
+    /// </summary>
+    private static Color DefaultFloatingWindowBackground =>
+        ColorPaletteHelper.TryParseColor(ThemeDefaults.FloatingWindowBackgroundHex, out var c)
+            ? c
+            : Color.FromRgb(0xF3, 0xF3, 0xF3);
 
     public ThemeViewModel(IThemeService themeService)
     {
@@ -145,7 +155,7 @@ public partial class ThemeViewModel : ViewModelBase
         }
         else
         {
-            _selectedFloatingWindowBackgroundColor = Colors.White;
+            _selectedFloatingWindowBackgroundColor = DefaultFloatingWindowBackground;
         }
 
         if (ColorPaletteHelper.TryParseColor(_floatingWindowTextColorHex, out var fwTextParsed))
@@ -484,7 +494,7 @@ public partial class ThemeViewModel : ViewModelBase
                 }
                 else if (string.IsNullOrWhiteSpace(value))
                 {
-                    SelectedFloatingWindowBackgroundColor = Colors.White;
+                    SelectedFloatingWindowBackgroundColor = DefaultFloatingWindowBackground;
                 }
             }
             finally
@@ -495,7 +505,7 @@ public partial class ThemeViewModel : ViewModelBase
 
         if (string.IsNullOrWhiteSpace(value))
         {
-            StatusMessage = "随动浮窗已恢复系统默认主题背景色";
+            StatusMessage = $"随动浮窗已恢复默认浅灰背景（{ThemeDefaults.FloatingWindowBackgroundHex}）";
         }
         else
         {
@@ -512,7 +522,7 @@ public partial class ThemeViewModel : ViewModelBase
         }
         else
         {
-            FloatingWindowBackgroundColorPreviewBrush = new SolidColorBrush(Colors.White);
+            FloatingWindowBackgroundColorPreviewBrush = new SolidColorBrush(DefaultFloatingWindowBackground);
         }
     }
 
@@ -526,7 +536,7 @@ public partial class ThemeViewModel : ViewModelBase
     public void ResetFloatingWindowBackgroundColor()
     {
         FloatingWindowBackgroundColorHex = null;
-        SelectedFloatingWindowBackgroundColor = Colors.White;
+        SelectedFloatingWindowBackgroundColor = DefaultFloatingWindowBackground;
     }
 
     partial void OnSelectedFloatingWindowTextColorChanged(Color value)

@@ -126,38 +126,35 @@
         </Border>
 
         <!-- 2. 左列：导出设置 + CPU 调度 | 右列：实时运行日志区 -->
-        <Border Grid.Row="1" Margin="0,0,0,10" Padding="14,10"
+        <Border Grid.Row="1" Margin="0,0,0,8" Padding="12,8"
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8">
-            <Grid ColumnDefinitions="1.15*,12,0.85*">
+            <Grid ColumnDefinitions="1.2*,12,0.8*">
                 <!-- 左列：输出格式、导出目录 + 下方 CPU 调度控制 -->
-                <StackPanel Grid.Column="0" Spacing="6">
-                    <TextBlock Text="📄 导出格式与命名 (自动保存配置)" FontWeight="SemiBold" FontSize="13" />
-
-                    <!-- 输出格式选择 (原生 .NET 生成，零 NuGet) -->
-                    <StackPanel Orientation="Horizontal" Spacing="16">
-                        <CheckBox IsChecked="{Binding ExportTxt}" Content="TXT 纯文本 (.txt)" FontSize="12" />
-                        <CheckBox IsChecked="{Binding ExportXlsx}" Content="Excel 表格 (.xlsx)" FontSize="12"
+                <StackPanel Grid.Column="0" Spacing="5">
+                    <!-- 导出格式与按检测框分列紧凑排布 -->
+                    <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <TextBlock Text="📄 导出格式:" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" Margin="0,0,10,0" />
+                        <CheckBox IsChecked="{Binding ExportTxt}" Content="TXT (.txt)" FontSize="12" Margin="0,0,12,0" />
+                        <CheckBox IsChecked="{Binding ExportXlsx}" Content="Excel (.xlsx)" FontSize="12" Margin="0,0,12,0"
                                   ToolTip.Tip="识别文本换行将自动对应写入表格各行，若包含制表符自动拆分各列" />
-                        <CheckBox IsChecked="{Binding ExportDocx}" Content="Word 文档 (.docx)" FontSize="12"
+                        <CheckBox IsChecked="{Binding ExportDocx}" Content="Word (.docx)" FontSize="12" Margin="0,0,12,0"
                                   ToolTip.Tip="标准 OpenXML 文字处理文档，自动按段落排列" />
-                    </StackPanel>
-
-                    <!-- 按检测框分列开关 -->
-                    <CheckBox IsChecked="{Binding SplitColumnsByBlocks}"
-                              Content="按检测框自动分列填入单元格 (适合表格/票据/表单)"
-                              FontSize="12"
-                              Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
-                              FontWeight="Medium"
-                              ToolTip.Tip="开启后，同行内的各个文字检测框将作为独立列单元格写入 Excel（A1, B1, C1...），避免整行挤入单个单元格" />
+                        <CheckBox IsChecked="{Binding SplitColumnsByBlocks}"
+                                  Content="按检测框自动分列填入单元格"
+                                  FontSize="12"
+                                  Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}"
+                                  FontWeight="Medium"
+                                  ToolTip.Tip="开启后，同行内的各个文字检测框将作为独立列单元格写入 Excel（A1, B1, C1...），避免整行挤入单个单元格" />
+                    </WrapPanel>
 
                     <!-- 页面旋转与后缀文件名同行排列 -->
-                    <WrapPanel Orientation="Horizontal">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,16,2">
+                    <WrapPanel Orientation="Horizontal" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,16,0">
                             <TextBlock Text="🔄 页面旋转:" FontSize="12" VerticalAlignment="Center" FontWeight="Medium" />
-                            <ComboBox SelectedIndex="{Binding ImageRotationIndex}" Width="155" FontSize="12" Padding="8,3"
+                            <ComboBox SelectedIndex="{Binding ImageRotationIndex}" Width="150" FontSize="12" Padding="8,3"
                                       ToolTip.Tip="校正横向 PDF/扫描件以获取正确的垂直表格行列">
                                 <ComboBoxItem Content="自动校正 (推荐)" ToolTip.Tip="根据 PDF /Rotate 属性及照片 EXIF 朝向自适应转正" />
                                 <ComboBoxItem Content="保持原样 (不旋转)" ToolTip.Tip="按源文件原始像素矩阵识别" />
@@ -167,7 +164,7 @@
                             </ComboBox>
                         </StackPanel>
 
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" Margin="0,0,0,2">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <CheckBox IsChecked="{Binding IsSuffixEnabled}" Content="追加后缀:" FontSize="12" VerticalAlignment="Center" />
                             <TextBox Text="{Binding SuffixText}"
                                      IsEnabled="{Binding IsSuffixEnabled}"
@@ -206,19 +203,19 @@
                                 IsEnabled="{Binding !UseOriginalFolder}"
                                 Content="浏览..."
                                 FontSize="11"
-                                Padding="8,4"
+                                Padding="8,3"
                                 Margin="6,0,0,0"
                                 VerticalAlignment="Center" />
                     </Grid>
 
-                    <!-- 分隔线：下方放置 推理调度与性能控制 (跟随系统设置自动联动 GPU/CPU) -->
-                    <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,4" />
+                    <!-- 分隔线与推理调度控制 -->
+                    <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
 
                     <DockPanel LastChildFill="True">
                         <StackPanel DockPanel.Dock="Left" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding SchedulerTitle}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
-                            <Border Background="{DynamicResource AccentFillColorTertiaryBrush}" CornerRadius="4" Padding="6,1" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding DeviceBadgeText}" FontSize="10.5" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
+                            <TextBlock Text="{Binding SchedulerTitle}" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" />
+                            <Border Background="{DynamicResource AccentFillColorTertiaryBrush}" CornerRadius="4" Padding="5,1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding DeviceBadgeText}" FontSize="10" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" FontWeight="Medium" />
                             </Border>
                         </StackPanel>
                         <TextBlock DockPanel.Dock="Right"
@@ -231,33 +228,33 @@
 
                     <Grid ColumnDefinitions="*,16,*">
                         <!-- 并发上限 -->
-                        <StackPanel Grid.Column="0" Spacing="1">
+                        <StackPanel Grid.Column="0" Spacing="0">
                             <DockPanel LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Left" Text="{Binding ConcurrencyLabel}" FontSize="12" />
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding ConcurrencyLabel}" FontSize="11.5" />
                                 <TextBlock DockPanel.Dock="Right"
                                            Text="{Binding ConcurrencyValueText}"
-                                           FontWeight="SemiBold" FontSize="12"
+                                           FontWeight="SemiBold" FontSize="11.5"
                                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </DockPanel>
                             <Slider Minimum="1" Maximum="{Binding MaxProcessorCount}"
                                     Value="{Binding MaxCores}"
                                     TickFrequency="1" IsSnapToTickEnabled="True"
-                                    Margin="0,-4" />
+                                    Margin="0,-6" />
                         </StackPanel>
 
                         <!-- 利用率与负载上限 -->
-                        <StackPanel Grid.Column="2" Spacing="1">
+                        <StackPanel Grid.Column="2" Spacing="0">
                             <DockPanel LastChildFill="True">
-                                <TextBlock DockPanel.Dock="Left" Text="{Binding UsageLimitLabel}" FontSize="12" />
+                                <TextBlock DockPanel.Dock="Left" Text="{Binding UsageLimitLabel}" FontSize="11.5" />
                                 <TextBlock DockPanel.Dock="Right"
                                            Text="{Binding UsageLimitValueText}"
-                                           FontWeight="SemiBold" FontSize="12"
+                                           FontWeight="SemiBold" FontSize="11.5"
                                            Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </DockPanel>
                             <Slider Minimum="10" Maximum="100"
                                     Value="{Binding CpuLimitPercent}"
                                     TickFrequency="5" IsSnapToTickEnabled="True"
-                                    Margin="0,-4" />
+                                    Margin="0,-6" />
                         </StackPanel>
                     </Grid>
                 </StackPanel>
@@ -266,14 +263,14 @@
                 <Separator Grid.Column="1" Width="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
 
                 <!-- 右列：实时运行日志输出区 -->
-                <Grid Grid.Column="2" RowDefinitions="Auto,*" MaxHeight="240">
-                    <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,6">
-                        <TextBlock DockPanel.Dock="Left" Text="📋 实时运行日志" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                <Grid Grid.Column="2" RowDefinitions="Auto,*" MaxHeight="185">
+                    <DockPanel Grid.Row="0" LastChildFill="False" Margin="0,0,0,4">
+                        <TextBlock DockPanel.Dock="Left" Text="📋 实时运行日志" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" />
                         <Button DockPanel.Dock="Right"
                                 Command="{Binding ClearLogsCommand}"
                                 Content="🗑 清空日志"
                                 FontSize="11"
-                                Padding="8,3"
+                                Padding="8,2"
                                 VerticalAlignment="Center"
                                 ToolTip.Tip="清空下方转换日志记录" />
                     </DockPanel>
@@ -317,30 +314,42 @@
 
         <!-- 3. 文件任务列表与拖拽投递区域 -->
         <Border Grid.Row="2"
+                MinHeight="160"
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
                 CornerRadius="8"
                 ClipToBounds="True">
             <Grid>
-                <!-- 空白占位引导（支持直接拖入文件或文件夹） -->
-                <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="10" Margin="20"
-                            IsVisible="{Binding !HasItems}">
-                    <TextBlock Text="📑" FontSize="44" HorizontalAlignment="Center" Opacity="0.4" />
-                    <TextBlock Text="暂无转换任务"
-                               FontSize="16" FontWeight="SemiBold"
-                               HorizontalAlignment="Center" />
-                    <TextBlock Text="点击上方“添加文件/添加文件夹”按钮，或直接拖拽图片、PDF 文档及整个文件夹至此处"
-                               FontSize="12"
-                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                               HorizontalAlignment="Center" />
-                    <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                            CornerRadius="6" Padding="12,8" Margin="0,6,0,0">
-                        <TextBlock Text="💡 支持格式: PNG, JPG, JPEG, BMP, WEBP, TIFF, ICO 及多页 PDF"
-                                   FontSize="11"
-                                   Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                    </Border>
-                </StackPanel>
+                <!-- 空白占位引导（支持直接拖入文件或文件夹，自适应弹性滚动杜绝遮挡） -->
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Disabled"
+                              IsVisible="{Binding !HasItems}">
+                    <Grid MinHeight="160">
+                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="8" Margin="16,10">
+                            <TextBlock Text="📑" FontSize="36" HorizontalAlignment="Center" Opacity="0.4" />
+                            <TextBlock Text="暂无转换任务"
+                                       FontSize="15" FontWeight="SemiBold"
+                                       HorizontalAlignment="Center" />
+                            <TextBlock Text="点击上方“添加文件/添加文件夹”按钮，或直接拖拽图片、PDF 文档及整个文件夹至此处"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                       HorizontalAlignment="Center"
+                                       TextAlignment="Center"
+                                       TextWrapping="Wrap" />
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="6" Padding="10,6" Margin="0,4,0,0"
+                                    HorizontalAlignment="Center">
+                                <TextBlock Text="💡 支持格式: PNG, JPG, JPEG, BMP, WEBP, TIFF, ICO 及多页 PDF"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource TextFillColorTertiaryBrush}"
+                                           HorizontalAlignment="Center"
+                                           TextAlignment="Center"
+                                           TextWrapping="Wrap" />
+                            </Border>
+                        </StackPanel>
+                    </Grid>
+                </ScrollViewer>
 
                 <!-- 真实任务项列表 -->
                 <ScrollViewer VerticalScrollBarVisibility="Auto"

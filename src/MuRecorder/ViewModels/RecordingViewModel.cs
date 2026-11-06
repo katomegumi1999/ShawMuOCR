@@ -172,13 +172,22 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             _cursorTrailMs = _settingsService.Current.RecordingCursorTrailMs;
             _excludeFloatingBarFromCapture = _settingsService.Current.RecordingExcludeFloatingBarFromCapture;
             _isFloatingBarEnabled = _settingsService.Current.RecordingShowFloatingBar;
+            _minimizeOnStart = _settingsService.Current.RecordingMinimizeOnStart;
             _liveCursorEffect = _settingsService.Current.RecordingLiveCursorEffect;
         }
 
         OutputPath = BuildDefaultOutputPath();
+        // 硬件探测在后台跑（100–430 ms）。完成前探针只能写「待确认」，
+        // 这里订阅一次，预热结束后把它刷新成真实结论。
+        RecordingService.HardwareProbeCompleted += OnHardwareProbeCompleted;
         // 构造阶段刻意不刷来源：显示器枚举、窗口枚举、硬件编码器探测（要初始化 D3D/MF）
         // 与音频设备枚举合计约 140ms，而首屏根本看不到录屏页。
         // 这些统一由进入录屏页时的 RefreshSources 补齐（见 MainViewModel.Navigate）。
+    }
+
+    private void OnHardwareProbeCompleted()
+    {
+        Dispatcher.UIThread.Post(RefreshEncoderProbe);
     }
 
     // ---------- 可配置状态 ----------
@@ -211,6 +220,21 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
     [ObservableProperty]
     private NamedOption<EncoderPreference>? _selectedEncoder;
+
+    /// <summary>
+    /// 编码器探针主行：当前选择预计会用哪个编码格式。
+    /// 选「自动检测」时显示的是 Auto 的实际首选（按 Rust 候选表推断），不是"自动"两个字。
+    /// </summary>
+    [ObservableProperty]
+    private string _encoderProbeTitle = "编码器探针：等待硬件探测…";
+
+    /// <summary>探针副行：降级链、待确认原因或回退警告。</summary>
+    [ObservableProperty]
+    private string _encoderProbeHint = string.Empty;
+
+    /// <summary>探针是否处于告警态（例如指定的硬编本机不可用、将回退软编）。</summary>
+    [ObservableProperty]
+    private bool _encoderProbeIsWarning;
 
     [ObservableProperty]
     private NamedOption<AudioPreset>? _selectedAudioPreset;
@@ -293,6 +317,12 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
     [ObservableProperty]
     private bool _isFloatingBarEnabled = false;
 
+    /// <summary>
+    /// 开录后是否自动最小化主窗口。用户可关（默认开），与「显示悬浮控制条」互不影响。
+    /// </summary>
+    [ObservableProperty]
+    private bool _minimizeOnStart = true;
+
     [ObservableProperty]
     private bool _liveCursorEffect;
 
@@ -352,6 +382,12 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
 
     /// <summary>请求切换（显示/隐藏）录屏悬浮工具栏。</summary>
     public event EventHandler? FloatingBarToggleRequested;
+
+    /// <summary>
+    /// 请求宿主最小化主窗口。录屏开始后主窗口留在桌面上会挡住录制内容，
+    /// 但窗口操作属于 UI 层，ViewModel 不直接持有 Window，故以事件形式向上请求。
+    /// </summary>
+    public event EventHandler? HostWindowMinimizeRequested;
 
     /// <summary>录屏正常结束或中断且文件成功落盘时触发。</summary>
     public event EventHandler<RecordingSavedEventArgs>? RecordingCompleted;
@@ -578,6 +614,28 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             _settingsService.Current.RecordingEncoder = (int)value.Value;
             _settingsService.Save(_settingsService.Current);
         }
+
+        RefreshEncoderProbe();
+    }
+
+    /// <summary>
+    /// 重算编码器探针。
+    /// 只读 <see cref="RecordingService.TryGetHardwareEncoder"/> 的缓存，绝不在这里现场枚举
+    /// （单个编码器的 MFTEnumEx 要 100–430 ms，压在切下拉框上就是明显的卡顿）。
+    /// </summary>
+    public void RefreshEncoderProbe()
+    {
+        var selected = SelectedEncoder?.Value ?? EncoderPreference.Auto;
+
+        var probe = EncoderProbe.Describe(
+            selected,
+            RecordingService.TryGetHardwareEncoder(EncoderPreference.GpuAv1),
+            RecordingService.TryGetHardwareEncoder(EncoderPreference.GpuHevc),
+            RecordingService.TryGetHardwareEncoder(EncoderPreference.GpuH264));
+
+        EncoderProbeTitle = probe.Title;
+        EncoderProbeHint = probe.Hint;
+        EncoderProbeIsWarning = probe.IsWarning;
     }
 
     partial void OnSelectedFpsChanged(NamedOption<uint>? value)
@@ -666,6 +724,15 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         else
         {
             FloatingBarHideRequested?.Invoke(this, EventArgs.Empty);
+        }
+    }
+
+    partial void OnMinimizeOnStartChanged(bool value)
+    {
+        if (_settingsService != null)
+        {
+            _settingsService.Current.RecordingMinimizeOnStart = value;
+            _settingsService.Save(_settingsService.Current);
         }
     }
 
@@ -1145,6 +1212,8 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             ?? EncoderOptions.FirstOrDefault(o => o.Value == EncoderPreference.GpuHevc)
             ?? EncoderOptions.FirstOrDefault();
 
+        RefreshEncoderProbe();
+
         if (AudioBitrateOptions.Count == 0)
         {
             AudioBitrateOptions.Add(new NamedOption<uint>(320, "320 kbps (最高音质 · 母带级)"));
@@ -1190,9 +1259,21 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         _sourcesLoaded = true;
     }
 
-    /// <summary>框选自定义区域：全屏截图 → 原生遮罩框选 → 物理像素矩形。</summary>
+    /// <summary>仅框选自定义区域（不启动录制）：全屏截图 → 原生遮罩框选 → 物理像素矩形。</summary>
     [RelayCommand]
     private async Task SelectRegionAsync()
+    {
+        await SelectRegionCoreAsync(autoStartRecording: false);
+    }
+
+    /// <summary>框选自定义区域并直接开始录制。</summary>
+    [RelayCommand]
+    private async Task SelectRegionAndRecordAsync()
+    {
+        await SelectRegionCoreAsync(autoStartRecording: true);
+    }
+
+    private async Task SelectRegionCoreAsync(bool autoStartRecording)
     {
         if (IsRecording)
         {
@@ -1216,12 +1297,19 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
                 Region = result.ScreenBounds;
                 Source = RecordingSource.Region;
                 UpdateRegionText();
-                StatusMessage = $"已选择区域：{Region.Width} × {Region.Height}（物理像素）";
-                _logger?.Info($"录屏区域选择: {Region.Width}x{Region.Height} @ ({Region.X},{Region.Y})");
-                RequestRegionBorderPulse();
-
-                // 框选完成后直接自动开始录屏
-                await StartRecordingAsync();
+                if (autoStartRecording)
+                {
+                    StatusMessage = $"已选定录制区域：{Region.Width} × {Region.Height}，正在启动录制…";
+                    _logger?.Info($"录屏区域选择并开录: {Region.Width}x{Region.Height} @ ({Region.X},{Region.Y})");
+                    RequestRegionBorderPulse();
+                    await StartRecordingAsync();
+                }
+                else
+                {
+                    StatusMessage = $"已选定录制区域：{Region.Width} × {Region.Height}（点击【开始录制】即可开录）";
+                    _logger?.Info($"录屏区域选择: {Region.Width}x{Region.Height} @ ({Region.X},{Region.Y})");
+                    RequestRegionBorderPulse();
+                }
             }
             finally
             {
@@ -1450,7 +1538,20 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             _poller.Start();
             IsRecording = true;
             StatusMessage = "● 录制中…";
-            if (IsFloatingBarEnabled)
+
+            // 开录后是否最小化主窗口，由「开录后最小化主窗口」这个开关决定（默认开）。
+            // 关掉时主窗口留在原地：适合边看界面边讲解，或者录制目标就是本程序的场景。
+            // 停止入口不依赖"桌面上必须留个按钮"：即使最小化了，主窗口仍在任务栏，点一下即可恢复。
+            if (MinimizeOnStart)
+            {
+                HostWindowMinimizeRequested?.Invoke(this, EventArgs.Empty);
+            }
+
+            // 悬浮控制条**只**由用户设置决定，不因为"刚刚最小化了"就自动弹出来。
+            // 历史实现是 `IsFloatingBarEnabled || minimizeHost` —— 等于把用户关掉的开关
+            // 在开录瞬间强行打开一次，屏幕上凭空多出一条控制栏。
+            // 想临时叫出来用录屏热键（语义是呼出/收起控制条），那是用户主动行为，不算自动弹。
+            if (ShouldShowFloatingBarOnStart(IsFloatingBarEnabled))
             {
                 FloatingBarShowRequested?.Invoke(this, EventArgs.Empty);
             }
@@ -1473,6 +1574,19 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
             StatusMessage = "启动失败";
         }
     }
+
+    /// <summary>
+    /// 开录后要不要把悬浮控制条显示出来。
+    ///
+    /// **只看用户设置**，与「是否最小化了主窗口」无关。这一条是用户明确裁定的交互：
+    /// 关掉控制条的人就是不想要屏幕上多一块东西，最小化后自己从任务栏把窗口点回来停止即可。
+    /// 历史实现把最小化当成了「必须留一个停止入口」的理由（`floatingBar || minimized`），
+    /// 结果用户关掉的开关会在每次开录时被强行打开一次 —— 别再改回去。
+    ///
+    /// 抽成静态方法是为了能被测试直接覆盖：<see cref="RecordingViewModel"/> 自身依赖
+    /// Rust 录制服务，不便在单测里实例化。
+    /// </summary>
+    public static bool ShouldShowFloatingBarOnStart(bool floatingBarEnabled) => floatingBarEnabled;
 
     /// <summary>
     /// 计算麦克风叠加参数：勾了输入设备就再混一路进主音轨。
@@ -1821,6 +1935,7 @@ public partial class RecordingViewModel : ObservableObject, IAsyncDisposable
         }
 
         _poller.Dispose();
+        RecordingService.HardwareProbeCompleted -= OnHardwareProbeCompleted;
         await _service.DisposeAsync().ConfigureAwait(false);
         GC.SuppressFinalize(this);
     }

@@ -6,6 +6,19 @@
              x:Class="ShawMuOCR.Views.Pages.RecordingPageView"
              x:DataType="vm:RecordingViewModel">
 
+    <UserControl.Styles>
+        <!-- 编码器探针：正常态跟随主题前景，告警态（将回退软编）用琥珀色点出来 -->
+        <Style Selector="Border.encoder-probe TextBlock.probe-title">
+            <Setter Property="Foreground" Value="{DynamicResource TextFillColorPrimaryBrush}" />
+        </Style>
+        <Style Selector="Border.encoder-probe.warning TextBlock.probe-title">
+            <Setter Property="Foreground" Value="#D97706" />
+        </Style>
+        <Style Selector="Border.encoder-probe.warning">
+            <Setter Property="BorderBrush" Value="#F0B429" />
+        </Style>
+    </UserControl.Styles>
+
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="16">
 
@@ -124,10 +137,10 @@
                                     CornerRadius="6" Padding="10,8">
                                 <Grid ColumnDefinitions="*,Auto">
                                     <TextBlock Grid.Column="0" Text="{Binding RegionText}" VerticalAlignment="Center" FontSize="12" />
-                                    <Button Grid.Column="1" Content="📐 框选并开始录制" Command="{Binding SelectRegionCommand}" Classes="accent" />
+                                    <Button Grid.Column="1" Content="📐 框选区域" Command="{Binding SelectRegionCommand}" Classes="accent" />
                                 </Grid>
                             </Border>
-                            <TextBlock Text="点击后全屏暗化拖拽框选，松开即可自动开始录制（快捷键 Alt+R）；屏幕上将以辉光外边框标记录制边界（对录屏画面隐身，不影响录制视频内容）。"
+                            <TextBlock Text="点击后拖拽框选录制区域（ESC 或右键取消）；屏幕上将以辉光外边框标记录制边界，确认后点击【▶ 开始录制】即可开录。"
                                        FontSize="11"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
                                        TextWrapping="Wrap" />
@@ -157,6 +170,19 @@
                             </Grid>
                         </StackPanel>
 
+                        <!-- 开录后的桌面行为 -->
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="开录后的桌面行为" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                            <CheckBox Content="开录后最小化主窗口"
+                                      IsChecked="{Binding MinimizeOnStart}"
+                                      FontSize="12"
+                                      ToolTip.Tip="勾选：点开始录制后主窗口立即收进任务栏，把桌面完整让给录制内容。不勾选：主窗口留在原地（适合边讲解边看界面，或录制目标就是本程序）。停止录制时点任务栏恢复窗口即可。" />
+                            <CheckBox Content="开录后显示悬浮控制条"
+                                      IsChecked="{Binding IsFloatingBarEnabled}"
+                                      FontSize="12"
+                                      ToolTip.Tip="勾选：开始录制时在桌面显示悬浮控制条（带停止按钮）。不勾选：开录后桌面不弹任何浮层；需要临时操作时按录屏热键（默认 Alt+R）呼出控制条。与上方「最小化」开关互不影响。" />
+                        </StackPanel>
+
                         <!-- 帧率 / 码率 -->
                         <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
                             <StackPanel Grid.Column="0" Spacing="6">
@@ -179,6 +205,30 @@
                             <ComboBox ItemsSource="{Binding EncoderOptions}"
                                       SelectedItem="{Binding SelectedEncoder}"
                                       HorizontalAlignment="Stretch" />
+
+                            <!-- 编码器探针：把「自动检测」的实际落点提前显示出来。
+                                 录制中隐藏 —— 那时右侧统计区显示的是真实编码器，
+                                 探针仍写「预计」会与事实打架。 -->
+                            <Border Classes="encoder-probe"
+                                    Classes.warning="{Binding EncoderProbeIsWarning}"
+                                    Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    BorderThickness="1"
+                                    CornerRadius="6"
+                                    Padding="8,6"
+                                    IsVisible="{Binding !IsRecording}">
+                                <StackPanel Spacing="2">
+                                    <TextBlock Classes="probe-title"
+                                               Text="{Binding EncoderProbeTitle}"
+                                               FontSize="12"
+                                               FontWeight="SemiBold"
+                                               TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding EncoderProbeHint}"
+                                               FontSize="11"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
                             <TextBlock Text="默认开启 GPU H.265 (HEVC) 显存零拷贝硬件加速；可选 GPU H.264 或 CPU 软编。若环境不支持硬编将自动安全降级。"
                                        FontSize="11"
                                        Foreground="{DynamicResource TextFillColorSecondaryBrush}"
@@ -301,8 +351,8 @@
                                     HorizontalContentAlignment="Center"
                                     Padding="12,10"
                                     FontSize="14" />
-                            <Button Content="📐  区域录制"
-                                    Command="{Binding SelectRegionCommand}"
+                            <Button Content="📐  框选并录制"
+                                    Command="{Binding SelectRegionAndRecordCommand}"
                                     Classes="subtle"
                                     IsEnabled="{Binding IsCoreAvailable}"
                                     IsVisible="{Binding !IsRecording}"
@@ -310,7 +360,7 @@
                                     HorizontalContentAlignment="Center"
                                     Padding="12,9"
                                     FontSize="13"
-                                    ToolTip.Tip="一键拖拽框选任意区域，松开鼠标即可立即自动开始录制（快捷键 Alt+R）" />
+                                    ToolTip.Tip="拖拽框选屏幕任意录制区域，选定后立即开始录制" />
                             <Button Content="⏹  停止录制"
                                     Command="{Binding StopRecordingCommand}"
                                     IsVisible="{Binding IsRecording}"

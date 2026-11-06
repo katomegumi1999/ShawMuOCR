@@ -13,9 +13,9 @@
         <FluentTheme />
         <StyleInclude Source="avares://Avalonia.Controls.ColorPicker/Themes/Fluent/Fluent.xaml" />
 
-        <!-- 全局统一字体栈：确保中英文、数字和符号风格高度一致，解决 Inter 与微软雅黑混排割裂 -->
+        <!-- 全局统一字体栈：确保中英文、数字、符号与彩色 Emoji 风格高度一致，解决黑白退化与割裂 -->
         <Style Selector="Window">
-            <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI, -apple-system, sans-serif" />
+            <Setter Property="FontFamily" Value="Microsoft YaHei UI, Segoe UI Emoji, Segoe UI, Apple Color Emoji, Noto Color Emoji, -apple-system, sans-serif" />
         </Style>
         <!-- 全局彩色 Emoji 样式：显式绑定彩色表情字体并锁定常规字重，防止父容器加粗或字体回退时退化为单色黑白轮廓 -->
         <Style Selector="TextBlock.emoji">
