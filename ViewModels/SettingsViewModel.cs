@@ -508,6 +508,10 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _maxSideLen;
 
+    /// <summary>长截图拼接高度上限（像素）。UI 用 ComboBox 给固定档位，避免用户手填越界值。</summary>
+    [ObservableProperty]
+    private int _longScreenshotMaxHeight = ShawMuOCR.Core.Capture.LongScreenshotStitcher.DefaultMaxHeight;
+
     [ObservableProperty]
     private bool _enableIdleSleep;
 
@@ -552,6 +556,7 @@ public partial class SettingsViewModel : ViewModelBase
         "外部 Web API 接口 (HTTP)"
     };
     public ObservableCollection<int> AvailableMaxSideLens { get; } = new();
+    public ObservableCollection<int> AvailableLongScreenshotHeights { get; } = new();
     public ObservableCollection<int> AvailableIdleSleepMinutes { get; } = new();
     public ObservableCollection<int> AvailableLogRetentionDays { get; } = new();
 
@@ -616,6 +621,9 @@ public partial class SettingsViewModel : ViewModelBase
         InitializeGpuDevices();
         _enableAngleDetection = current.EnableAngleDetection;
         _maxSideLen = current.MaxSideLen;
+        _longScreenshotMaxHeight = current.LongScreenshotMaxHeight > 0
+            ? current.LongScreenshotMaxHeight
+            : ShawMuOCR.Core.Capture.LongScreenshotStitcher.DefaultMaxHeight;
         _enableIdleSleep = current.EnableIdleSleep;
         _idleSleepMinutes = current.IdleSleepMinutes;
         _enableLogging = current.EnableLogging;
@@ -663,6 +671,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         LoadModels();
         LoadMaxSideLens();
+        LoadLongScreenshotHeights();
         LoadIdleSleepMinutes();
         LoadLogRetentionDays();
         RefreshMuClipEncryptionStatus();
@@ -819,6 +828,24 @@ public partial class SettingsViewModel : ViewModelBase
         if (!AvailableMaxSideLens.Contains(MaxSideLen))
         {
             MaxSideLen = 1280;
+        }
+    }
+
+    /// <summary>
+    /// 长截图高度档位。只给固定档位而不是让用户手填：上限直接决定内存占用
+    /// （16000 × 1920 宽 ≈ 123 MB，32000 翻倍），给个滑块容易随手拉到头。
+    /// </summary>
+    private void LoadLongScreenshotHeights()
+    {
+        AvailableLongScreenshotHeights.Clear();
+        AvailableLongScreenshotHeights.Add(12_000);
+        AvailableLongScreenshotHeights.Add(16_000);
+        AvailableLongScreenshotHeights.Add(24_000);
+        AvailableLongScreenshotHeights.Add(32_000);
+
+        if (!AvailableLongScreenshotHeights.Contains(LongScreenshotMaxHeight))
+        {
+            LongScreenshotMaxHeight = ShawMuOCR.Core.Capture.LongScreenshotStitcher.DefaultMaxHeight;
         }
     }
 
@@ -1541,6 +1568,7 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(SelectedGpuIndex):
             case nameof(EnableAngleDetection):
             case nameof(MaxSideLen):
+            case nameof(LongScreenshotMaxHeight):
             case nameof(EnableIdleSleep):
             case nameof(IdleSleepMinutes):
             case nameof(EnableLogging):
@@ -1786,6 +1814,7 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.SelectedGpuIndex = SelectedGpuIndex;
         newSettings.EnableAngleDetection = EnableAngleDetection;
         newSettings.MaxSideLen = MaxSideLen;
+        newSettings.LongScreenshotMaxHeight = LongScreenshotMaxHeight;
         newSettings.EnableIdleSleep = EnableIdleSleep;
         newSettings.IdleSleepMinutes = IdleSleepMinutes;
         newSettings.EnableLogging = EnableLogging;
@@ -1943,6 +1972,9 @@ public partial class SettingsViewModel : ViewModelBase
             SelectedGpuIndex = current.SelectedGpuIndex;
             EnableAngleDetection = current.EnableAngleDetection;
             MaxSideLen = current.MaxSideLen;
+            LongScreenshotMaxHeight = current.LongScreenshotMaxHeight > 0
+                ? current.LongScreenshotMaxHeight
+                : ShawMuOCR.Core.Capture.LongScreenshotStitcher.DefaultMaxHeight;
             EnableIdleSleep = current.EnableIdleSleep;
             IdleSleepMinutes = current.IdleSleepMinutes;
             EnableLogging = current.EnableLogging;

@@ -172,6 +172,13 @@ public sealed class OcrSettings
     /// </summary>
     public int IdleSleepMinutes { get; set; } = 3;
 
+    /// <summary>
+    /// 长截图拼接的高度上限（像素，默认 16000）。触顶后自动收尾，后面的内容不再收入。
+    /// 上限越高越吃内存：16000 × 1920 宽约 123 MB，32000 × 1920 宽约 246 MB（扩容峰值再涨 1.5 倍）。
+    /// 取值范围见 <c>LongScreenshotStitcher.MinCustomMaxHeight / MaxCustomMaxHeight</c>。
+    /// </summary>
+    public int LongScreenshotMaxHeight { get; set; } = 16_000;
+
     public OcrSettings Clone() => new()
     {
         ScanExternalModels = ScanExternalModels,
@@ -192,6 +199,7 @@ public sealed class OcrSettings
         EnableAngleDetection = EnableAngleDetection,
         MaxSideLen = MaxSideLen,
         EnableIdleSleep = EnableIdleSleep,
-        IdleSleepMinutes = IdleSleepMinutes
+        IdleSleepMinutes = IdleSleepMinutes,
+        LongScreenshotMaxHeight = LongScreenshotMaxHeight
     };
 }

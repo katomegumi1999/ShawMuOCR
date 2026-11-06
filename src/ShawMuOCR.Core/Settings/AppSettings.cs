@@ -377,6 +377,13 @@ public sealed class AppSettings
     }
 
     [JsonIgnore]
+    public int LongScreenshotMaxHeight
+    {
+        get => Ocr.LongScreenshotMaxHeight;
+        set => Ocr.LongScreenshotMaxHeight = value;
+    }
+
+    [JsonIgnore]
     public bool EnableIdleSleep
     {
         get => Ocr.EnableIdleSleep;

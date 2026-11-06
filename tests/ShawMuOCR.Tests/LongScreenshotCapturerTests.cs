@@ -47,6 +47,7 @@ public class LongScreenshotCapturerTests
             int expectedHeight = ViewportHeight + 137 * 4;
             Assert.Equal(expectedHeight, result.Height);
             Assert.True(result.FrameCount >= 5, $"帧数偏少：{result.FrameCount}");
+            Assert.False(result.Truncated);
 
             // 拼出来的每一行都必须与原文档逐字节一致
             byte[] expected = LongScreenshotTestData.ReadRows(document, 0, expectedHeight);
@@ -83,6 +84,63 @@ public class LongScreenshotCapturerTests
         {
             result.Image.Dispose();
         }
+    }
+
+    [Fact]
+    public async Task Run_ReachingHeightLimit_FlagsTruncationInsteadOfStoppingSilently()
+    {
+        // 真实上限是 16000 像素（约等于滚轮一格 100 px 时滚 160 格）。
+        // 这里把上限压到「视口高 + 200」，让第三帧只放得下 63 行就触顶，
+        // 从而在毫秒级内复现用户看到的现象：图是有的、也复制成功了，但后面还有内容没进来。
+        using var document = LongScreenshotTestData.CreateDocument();
+        var service = new ScriptedCaptureService(document, 0, 137, 274, 411, 548);
+        int maxHeight = ViewportHeight + 200;
+        var capturer = new LongScreenshotCapturer(service, FastTimings(), maxHeight);
+
+        var result = await capturer.RunAsync(Region);
+
+        Assert.NotNull(result.Image);
+        try
+        {
+            Assert.True(result.Truncated, "触到高度上限时必须标出截断，否则调用方无从告知用户");
+            Assert.Equal(maxHeight, result.Height);
+            Assert.Contains("上限", result.Status);
+            Assert.Contains("后续内容未收入", result.Describe(copied: true));
+        }
+        finally
+        {
+            result.Image.Dispose();
+        }
+
+        Assert.False(capturer.IsRunning);
+    }
+
+    [Fact]
+    public void Describe_NotTruncated_ReportsFrameCountAndHeightOnly()
+    {
+        var result = new LongScreenshotResult(null, 12, 2400, "已拼接 2400 像素");
+
+        string text = result.Describe(copied: true);
+
+        Assert.Equal("✓ 长截图已复制到剪贴板（12 帧 / 2400 像素高）", text);
+        Assert.DoesNotContain("上限", text);
+    }
+
+    [Fact]
+    public void Describe_Truncated_AlwaysCarriesLimitWarning()
+    {
+        var result = new LongScreenshotResult(
+            null, 160, 16000, "已拼接 16000 像素（达到高度上限，后续内容未收入）", Truncated: true);
+
+        string copied = result.Describe(copied: true);
+        Assert.Contains("已复制", copied);
+        Assert.Contains("16000 像素", copied);
+        Assert.Contains("后续内容未收入", copied);
+
+        // 复制失败时仍然要说清"图本身是被截断的"，否则失败原因会被误认为只有剪贴板问题
+        string failed = result.Describe(copied: false);
+        Assert.Contains("失败", failed);
+        Assert.Contains("后续内容未收入", failed);
     }
 
     // ========================= 退出条件 =========================

@@ -516,7 +516,10 @@ public sealed class OcrCoordinator : IOcrCoordinator
             return;
         }
 
-        var capturer = new LongScreenshotCapturer(_captureService);
+        // 高度上限跟设置走（默认 16000 像素）。越界值由拼接器夹取，这里只负责读。
+        var capturer = new LongScreenshotCapturer(
+            _captureService,
+            _settingsService.Current.LongScreenshotMaxHeight);
         _longScreenshotCapturer = capturer;
 
         SetState(OcrState.Recognizing, "长截图进行中，请滚动目标窗口");
@@ -566,14 +569,18 @@ public sealed class OcrCoordinator : IOcrCoordinator
             _currentSession?.Dispose();
             _currentSession = new OcrSession(longImage, OcrResult.Empty());
 
-            string status = copied
-                ? $"✓ 长截图已复制到剪贴板（{result.FrameCount} 帧 / {result.Height} 像素高）"
-                : $"✕ 长截图已生成但写入剪贴板失败（{result.Height} 像素高）";
+            // 状态文案统一交给 LongScreenshotResult.Describe：截断（触到 16000 像素上限）时必须
+            // 把「后续内容未收入」带出来。以前这里自己拼「✓ 已复制（N 帧 / M 像素高）」，
+            // 把 capturer 里那句「达到高度上限」丢了 —— 用户只会看到图莫名短了一截。
+            string status = result.Describe(copied);
             SetState(copied ? OcrState.Success : OcrState.Failed, status);
 
             if (_settingsService.Current.ShowCaptureImageNotification)
             {
-                ToastNotificationWindow.Show(status, TimeSpan.Zero, "长截图完成");
+                ToastNotificationWindow.Show(
+                    status,
+                    TimeSpan.Zero,
+                    result.Truncated ? "长截图完成（已达高度上限）" : "长截图完成");
             }
 
             SessionCompleted?.Invoke(_currentSession);

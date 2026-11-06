@@ -10,7 +10,34 @@ namespace ShawMuOCR.Windows.ScreenCapture;
 /// <param name="FrameCount">实际参与拼接的帧数。</param>
 /// <param name="Height">最终高度（像素）。</param>
 /// <param name="Status">面向用户的结束原因描述。</param>
-public sealed record LongScreenshotResult(SKBitmap? Image, int FrameCount, int Height, string Status);
+/// <param name="Truncated">是否因为达到高度上限而被截断（图是有效的，只是后面还有内容没进来）。</param>
+public sealed record LongScreenshotResult(
+    SKBitmap? Image,
+    int FrameCount,
+    int Height,
+    string Status,
+    bool Truncated = false)
+{
+    /// <summary>
+    /// 面向用户的一句话结果。<paramref name="copied"/> 表示是否已成功写入剪贴板。
+    /// <para>
+    /// 截断必须在**这一层**就说明白：拼接上限是 16000 像素（见
+    /// <see cref="LongScreenshotStitcher.DefaultMaxHeight"/>），到顶后图仍然有效、仍然复制成功，
+    /// 只是后面的内容没进图。早期调用方自己拼「✓ 已复制（N 帧 / M 像素高）」，
+    /// 把 <see cref="Status"/> 里那句「达到高度上限」丢了 —— 用户只会看到图莫名其妙短了一截。
+    /// </para>
+    /// </summary>
+    public string Describe(bool copied)
+    {
+        string head = copied
+            ? $"✓ 长截图已复制到剪贴板（{FrameCount} 帧 / {Height} 像素高）"
+            : $"✕ 长截图已生成但写入剪贴板失败（{Height} 像素高）";
+
+        return Truncated
+            ? $"{head} · ⚠️ 已达高度上限 {Height} 像素，后续内容未收入"
+            : head;
+    }
+}
 
 /// <summary>
 /// 采集节奏与退出阈值的可调参数。默认值即生产使用值；
@@ -51,18 +78,35 @@ public sealed class LongScreenshotCapturer
 {
     private readonly IScreenCaptureService _captureService;
     private readonly LongScreenshotTimings _timings;
+    private readonly int _maxHeight;
     private volatile bool _stopRequested;
     private volatile bool _cancelRequested;
 
     public LongScreenshotCapturer(IScreenCaptureService captureService)
-        : this(captureService, LongScreenshotTimings.Default)
+        : this(captureService, LongScreenshotTimings.Default, LongScreenshotStitcher.DefaultMaxHeight)
     {
     }
 
-    internal LongScreenshotCapturer(IScreenCaptureService captureService, LongScreenshotTimings timings)
+    /// <param name="maxHeight">
+    /// 拼接高度上限（像素）。生产代码从设置 <c>OcrSettings.LongScreenshotMaxHeight</c> 取，
+    /// 由 <see cref="LongScreenshotStitcher"/> 再夹进合法区间，这里不做校验。
+    /// </param>
+    public LongScreenshotCapturer(IScreenCaptureService captureService, int maxHeight)
+        : this(captureService, LongScreenshotTimings.Default, maxHeight)
+    {
+    }
+
+    /// <param name="maxHeight">
+    /// 拼接高度上限，默认沿用 <see cref="LongScreenshotStitcher.DefaultMaxHeight"/>（16000）。
+    /// </param>
+    internal LongScreenshotCapturer(
+        IScreenCaptureService captureService,
+        LongScreenshotTimings timings,
+        int maxHeight = LongScreenshotStitcher.DefaultMaxHeight)
     {
         _captureService = captureService ?? throw new ArgumentNullException(nameof(captureService));
         _timings = timings ?? throw new ArgumentNullException(nameof(timings));
+        _maxHeight = maxHeight;
     }
 
     /// <summary>采集是否正在进行。</summary>
@@ -106,7 +150,7 @@ public sealed class LongScreenshotCapturer
                 await Task.Delay(_timings.StartupDelay).ConfigureAwait(false);
             }
 
-            using var stitcher = new LongScreenshotStitcher(region.Width, region.Height);
+            using var stitcher = new LongScreenshotStitcher(region.Width, region.Height, _maxHeight);
             var clock = Stopwatch.StartNew();
             var frameClock = Stopwatch.StartNew();
             var lastMovement = TimeSpan.Zero;
@@ -237,7 +281,7 @@ public sealed class LongScreenshotCapturer
                 ? $"已拼接 {stitcher.RenderedHeight} 像素（达到高度上限，后续内容未收入）"
                 : $"已拼接 {stitcher.RenderedHeight} 像素";
 
-            return new LongScreenshotResult(image, stitcher.FrameCount, stitcher.RenderedHeight, status);
+            return new LongScreenshotResult(image, stitcher.FrameCount, stitcher.RenderedHeight, status, stitcher.IsFull);
         }
         catch (Exception ex)
         {

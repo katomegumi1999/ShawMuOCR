@@ -321,6 +321,25 @@ Release AOT 实测（本机，含自定义背景图）：
      （AV1 已确认不可用时链里不再出现 AV1）。
    守卫测试：`EncoderProbeTests`（含「未知不跳过 AV1」「全不可用才告警」「文案含分片优先」三条关键分支）。
 
+### 3.15 长截图：高度上限与「截断必须说出来」
+
+1. **上限是像素而不是帧数**。`LongScreenshotStitcher.DefaultMaxHeight = 16_000`，触顶后
+   `IsFull = true` → 采集循环退出。用户看到的现象常是「到 160 帧左右就停」，
+   因为 16000 ÷ 160 = 100 px/帧，正好等于滚轮一格的位移 —— **帧数只是巧合**。
+   真正的帧数上限是 `LongScreenshotTimings.MaxFrames`（1500），远够不到。
+2. **图仍然有效，只是后面没进来**。所以结果里必须带 `Truncated` 标记，
+   面向用户的文案统一走 `LongScreenshotResult.Describe(copied)`，截断时追加
+   「⚠️ 已达高度上限 N 像素，后续内容未收入」，toast 标题也换成「长截图完成（已达高度上限）」。
+   历史 bug：`OcrCoordinator` 自己拼「✓ 已复制（N 帧 / M 像素高）」，把 capturer 生成的
+   「达到高度上限」整句丢了，用户只看到图莫名短一截。**别在调用方重新拼状态文案。**
+3. **上限可配**（`OcrSettings.LongScreenshotMaxHeight`，设置页给固定档位 12000/16000/24000/32000）。
+   拼接器构造时 `Math.Clamp(..., 视口高, MaxCustomMaxHeight)` 兜住手改 settings.json 的越界值；
+   下限取视口高，否则首帧就"满"。内存代价：16000 × 1920 宽 ≈ 123 MB，32000 翻倍，
+   扩容（×1.5）瞬间还要再涨一半 —— 这是上限不能随便放开的唯一原因。
+   守卫测试：`LongScreenshotCapturerTests`（触顶标记 + 两种文案）、
+   `LongScreenshotStitcherTests.Constructor_ClampsMaxHeightIntoSupportedRange`、
+   `SettingsAutoSaveTests.SettingsViewModel_LongScreenshotMaxHeight_*`。
+
 ---
 
 ## 4. 常用构建与验证命令

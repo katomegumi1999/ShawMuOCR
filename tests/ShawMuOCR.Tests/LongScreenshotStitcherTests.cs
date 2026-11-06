@@ -308,4 +308,36 @@ public class LongScreenshotStitcherTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new LongScreenshotStitcher(100, 0));
     }
 
+    [Fact]
+    public void Constructor_ClampsMaxHeightIntoSupportedRange()
+    {
+        // 用户可配的上限会直接落到 settings.json 里，可能被手改成任意数字。
+        // 拼接器必须自己兜住：下限是视口高（否则首帧就满），上限是 32000（再高内存撑不住）。
+        using (var tooSmall = new LongScreenshotStitcher(DocWidth, ViewportHeight, maxHeight: 100))
+        {
+            Assert.Equal(ViewportHeight, tooSmall.MaxHeight);
+        }
+
+        using (var tooLarge = new LongScreenshotStitcher(DocWidth, ViewportHeight, maxHeight: 999_999))
+        {
+            Assert.Equal(LongScreenshotStitcher.MaxCustomMaxHeight, tooLarge.MaxHeight);
+        }
+
+        // 区间内的值原样保留
+        using (var normal = new LongScreenshotStitcher(DocWidth, ViewportHeight, maxHeight: 24_000))
+        {
+            Assert.Equal(24_000, normal.MaxHeight);
+        }
+    }
+
+    [Fact]
+    public void DefaultMaxHeight_StaysWithinConfigurableRange()
+    {
+        // 默认值必须是自己允许的档位，否则用户在设置页里选"默认"反而会被夹走
+        Assert.InRange(
+            LongScreenshotStitcher.DefaultMaxHeight,
+            LongScreenshotStitcher.MinCustomMaxHeight,
+            LongScreenshotStitcher.MaxCustomMaxHeight);
+    }
+
 }

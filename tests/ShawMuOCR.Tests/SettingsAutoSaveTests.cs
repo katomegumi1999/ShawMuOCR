@@ -59,6 +59,22 @@ public class SettingsAutoSaveTests
     }
 
     [Fact]
+    public void SettingsViewModel_LongScreenshotMaxHeight_AutoSavesAndOffersFixedTiers()
+    {
+        var settingsService = new FakeSettingsService();
+        var vm = new SettingsViewModel(
+            settingsService, new FakeStartupService(), new FakeHotkeyService(), new FakeModelProvider());
+
+        // 默认 16000，且必须是下拉框里真实存在的档位，否则界面会显示空白
+        Assert.Equal(ShawMuOCR.Core.Capture.LongScreenshotStitcher.DefaultMaxHeight, vm.LongScreenshotMaxHeight);
+        Assert.Contains(vm.LongScreenshotMaxHeight, vm.AvailableLongScreenshotHeights);
+
+        vm.LongScreenshotMaxHeight = 32_000;
+
+        Assert.Equal(32_000, settingsService.Current.LongScreenshotMaxHeight);
+    }
+
+    [Fact]
     public void SettingsViewModel_ToggleAutoCopy_AutoSavesImmediately()
     {
         var settingsService = new FakeSettingsService();

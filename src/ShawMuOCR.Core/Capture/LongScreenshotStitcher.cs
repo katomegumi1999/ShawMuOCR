@@ -19,6 +19,18 @@ public sealed class LongScreenshotStitcher : IDisposable
     /// <summary>单张长截图的默认高度上限。再高就没法粘进大多数应用了，内存也吃不消。</summary>
     public const int DefaultMaxHeight = 16_000;
 
+    /// <summary>
+    /// 用户可配置区间的下限。低于这个值拼接器会直接取视口高度（<c>Math.Max(height, maxHeight)</c>），
+    /// 设了也等于没设，所以干脆定一个还能叫"长图"的门槛。
+    /// </summary>
+    public const int MinCustomMaxHeight = 4_000;
+
+    /// <summary>
+    /// 用户可配置区间的上限。32000 × 2560 宽约 328 MB，扩容峰值（×1.5）会逼近 500 MB，
+    /// 再往上就有把进程撑爆的风险，不值得为极少数场景赌。
+    /// </summary>
+    public const int MaxCustomMaxHeight = 32_000;
+
     /// <summary>扩容时已有内容与新容量的最小倍数关系。</summary>
     private const double GrowthFactor = 1.5;
 
@@ -41,7 +53,9 @@ public sealed class LongScreenshotStitcher : IDisposable
 
         Width = width;
         FrameHeight = height;
-        _maxHeight = Math.Max(height, maxHeight);
+        // 上限先不能低于视口高（否则首帧就"满"了），再夹进可配置区间：
+        // 用户手改 settings.json 塞个 999999 也不会把内存打穿。
+        _maxHeight = Math.Clamp(Math.Max(height, maxHeight), height, Math.Max(height, MaxCustomMaxHeight));
         _canvas = new SKBitmap(new SKImageInfo(width, height, SKColorType.Bgra8888, SKAlphaType.Premul));
         _canvasHandle = new SKCanvas(_canvas);
     }
@@ -51,6 +65,12 @@ public sealed class LongScreenshotStitcher : IDisposable
 
     /// <summary>视口高度，即单帧的最大可追加行数。</summary>
     public int FrameHeight { get; }
+
+    /// <summary>
+    /// 实际生效的高度上限。构造时已夹进 [视口高, <see cref="MaxCustomMaxHeight"/>]，
+    /// 所以它可能不等于调用方传进来的 <c>maxHeight</c>。
+    /// </summary>
+    public int MaxHeight => _maxHeight;
 
     /// <summary>已拼接的总高度（含首帧）。</summary>
     public int RenderedHeight { get; private set; }

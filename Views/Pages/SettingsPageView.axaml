@@ -187,6 +187,22 @@
                             </StackPanel>
                         </Grid>
 
+                        <!-- 长截图高度上限 -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="长截图高度上限" FontWeight="Medium" />
+                                <TextBlock Text="单张长图的最大高度（像素）。触顶会自动收尾，后面的内容不再收入；调高更吃内存（16000 高 × 1920 宽约 123 MB）"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding AvailableLongScreenshotHeights}"
+                                      SelectedItem="{Binding LongScreenshotMaxHeight}"
+                                      Width="160" />
+                        </Grid>
+
                         <!-- 快捷键 5: 屏幕录制 -->
                         <Grid ColumnDefinitions="*,Auto">
                             <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
