@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <RootNamespace>ShawMuOCR.Core</RootNamespace>
     <IsAotCompatible>true</IsAotCompatible>
+    <!-- .NET 11 Runtime Async（预览），说明见根目录 ShawMuOCR.csproj -->
+    <Features>runtime-async=on</Features>
   </PropertyGroup>
 
   <ItemGroup>

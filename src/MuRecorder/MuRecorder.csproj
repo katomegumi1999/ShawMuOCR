@@ -12,6 +12,8 @@
          其驻留进程会加载上一轮输出的 obj DLL，导致 CompileAvaloniaXaml 的
          CopyAndTouch 偶发文件锁失败（"used by another process"）。 -->
     <UsedAvaloniaProducts></UsedAvaloniaProducts>
+    <!-- .NET 11 Runtime Async（预览），说明见根目录 ShawMuOCR.csproj -->
+    <Features>runtime-async=on</Features>
   </PropertyGroup>
 
   <ItemGroup>

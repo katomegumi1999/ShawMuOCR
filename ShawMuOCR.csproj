@@ -17,6 +17,12 @@
     <CopyOutputSymbolsToPublishDirectory>false</CopyOutputSymbolsToPublishDirectory>
     <!-- 禁用 .NET AOT 优化跳步发布（UseOptimizedPublish），确保执行完整生成链以触发 Avalonia XAML IL 编译与资源编织 -->
     <UseOptimizedPublish>false</UseOptimizedPublish>
+    <!-- .NET 11 Runtime Async V2（预览特性）：async Task/ValueTask 的挂起与恢复改由运行时管理，
+         编译器不再为它们生成状态机（IL 显著变小、活栈更干净）。
+         已知边界：async void 与 async 迭代器（IAsyncEnumerable）不受支持，仍走编译器状态机。
+         NativeAOT / ReadyToRun 均已支持；删除此行即整体回退到编译器状态机模型。
+         参见 https://learn.microsoft.com/dotnet/core/whats-new/dotnet-11/runtime -->
+    <Features>runtime-async=on</Features>
   </PropertyGroup>
 
   <ItemGroup>

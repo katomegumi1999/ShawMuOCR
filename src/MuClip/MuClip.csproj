@@ -8,6 +8,8 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <ApplicationIcon>..\..\Assets\logo.ico</ApplicationIcon>
+    <!-- .NET 11 Runtime Async（预览），说明见根目录 ShawMuOCR.csproj -->
+    <Features>runtime-async=on</Features>
   </PropertyGroup>
 
   <ItemGroup>
