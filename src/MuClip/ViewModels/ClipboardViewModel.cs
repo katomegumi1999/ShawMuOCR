@@ -503,11 +503,14 @@ public partial class ClipboardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void CopyDataDirectoryPath()
+    public async Task CopyDataDirectoryPath()
     {
         try
         {
-            _service.CopyToSystemClipboard(DataDirectory);
+            bool written = await _service.CopyToSystemClipboardAsync(DataDirectory);
+            StatusMessage = written
+                ? "✓ 数据目录路径已复制到系统剪贴板"
+                : ClipboardWriteFailedMessage;
         }
         catch { }
     }
@@ -1450,6 +1453,63 @@ public partial class ClipboardViewModel : ObservableObject
     [ObservableProperty]
     private string _managerTemplateAppendText = string.Empty;
 
+    /// <summary>
+    /// 非空表示「模板表单」正处于编辑态，指向被编辑模板的 Id。
+    /// Service 层 <see cref="MuClipService.SaveRuleTemplate"/> 按 Id upsert，保留 Id 即覆盖原记录。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsEditingRuleTemplate))]
+    [NotifyPropertyChangedFor(nameof(TemplateFormTitle))]
+    [NotifyPropertyChangedFor(nameof(TemplateSaveButtonText))]
+    private string? _editingRuleTemplateId;
+
+    // 编辑态下原模板的精确位置：表单只能表达「开头 / 末尾」，
+    // 若用户没改位置模式，保存时应保留原来的字符位置（如"第 5 字前"），不被压成 0。
+    private int _editingOriginalPositionMode;
+    private int _editingOriginalInsertPosition;
+
+    public bool IsEditingRuleTemplate => !string.IsNullOrEmpty(EditingRuleTemplateId);
+
+    public string TemplateFormTitle => IsEditingRuleTemplate ? "✏️ 编辑规则模板" : "➕ 新建常用规则模板";
+
+    public string TemplateSaveButtonText => IsEditingRuleTemplate ? "💾 保存修改" : "💾 添加到常用规则模板库";
+
+    /// <summary>
+    /// 把一条已保存模板载入下方表单进入编辑态。
+    /// </summary>
+    [RelayCommand]
+    public void EditRuleTemplate(PhraseRuleTemplate? template)
+    {
+        if (template == null) return;
+
+        EditingRuleTemplateId = template.Id;
+        _editingOriginalPositionMode = template.PositionMode;
+        _editingOriginalInsertPosition = template.InsertPosition;
+
+        ManagerTemplateName = template.Name;
+        ManagerTemplateStartTime = string.IsNullOrWhiteSpace(template.StartTime) ? "08:00" : template.StartTime;
+        ManagerTemplateEndTime = string.IsNullOrWhiteSpace(template.EndTime) ? "18:00" : template.EndTime;
+        ManagerTemplatePositionMode = template.PositionMode;
+        ManagerTemplateAppendText = template.AppendText;
+
+        StatusMessage = $"✏️ 正在编辑模板「{template.Name}」，改完点「保存修改」";
+    }
+
+    /// <summary>
+    /// 放弃编辑，表单回到「新建」状态。
+    /// </summary>
+    [RelayCommand]
+    public void CancelEditRuleTemplate()
+    {
+        EditingRuleTemplateId = null;
+        ManagerTemplateName = string.Empty;
+        ManagerTemplateAppendText = string.Empty;
+        ManagerTemplateStartTime = "08:00";
+        ManagerTemplateEndTime = "18:00";
+        ManagerTemplatePositionMode = 1;
+        StatusMessage = "已退出模板编辑";
+    }
+
     [RelayCommand]
     public void SetManagerPresetPosition(string mode)
     {
@@ -1487,10 +1547,18 @@ public partial class ClipboardViewModel : ObservableObject
             ? $"{text} ({ManagerTemplateStartTime}~{ManagerTemplateEndTime})"
             : ManagerTemplateName.Trim();
 
+        bool isEditing = IsEditingRuleTemplate;
+        // 位置模式未被改动时保留原模板的精确字符位置（表单本身只能表达「开头 / 末尾」）
+        int insertPosition = isEditing && ManagerTemplatePositionMode == _editingOriginalPositionMode
+            ? _editingOriginalInsertPosition
+            : (ManagerTemplatePositionMode == 1 ? 9999 : 0);
+
         var tpl = new PhraseRuleTemplate
         {
+            // 编辑态沿用原 Id：Service 按 Id upsert，换新 Id 会变成多存一条而不是覆盖
+            Id = isEditing ? EditingRuleTemplateId! : Guid.NewGuid().ToString("N"),
             Name = name,
-            InsertPosition = ManagerTemplatePositionMode == 1 ? 9999 : 0,
+            InsertPosition = insertPosition,
             PositionMode = ManagerTemplatePositionMode,
             StartTime = string.IsNullOrWhiteSpace(ManagerTemplateStartTime) ? "08:00" : ManagerTemplateStartTime.Trim(),
             EndTime = string.IsNullOrWhiteSpace(ManagerTemplateEndTime) ? "18:00" : ManagerTemplateEndTime.Trim(),
@@ -1502,7 +1570,10 @@ public partial class ClipboardViewModel : ObservableObject
         SelectedRuleTemplate = SavedRuleTemplates.FirstOrDefault(t => t.Id == tpl.Id) ?? SavedRuleTemplates.FirstOrDefault();
         ManagerTemplateName = string.Empty;
         ManagerTemplateAppendText = string.Empty;
-        StatusMessage = $"✓ 常用语规则模板「{name}」已添加并保存！";
+        EditingRuleTemplateId = null;
+        StatusMessage = isEditing
+            ? $"✓ 规则模板「{name}」已更新"
+            : $"✓ 常用语规则模板「{name}」已添加并保存！";
     }
 
     [RelayCommand]
@@ -1554,14 +1625,17 @@ public partial class ClipboardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void CopyPhrase(MuClipPhraseItem? phrase)
+    public async Task CopyPhrase(MuClipPhraseItem? phrase)
     {
         var target = phrase ?? SelectedPhrase;
         if (target == null || string.IsNullOrEmpty(target.Content)) return;
 
-        _service.UsePhrase(target.Id, target.Content);
-        target.IsCopied = true;
-        StatusMessage = "✓ 已复制常用语到系统剪贴板";
+        bool written = await _service.UsePhraseAsync(target.Id, target.Content);
+
+        target.IsCopied = written;
+        StatusMessage = written ? "✓ 已复制常用语到系统剪贴板" : ClipboardWriteFailedMessage;
+
+        if (!written) return;
 
         _ = Task.Delay(1500).ContinueWith(_ =>
         {
@@ -1620,15 +1694,25 @@ public partial class ClipboardViewModel : ObservableObject
         }
     }
 
+    // 写剪贴板失败时统一的提示语。
+    // 两种原因（被别的程序占着超过重试窗口 / 我们主动让位给了更新的内容）对用户来说
+    // 都是同一件事："这次没写进去，再点一次"。再点会重新取快照，此时通常就能写进去。
+    private const string ClipboardWriteFailedMessage = "⚠️ 剪贴板正被其他程序占用，本次没写进去，请再点一次";
+
     [RelayCommand]
-    public void CopyItem(MuClipItem? item)
+    public async Task CopyItem(MuClipItem? item)
     {
         if (item == null || string.IsNullOrEmpty(item.Content)) return;
 
-        _service.CopyToSystemClipboard(item.Content);
+        // 异步写入：真正的剪贴板 I/O 在线程池上，UI 线程只 await，不会被对端进程卡住。
+        bool written = await _service.CopyToSystemClipboardAsync(item.Content);
 
-        item.IsCopied = true;
-        StatusMessage = $"已复制第 {item.Id} 条记录到系统剪贴板";
+        item.IsCopied = written;
+        StatusMessage = written
+            ? $"已复制第 {item.Id} 条记录到系统剪贴板"
+            : ClipboardWriteFailedMessage;
+
+        if (!written) return; // 没写进去就别播"已复制"的勾选动画，那是假反馈
 
         // 1.5 秒后清除动画反馈
         _ = Task.Delay(1500).ContinueWith(_ =>
@@ -1891,15 +1975,20 @@ public partial class ClipboardViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void CopyPendingPairPin()
+    public async Task CopyPendingPairPin()
     {
         if (string.IsNullOrWhiteSpace(PendingPairPin)) return;
 
         try
         {
-            _service.CopyToSystemClipboard(PendingPairPin);
-            IsPendingPinCopied = true;
-            StatusMessage = $"✓ 配对码【{PendingPairPin}】已复制到系统剪贴板";
+            bool written = await _service.CopyToSystemClipboardAsync(PendingPairPin);
+
+            IsPendingPinCopied = written;
+            StatusMessage = written
+                ? $"✓ 配对码【{PendingPairPin}】已复制到系统剪贴板"
+                : ClipboardWriteFailedMessage;
+
+            if (!written) return;
 
             _ = Task.Delay(2000).ContinueWith(_ =>
             {
@@ -2690,6 +2779,29 @@ public partial class ClipboardViewModel : ObservableObject
         finally
         {
             IsImportingBackup = false;
+        }
+    }
+
+    [RelayCommand]
+    public void OpenAutoBackupFolder()
+    {
+        try
+        {
+            string folder = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR", "Muclip", "auto-backup");
+            if (!System.IO.Directory.Exists(folder))
+            {
+                System.IO.Directory.CreateDirectory(folder);
+            }
+
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = folder,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"打开自动备份目录失败: {ex.Message}";
         }
     }
 

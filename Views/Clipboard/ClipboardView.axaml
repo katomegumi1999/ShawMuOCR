@@ -63,13 +63,6 @@
                                       SelectedItem="{Binding SelectedTypeFilter, Mode=TwoWay}"
                                       Width="100"
                                       VerticalAlignment="Center" />
-
-                            <TextBlock Text="{Binding StatusMessage}"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                       FontSize="12"
-                                       VerticalAlignment="Center"
-                                       TextTrimming="CharacterEllipsis"
-                                       MaxWidth="260" />
                         </StackPanel>
 
                         <!-- 右侧：常用语规则模板管理、快捷面板底色调色盘、刷新、清空 -->
@@ -77,7 +70,7 @@
 
                         <!-- 常用语规则模板管理 -->
                         <Button Padding="8,5"
-                                ToolTip.Tip="管理常用语规则模板库 (支持直接新增、预览与删除)">
+                                ToolTip.Tip="管理常用语规则模板库 (支持直接新增、编辑、预览与删除)">
                             <Button.Flyout>
                                 <Flyout Placement="BottomEdgeAlignedRight">
                                     <Border Width="380" MaxHeight="520">
@@ -141,6 +134,12 @@
                                                                                     <TextBlock Text="⚡ 套用" FontSize="11" />
                                                                                 </Button>
                                                                                 <Button Classes="subtle" Padding="6,3" FontSize="11"
+                                                                                        Command="{Binding #Root.((vm:ClipboardViewModel)DataContext).EditRuleTemplateCommand}"
+                                                                                        CommandParameter="{Binding}"
+                                                                                        ToolTip.Tip="编辑此模板（载入下方表单，保存后覆盖原模板）">
+                                                                                    <TextBlock Text="✏️ 编辑" FontSize="11" />
+                                                                                </Button>
+                                                                                <Button Classes="subtle" Padding="6,3" FontSize="11"
                                                                                         Command="{Binding #Root.((vm:ClipboardViewModel)DataContext).DeleteRuleTemplateCommand}"
                                                                                         CommandParameter="{Binding}"
                                                                                         ToolTip.Tip="删除此模板">
@@ -162,7 +161,20 @@
                                                             CornerRadius="6"
                                                             Padding="8">
                                                         <StackPanel Spacing="8">
-                                                            <TextBlock Text="➕ 新建常用规则模板" FontWeight="SemiBold" FontSize="11.5" />
+                                                            <Grid ColumnDefinitions="*,Auto">
+                                                                <TextBlock Grid.Column="0" Text="{Binding TemplateFormTitle}" FontWeight="SemiBold" FontSize="11.5" VerticalAlignment="Center" />
+                                                                <Button Grid.Column="1" Classes="subtle" Padding="6,2" FontSize="10.5"
+                                                                        Command="{Binding CancelEditRuleTemplateCommand}"
+                                                                        IsVisible="{Binding IsEditingRuleTemplate}"
+                                                                        Content="取消编辑" />
+                                                            </Grid>
+                                                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                                                    CornerRadius="4" Padding="6,3"
+                                                                    IsVisible="{Binding IsEditingRuleTemplate}">
+                                                                <TextBlock Text="正在编辑已有模板，保存后将覆盖原模板" FontSize="10.5"
+                                                                           TextWrapping="Wrap"
+                                                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                                            </Border>
 
                                                             <!-- 模板名称 -->
                                                             <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
@@ -214,7 +226,7 @@
                                                             <Button Classes="accent" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
                                                                     Padding="6,4"
                                                                     Command="{Binding AddTemplateFromManagerCommand}">
-                                                                <TextBlock Text="💾 添加到常用规则模板库" FontWeight="SemiBold" FontSize="11.5" />
+                                                                <TextBlock Text="{Binding TemplateSaveButtonText}" FontWeight="SemiBold" FontSize="11.5" />
                                                             </Button>
                                                         </StackPanel>
                                                     </Border>
@@ -524,6 +536,27 @@
                                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                                 <TextBlock Text="⚡" FontSize="11" />
                                                                 <TextBlock Text="验证密码并开始导入" FontWeight="SemiBold" FontSize="11" />
+                                                            </StackPanel>
+                                                        </Button>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <!-- 3. 后台自动滚动快照说明 -->
+                                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}"
+                                                        BorderBrush="{DynamicResource ControlStrokeColorDefaultBrush}"
+                                                        BorderThickness="1"
+                                                        CornerRadius="6"
+                                                        Padding="10">
+                                                    <StackPanel Spacing="6">
+                                                        <TextBlock Text="🕒 后台自动滚动快照" FontWeight="SemiBold" FontSize="11.5" />
+                                                        <TextBlock Text="系统已在后台定期静默备份加密数据库。可在「系统设置 → 小沐剪贴板」中调整备份频率与自动清理保留策略。"
+                                                                   FontSize="10.5"
+                                                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                                                   TextWrapping="Wrap" />
+                                                        <Button HorizontalAlignment="Left" Padding="8,4" Command="{Binding OpenAutoBackupFolderCommand}">
+                                                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                                                <TextBlock Text="📁" FontSize="11" />
+                                                                <TextBlock Text="打开自动备份目录 (auto-backup)" FontSize="11" />
                                                             </StackPanel>
                                                         </Button>
                                                     </StackPanel>

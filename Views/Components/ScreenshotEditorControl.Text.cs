@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -6,12 +6,12 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using ShawMuOCR.Core.Editor;
 
-namespace ShawMuOCR.Views;
+namespace ShawMuOCR.Views.Components;
 
 /// <summary>
 /// 截图标注窗口 - 透明自适应动态扩增内联文字输入框 (Text Editing) 模块
 /// </summary>
-public partial class ScreenshotEditorWindow
+public partial class ScreenshotEditorControl
 {
     private Point _textInsertPoint;
     private TextElement? _editingTextElement;

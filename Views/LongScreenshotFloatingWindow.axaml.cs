@@ -2,6 +2,7 @@ using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Media;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Windows.Win32;
 
@@ -11,26 +12,72 @@ public partial class LongScreenshotFloatingWindow : Window
 {
     private Action? _onStop;
     private Action? _onCancel;
+    private Action? _onStartAutoScroll;
+    private bool _isAutoScrolling;
 
     public LongScreenshotFloatingWindow()
     {
         InitializeComponent();
         Opened += OnOpened;
         RootBorder.PointerPressed += OnRootPointerPressed;
-        FinishButton.Click += (_, _) => _onStop?.Invoke();
-        CancelButton.Click += (_, _) => _onCancel?.Invoke();
+
+        AutoScrollButton.Click += (_, _) =>
+        {
+            if (!_isAutoScrolling)
+            {
+                SetAutoScrollingState(true);
+                _onStartAutoScroll?.Invoke();
+            }
+            else
+            {
+                // 自动滚动时点击【停止】，立即结束并完成长截屏
+                SetAutoScrollingState(false);
+                _onStop?.Invoke();
+            }
+        };
+
+        FinishButton.Click += (_, _) =>
+        {
+            if (_isAutoScrolling) SetAutoScrollingState(false);
+            _onStop?.Invoke();
+        };
+
+        CancelButton.Click += (_, _) =>
+        {
+            if (_isAutoScrolling) SetAutoScrollingState(false);
+            _onCancel?.Invoke();
+        };
     }
 
     public LongScreenshotFloatingWindow(
         ScreenRect region,
         ScreenRect virtualBounds,
         Action onStop,
-        Action onCancel) : this()
+        Action onCancel,
+        Action? onStartAutoScroll = null) : this()
     {
         _onStop = onStop;
         _onCancel = onCancel;
+        _onStartAutoScroll = onStartAutoScroll;
 
         PositionAtRegion(region, virtualBounds);
+    }
+
+    public void SetAutoScrollingState(bool scrolling)
+    {
+        _isAutoScrolling = scrolling;
+        if (scrolling)
+        {
+            AutoScrollButton.Content = "⏹ 停止";
+            AutoScrollButton.Background = SolidColorBrush.Parse("#D83B01");
+            ToolTip.SetTip(AutoScrollButton, "停止自动滚动并完成长截屏");
+        }
+        else
+        {
+            AutoScrollButton.Content = "⚡ 自动滚动";
+            AutoScrollButton.Background = SolidColorBrush.Parse("#2BFFFFFF");
+            ToolTip.SetTip(AutoScrollButton, "让软件自动平滑向下滚动页面进行长截图");
+        }
     }
 
     private void OnOpened(object? sender, EventArgs e)

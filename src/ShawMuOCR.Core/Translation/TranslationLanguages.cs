@@ -63,7 +63,6 @@ public static class TranslationProviders
     {
         new TranslationProviderItem("Baidu", "百度翻译"),
         new TranslationProviderItem("Google", "谷歌翻译"),
-        new TranslationProviderItem("OpenAI", "OpenAI"),
         new TranslationProviderItem("Volcengine", "火山引擎"),
         new TranslationProviderItem("Aliyun", "阿里云翻译"),
     };

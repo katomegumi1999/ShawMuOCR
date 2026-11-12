@@ -594,6 +594,117 @@
 
 
 
+                <!-- 截屏工具顶栏快捷操作区 (截屏识别、截图复制、截图标注) -->
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+                            IsVisible="{Binding IsCapturePage}">
+                    <!-- 截屏识别 -->
+                    <Button Command="{Binding StartCaptureCommand}"
+                            Classes="accent"
+                            Padding="12,5"
+                            ToolTip.Tip="框选屏幕任意区域进行文字识别 (Alt+Z)">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="✂" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="截屏识别" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <Border Background="#25FFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding HasHotkey}">
+                                <TextBlock Text="{Binding CurrentHotkey}" FontSize="10" Opacity="0.95" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 截图复制 -->
+                    <Button Command="{Binding StartCaptureImageCommand}"
+                            Padding="12,5"
+                            ToolTip.Tip="框选屏幕区域并直接复制高质量位图至剪贴板">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="📋" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="截图复制" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <Border Background="#20888888" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding HasCaptureImageHotkey}">
+                                <TextBlock Text="{Binding CurrentCaptureImageHotkey}" FontSize="10" Opacity="0.85" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+
+                    <!-- 截图标注 -->
+                    <Button Command="{Binding StartAnnotateCommand}"
+                            Padding="12,5"
+                            ToolTip.Tip="框选屏幕后直接呼出截图标注编辑器">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <TextBlock Text="🎨" FontSize="12" VerticalAlignment="Center" />
+                            <TextBlock Text="截图标注" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+                            <Border Background="#20888888" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+                                    IsVisible="{Binding HasAnnotateHotkey}">
+                                <TextBlock Text="{Binding CurrentAnnotateHotkey}" FontSize="10" Opacity="0.85" />
+                            </Border>
+                        </StackPanel>
+                    </Button>
+                </StackPanel>
+
+                <!-- OCR 识别顶栏快捷操作区 (截屏识别 Alt+Z, OCR 窗格 Alt+D) -->
+
+                <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"
+
+                            IsVisible="{Binding IsOcrPage}">
+
+                    <!-- 截屏识别 -->
+
+                    <Button Command="{Binding StartCaptureCommand}"
+
+                            Classes="accent"
+
+                            Padding="12,5"
+
+                            ToolTip.Tip="框选屏幕任意区域进行文字识别 (Alt+Z)">
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+
+                            <TextBlock Text="✂" FontSize="12" VerticalAlignment="Center" />
+
+                            <TextBlock Text="截屏识别" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+
+                            <Border Background="#25FFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+
+                                    IsVisible="{Binding HasHotkey}">
+
+                                <TextBlock Text="{Binding CurrentHotkey}" FontSize="10" Opacity="0.95" />
+
+                            </Border>
+
+                        </StackPanel>
+
+                    </Button>
+
+
+
+                    <!-- OCR 窗格 -->
+
+                    <Button Command="{Binding StartOcrPopupCommand}"
+
+                            Padding="12,5"
+
+                            ToolTip.Tip="框选屏幕后在独立随动窗格中展示识别结果 (不自动复制) (Alt+D)">
+
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+
+                            <TextBlock Text="OCR 窗格" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
+
+                            <Border Background="#20888888" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
+
+                                    IsVisible="{Binding HasOcrPopupHotkey}">
+
+                                <TextBlock Text="{Binding CurrentOcrPopupHotkey}" FontSize="10" Opacity="0.85" />
+
+                            </Border>
+
+                        </StackPanel>
+
+                    </Button>
+
+                </StackPanel>
+
+
+
                 <!-- 屏幕录制顶栏快捷操作区 (屏幕标注、录屏悬浮条) -->
 
                 <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center"

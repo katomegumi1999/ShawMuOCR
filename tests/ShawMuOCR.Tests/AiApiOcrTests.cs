@@ -517,6 +517,38 @@ public class AiApiOcrTests
     {
         Assert.False(string.IsNullOrWhiteSpace(AiOcrPrompt.Default));
         Assert.True(AiOcrPrompt.Default.Length <= AiOcrPrompt.MaxLength);
+
+        Assert.False(string.IsNullOrWhiteSpace(AiTranslatePrompt.Default));
+        Assert.True(AiTranslatePrompt.Default.Length <= AiTranslatePrompt.MaxLength);
+        Assert.Contains("{TargetLanguage}", AiTranslatePrompt.Default);
+    }
+
+    [Fact]
+    public async Task Translate_WithCustomPromptTemplate_ReplacesMacros()
+    {
+        const string replyJson = """
+        {"choices":[{"message":{"content":"Custom translated output"}}],"usage":{"total_tokens":50}}
+        """;
+        using var fake = new FakeHttpServer(replyJson);
+
+        var settings = MakeSettings(out var service, limit: 100000);
+        var node = settings.Ai.Find("node-a")!;
+        node.BaseUrl = fake.BaseUrl;
+        node.ApiKey = "sk-custom-prompt";
+        node.Model = "gpt-4o-mini";
+        settings.TranslateProvider = AiSettings.TranslateProviderPrefix + "node-a";
+        settings.Translation.AiTranslatePromptText = "Please translate accurately to {TargetLanguage} from {SourceLanguage}.";
+        service.Save(settings);
+
+        var quota = new AiQuotaService(service);
+        using var translator = new TranslationService(service, aiQuota: quota);
+
+        var result = await translator.TranslateAsync("Hello", sourceLanguage: "en", targetLanguage: "zh");
+        string request = await fake.RequestTask.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.True(result.IsSuccess);
+        Assert.Equal("Custom translated output", result.TranslatedText);
+        Assert.Contains("Please translate accurately to", request);
     }
 
     [Fact]

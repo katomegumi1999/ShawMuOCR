@@ -26,10 +26,12 @@ public interface IOcrCoordinator : IDisposable
     Task StartScreenCaptureAsync();
     Task StartCaptureImageAsync();
     Task StartAnnotateScreenshotAsync();
+    Task StartQuickSaveScreenshotAsync();
     Task StartLongScreenshotAsync(ScreenRect? initialRegion = null);
     Task StartTranslateSelectionAsync();
     Task StartOcrPopupAsync();
-    Task RunOcrAsync(OcrImage image);
+    Task TranslateImageAsync(OcrImage image);
+    Task RunOcrAsync(OcrImage image, ScreenRect? screenBounds = null);
     Task<OcrResult> RecognizeDirectAsync(OcrImage image);
     void PreloadEngineInBackground(string scene = "启动预载", int delayMs = 0);
 }

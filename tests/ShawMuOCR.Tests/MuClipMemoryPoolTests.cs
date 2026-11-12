@@ -134,7 +134,7 @@ public class MuClipMemoryPoolTests
     }
 
     [Fact]
-    public void Test_MuClipService_ClipboardListening_And_EchoSuppression()
+    public async Task Test_MuClipService_ClipboardListening_And_EchoSuppression()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "muclip_listener_" + Guid.NewGuid().ToString("N"));
         string tempDb = Path.Combine(tempDir, "muclip.db");
@@ -147,7 +147,7 @@ public class MuClipMemoryPoolTests
 
             // 测试向系统剪贴板安全写入（带回环回显抑制）
             string uniqueTestText = "MuClip_Unique_Echo_Test_" + Guid.NewGuid().ToString("N");
-            service.CopyToSystemClipboard(uniqueTestText);
+            await service.CopyToSystemClipboardAsync(uniqueTestText);
 
             // 验证系统剪贴板已写入成功（带重试等待，防止 Windows 剪贴板历史进程并发争用）
             string? readText = null;
@@ -238,7 +238,7 @@ public class MuClipMemoryPoolTests
     }
 
     [Fact]
-    public void Test_MuClip_Phrases_Add_Query_Use_Delete()
+    public async Task Test_MuClip_Phrases_Add_Query_Use_Delete()
     {
         string tempDir = Path.Combine(Path.GetTempPath(), "muclip_phrases_" + Guid.NewGuid().ToString("N"));
         string tempDb = Path.Combine(tempDir, "muclip.db");
@@ -259,7 +259,7 @@ public class MuClipMemoryPoolTests
             Assert.True(item.Id > 0);
 
             // 模拟使用常用语（热度更新 + 写入剪贴板）
-            service.UsePhrase(item.Id, item.Content);
+            await service.UsePhraseAsync(item.Id, item.Content);
 
             // 删除该常用语
             service.DeletePhrase(item.Id);

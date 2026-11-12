@@ -109,6 +109,16 @@ public sealed class GeneralSettings
     /// </summary>
     public string ClipboardPanelBackground { get; set; } = "#F4F4F6";
 
+    /// <summary>
+    /// 小沐剪贴板数据库自动备份保留份数（滚动快照上限，超过自动清理最旧的）
+    /// </summary>
+    public int ClipboardAutoBackupKeep { get; set; } = 7;
+
+    /// <summary>
+    /// 小沐剪贴板两次自动备份之间的最小间隔（小时）
+    /// </summary>
+    public int ClipboardAutoBackupIntervalHours { get; set; } = 24;
+
     public GeneralSettings Clone() => new()
     {
         AutoCopy = AutoCopy,
@@ -129,6 +139,8 @@ public sealed class GeneralSettings
         AnnotationStrokeWidth = AnnotationStrokeWidth,
         AnnotationFontSize = AnnotationFontSize,
         EnableClipboard = EnableClipboard,
-        ClipboardPanelBackground = ClipboardPanelBackground
+        ClipboardPanelBackground = ClipboardPanelBackground,
+        ClipboardAutoBackupKeep = ClipboardAutoBackupKeep,
+        ClipboardAutoBackupIntervalHours = ClipboardAutoBackupIntervalHours
     };
 }

@@ -10,6 +10,7 @@ using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ShawMuOCR.Core.Editor;
 using ShawMuOCR.Core.Settings;
+using ShawMuOCR.Services;
 
 namespace ShawMuOCR.Views;
 
@@ -282,56 +283,36 @@ public partial class SaveImageDialog : Window
     {
         if (_doc == null) return;
 
-        string? lastDir = _settingsService?.Current.LastSaveDirectory;
-        if (string.IsNullOrWhiteSpace(lastDir) || !Directory.Exists(lastDir))
-        {
-            // 尚未配置有效路径，平滑引导至选择保存位置
-            ToastNotificationWindow.Show("尚未记录上次保存路径，请先选择一次保存位置");
-            OnConfirmSaveClick(sender, e);
-            return;
-        }
-
         int targetW = int.TryParse(WidthBox.Text, out int w) && w > 0 ? Math.Clamp(w, 1, 16384) : _origWidth;
         int targetH = int.TryParse(HeightBox.Text, out int h) && h > 0 ? Math.Clamp(h, 1, 16384) : _origHeight;
         var fmt = CurrentFormat;
         int quality = (int)Math.Clamp(QualitySlider.Value, 10, 100);
 
-        var options = new ImageExportOptions
+        // 先持久化用户在对话框界面上调整的最新偏好配置
+        var settings = QuickSaveHelper.ResolveSettingsService(_settingsService);
+        if (settings != null)
         {
-            Format = fmt,
-            Quality = quality,
-            TargetWidth = targetW,
-            TargetHeight = targetH
-        };
-
-        string extension = ImageExportOptions.GetExtension(fmt);
-        string suggestedName = $"ShawMuOCR_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
-        string filePath = Path.Combine(lastDir, suggestedName);
+            var cur = settings.Current;
+            cur.DefaultSaveFormat = fmt.ToString().ToUpperInvariant();
+            cur.DefaultSaveQuality = quality;
+            cur.DefaultSaveScale = (int)Math.Round((double)targetW / _origWidth * 100);
+            settings.Save(cur);
+        }
 
         try
         {
-            byte[] bytes = _doc.Encode(options);
-            await File.WriteAllBytesAsync(filePath, bytes);
+            string? filePath = await QuickSaveHelper.QuickSaveAsync(
+                _doc,
+                settings,
+                TopLevel.GetTopLevel(this),
+                successTitle: "✓ 已自动保存到上次路径");
 
-            // 保存当前偏好配置
-            if (_settingsService != null)
+            if (!string.IsNullOrEmpty(filePath))
             {
-                var cur = _settingsService.Current;
-                cur.DefaultSaveFormat = fmt.ToString().ToUpperInvariant();
-                cur.DefaultSaveQuality = quality;
-                cur.DefaultSaveScale = (int)Math.Round((double)targetW / _origWidth * 100);
-                _settingsService.Save(cur);
+                SavedSuccessfully = true;
+                ShouldCloseEditor = CloseEditorBox.IsChecked == true;
+                Close(true);
             }
-
-            ToastNotificationWindow.Show(
-                $"文件: {suggestedName}\n目录: {lastDir}",
-                TimeSpan.FromSeconds(3),
-                "✓ 已自动保存到上次路径");
-
-            SavedSuccessfully = true;
-            ShouldCloseEditor = CloseEditorBox.IsChecked == true;
-
-            Close(true);
         }
         catch (Exception ex)
         {

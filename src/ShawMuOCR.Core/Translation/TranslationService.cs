@@ -101,13 +101,16 @@ public sealed class TranslationService : ITranslationService, IDisposable
                     "所选 AI 节点已被删除，请到【设置 ➔ AI 接口】重新选择。");
             }
 
-            translator = new AiNodeTranslator(OpenAiCompatibleClient.FromProfile(profile), _aiQuota);
+            translator = new AiNodeTranslator(
+                OpenAiCompatibleClient.FromProfile(profile),
+                _aiQuota,
+                () => _settingsService.Current.AiTranslatePromptText);
         }
         else if (!_translators.TryGetValue(providerName, out translator))
         {
             return TranslationResult.Failed(
                 text, source, target, providerName,
-                $"未知的翻译提供商: {providerName}，请在设置中选择 百度/谷歌/OpenAI 或一个 AI 节点。");
+                $"未知的翻译提供商: {providerName}，请在设置中选择 百度/谷歌/火山/阿里 或一个 AI 节点。");
         }
 
         // 1. 检查并处理跨月额度重置

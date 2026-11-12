@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.OCR;
+using ShawMuOCR.Windows.Win32;
 using SkiaSharp;
 
 namespace ShawMuOCR.Windows.ScreenCapture;
@@ -81,6 +82,8 @@ public sealed class LongScreenshotCapturer
     private readonly int _maxHeight;
     private volatile bool _stopRequested;
     private volatile bool _cancelRequested;
+    private volatile bool _isAutoScrolling;
+    private CancellationTokenSource? _autoScrollCts;
 
     public LongScreenshotCapturer(IScreenCaptureService captureService)
         : this(captureService, LongScreenshotTimings.Default, LongScreenshotStitcher.DefaultMaxHeight)
@@ -112,14 +115,89 @@ public sealed class LongScreenshotCapturer
     /// <summary>采集是否正在进行。</summary>
     public bool IsRunning { get; private set; }
 
-    /// <summary>请求提前结束（例如用户再次按下长截图热键或点击完成）。</summary>
-    public void RequestStop() => _stopRequested = true;
+    /// <summary>是否正在自动平滑滚动中。</summary>
+    public bool IsAutoScrolling => _isAutoScrolling;
+
+    /// <summary>请求提前结束（例如用户再次按下长截图热键或点击完成/停止）。</summary>
+    public void RequestStop()
+    {
+        StopAutoScroll();
+        _stopRequested = true;
+    }
 
     /// <summary>请求取消长截图（放弃所有拼接内容并立即退出）。</summary>
     public void RequestCancel()
     {
+        StopAutoScroll();
         _cancelRequested = true;
         _stopRequested = true;
+    }
+
+    /// <summary>启动自动平滑滚动。</summary>
+    public void StartAutoScroll(ScreenRect region)
+    {
+        if (_isAutoScrolling) return;
+        _isAutoScrolling = true;
+        _autoScrollCts = new CancellationTokenSource();
+        var token = _autoScrollCts.Token;
+
+        Task.Run(async () =>
+        {
+            try
+            {
+                // 将鼠标光标移动到长截图选区中心，确保滚轮消息精准派发到目标窗口
+                EnsureCursorInRegion(region);
+                await Task.Delay(80, token).ConfigureAwait(false);
+
+                while (!token.IsCancellationRequested && !_stopRequested)
+                {
+                    User32.mouse_event(User32.MOUSEEVENTF_WHEEL, 0, 0, -User32.WHEEL_DELTA, UIntPtr.Zero);
+                    // 130ms 为向下滚动的平滑平衡步长：既保证平滑视觉，又留出足够的重绘与画面采样时间
+                    await Task.Delay(130, token).ConfigureAwait(false);
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch { }
+            finally
+            {
+                _isAutoScrolling = false;
+            }
+        }, token);
+    }
+
+    /// <summary>停止自动平滑滚动。</summary>
+    public void StopAutoScroll()
+    {
+        _isAutoScrolling = false;
+        try
+        {
+            _autoScrollCts?.Cancel();
+            _autoScrollCts?.Dispose();
+        }
+        catch { }
+        finally
+        {
+            _autoScrollCts = null;
+        }
+    }
+
+    private static void EnsureCursorInRegion(ScreenRect region)
+    {
+        try
+        {
+            if (User32.GetCursorPos(out var pt))
+            {
+                bool inRegion = pt.x >= region.X && pt.x < region.X + region.Width &&
+                                pt.y >= region.Y && pt.y < region.Y + region.Height;
+                if (!inRegion)
+                {
+                    int targetX = region.X + region.Width / 2;
+                    int targetY = region.Y + region.Height / 2;
+                    User32.SetCursorPos(targetX, targetY);
+                }
+            }
+        }
+        catch { }
     }
 
     /// <summary>
@@ -156,6 +234,7 @@ public sealed class LongScreenshotCapturer
             var lastMovement = TimeSpan.Zero;
             bool hasMovement = false;
             int consecutiveFailures = 0;
+            int consecutiveAutoScrollStalls = 0;
             int frameIndex = 0;
             string lastRejectReason = string.Empty;
 
@@ -168,7 +247,7 @@ public sealed class LongScreenshotCapturer
                     return new LongScreenshotResult(null, 0, 0, "首帧采集失败");
                 }
 
-                onStatus?.Invoke("长截屏进行中，请滚动目标窗口；完成后点击【✓ 完成】或按快捷键结束");
+                onStatus?.Invoke("0 px");
 
                 while (!_stopRequested)
                 {
@@ -209,15 +288,30 @@ public sealed class LongScreenshotCapturer
                             {
                                 stitcher.TryAppendScrolled(current.Bitmap, estimate.ShiftPixels, out _);
                                 hasMovement = true;
+                                consecutiveAutoScrollStalls = 0;
                                 lastMovement = clock.Elapsed;
-                                onStatus?.Invoke($"已拼接 {stitcher.FrameCount} 帧 · {stitcher.RenderedHeight} 像素（完成后请点击【完成】）");
+                                onStatus?.Invoke($"{stitcher.RenderedHeight} px · {stitcher.FrameCount} 帧");
                             }
                             else if (estimate.ShiftPixels < 0)
                             {
                                 // 用户往回滚：这块画面已经在长图里了，拼接器会记一笔并拒绝，
                                 // 但仍要算作「用户还在操作」，否则会被空闲判定提前收尾。
                                 stitcher.TryAppendScrolled(current.Bitmap, estimate.ShiftPixels, out _);
+                                consecutiveAutoScrollStalls = 0;
                                 lastMovement = clock.Elapsed;
+                            }
+                            else
+                            {
+                                // 垂直位移为 0
+                                if (_isAutoScrolling && hasMovement)
+                                {
+                                    consecutiveAutoScrollStalls++;
+                                    // 自动滚动状态下连续 15 帧（约 1.5 秒）画面无变化，判定为页面已到底部，自动完成
+                                    if (consecutiveAutoScrollStalls >= 15)
+                                    {
+                                        break;
+                                    }
+                                }
                             }
                         }
 
@@ -289,6 +383,7 @@ public sealed class LongScreenshotCapturer
         }
         finally
         {
+            StopAutoScroll();
             IsRunning = false;
         }
     }

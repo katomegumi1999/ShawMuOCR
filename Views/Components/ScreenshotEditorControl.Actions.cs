@@ -9,13 +9,14 @@ using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.Editor;
 using ShawMuOCR.Core.Settings;
+using ShawMuOCR.Services;
 
-namespace ShawMuOCR.Views;
+namespace ShawMuOCR.Views.Components;
 
 /// <summary>
 /// 截图标注窗口 - 动作导出、快捷键与撤销重做 (Actions & Shortcuts) 模块
 /// </summary>
-public partial class ScreenshotEditorWindow
+public partial class ScreenshotEditorControl
 {
     private bool _isProcessingAction;
     private bool _isFullSnapshotRestored;
@@ -69,9 +70,9 @@ public partial class ScreenshotEditorWindow
         RestoreFullSnapshotBtn.IsEnabled = !isFull;
         RestoreFullSnapshotBtn.Opacity = isFull ? 0.5 : 1.0;
 
-        if (!isFull && WindowState == WindowState.Maximized)
+        if (!isFull && GetHostWindowState() == WindowState.Maximized)
         {
-            WindowState = WindowState.Normal;
+            SetHostWindowState(WindowState.Normal);
         }
     }
 
@@ -98,11 +99,15 @@ public partial class ScreenshotEditorWindow
                     "✓ 标注已复制到剪贴板");
             }
 
-            Close();
+            TryClose();
         }
         catch (Exception ex)
         {
             _logger?.Error("截图标注复制图片异常", ex);
+        }
+        finally
+        {
+            _isProcessingAction = false;
         }
     }
 
@@ -110,44 +115,19 @@ public partial class ScreenshotEditorWindow
     {
         CommitInlineText();
 
-        string? lastDir = _settingsService?.Current.LastSaveDirectory;
-        if (string.IsNullOrWhiteSpace(lastDir) || !Directory.Exists(lastDir))
-        {
-            ToastNotificationWindow.Show("尚未记录保存路径，请先选择一次目标文件夹");
-            OnSaveClick(sender, e);
-            return;
-        }
-
         try
         {
-            var cur = _settingsService?.Current ?? new AppSettings();
-            var fmt = Enum.TryParse<ImageSaveFormat>(cur.DefaultSaveFormat, true, out var parsedFmt) ? parsedFmt : ImageSaveFormat.Png;
-            int quality = Math.Clamp(cur.DefaultSaveQuality, 10, 100);
-            float scale = cur.DefaultSaveScale > 0 ? cur.DefaultSaveScale / 100f : 1.0f;
-            int targetW = Math.Max(1, (int)Math.Round(_doc.OriginalImage.Width * scale));
-            int targetH = Math.Max(1, (int)Math.Round(_doc.OriginalImage.Height * scale));
+            var hostTopLevel = TopLevel.GetTopLevel(this);
+            string? filePath = await QuickSaveHelper.QuickSaveAsync(
+                _doc,
+                _settingsService,
+                hostTopLevel,
+                successTitle: "✓ 已自动保存到上次路径");
 
-            var options = new ImageExportOptions
+            if (!string.IsNullOrEmpty(filePath))
             {
-                Format = fmt,
-                Quality = quality,
-                TargetWidth = targetW,
-                TargetHeight = targetH
-            };
-
-            string extension = ImageExportOptions.GetExtension(fmt);
-            string fileName = $"ShawMuOCR_{DateTime.Now:yyyyMMdd_HHmmss}{extension}";
-            string filePath = System.IO.Path.Combine(lastDir, fileName);
-
-            byte[] bytes = _doc.Encode(options);
-            await System.IO.File.WriteAllBytesAsync(filePath, bytes);
-
-            ToastNotificationWindow.Show(
-                $"已保存至: {fileName}\n目录: {lastDir}",
-                TimeSpan.FromSeconds(3),
-                "✓ 已自动保存到上次路径");
-
-            Close();
+                TryClose();
+            }
         }
         catch (Exception ex)
         {
@@ -161,10 +141,20 @@ public partial class ScreenshotEditorWindow
         CommitInlineText();
 
         var dialog = new SaveImageDialog(_doc, _settingsService);
-        var result = await dialog.ShowDialog<bool>(this);
+        var hostWin = VisualRoot as Window ?? TopLevel.GetTopLevel(this) as Window;
+        bool result = false;
+        if (hostWin != null)
+        {
+            result = await dialog.ShowDialog<bool>(hostWin);
+        }
+        else
+        {
+            dialog.Show();
+        }
+
         if (result && dialog.ShouldCloseEditor)
         {
-            Close();
+            TryClose();
         }
     }
 
@@ -181,16 +171,20 @@ public partial class ScreenshotEditorWindow
 
             PixelPoint pinPos = _selectionBounds.HasValue
                 ? new PixelPoint(_selectionBounds.Value.X, _selectionBounds.Value.Y)
-                : Position;
+                : GetControlScreenPosition();
 
             var pinWin = new PinnedImageWindow(rendered, pinPos);
             pinWin.Show();
 
-            Close();
+            TryClose();
         }
         catch (Exception ex)
         {
             _logger?.Error("截图标注贴图异常", ex);
+        }
+        finally
+        {
+            _isProcessingAction = false;
         }
     }
 
@@ -203,7 +197,7 @@ public partial class ScreenshotEditorWindow
         {
             CommitInlineText();
             var rendered = _doc.RenderToBitmap();
-            Close();
+            TryClose();
 
             if (_ocrCallback != null)
             {
@@ -226,6 +220,10 @@ public partial class ScreenshotEditorWindow
         {
             _logger?.Error("截图标注点击 OCR 失败", ex);
         }
+        finally
+        {
+            _isProcessingAction = false;
+        }
     }
 
     private async void OnTranslateClick(object? sender, RoutedEventArgs e)
@@ -238,13 +236,14 @@ public partial class ScreenshotEditorWindow
             CommitInlineText();
             var rendered = _doc.RenderToBitmap();
 
+            var screenPos = GetControlScreenPosition();
             var bounds = _selectionBounds ?? new ScreenRect(
-                (int)Position.X,
-                (int)Position.Y,
+                screenPos.X,
+                screenPos.Y,
                 (int)Bounds.Width,
                 (int)Bounds.Height);
 
-            Close();
+            TryClose();
 
             if (_translateCallback != null)
             {
@@ -267,6 +266,10 @@ public partial class ScreenshotEditorWindow
         {
             _logger?.Error("截图标注点击翻译失败", ex);
         }
+        finally
+        {
+            _isProcessingAction = false;
+        }
     }
 
     private async void OnLongScreenshotClick(object? sender, RoutedEventArgs e)
@@ -276,8 +279,8 @@ public partial class ScreenshotEditorWindow
 
         try
         {
-            var bounds = GetEffectiveSelectionBounds();
-            Close();
+            var bounds = _selectionBounds ?? ScreenRect.Empty;
+            TryClose();
 
             if (_longScreenshotCallback != null)
             {
@@ -288,6 +291,10 @@ public partial class ScreenshotEditorWindow
         {
             _logger?.Error("截图标注启动长截图失败", ex);
         }
+        finally
+        {
+            _isProcessingAction = false;
+        }
     }
 
     private async void OnRegionRecordClick(object? sender, RoutedEventArgs e)
@@ -297,8 +304,8 @@ public partial class ScreenshotEditorWindow
 
         try
         {
-            var bounds = GetEffectiveSelectionBounds();
-            Close();
+            var bounds = _selectionBounds ?? ScreenRect.Empty;
+            TryClose();
 
             if (_regionRecordCallback != null)
             {
@@ -308,6 +315,10 @@ public partial class ScreenshotEditorWindow
         catch (Exception ex)
         {
             _logger?.Error("截图标注启动区域录屏失败", ex);
+        }
+        finally
+        {
+            _isProcessingAction = false;
         }
     }
 
@@ -322,19 +333,20 @@ public partial class ScreenshotEditorWindow
                 _doc.OriginalImage.Height);
         }
 
+        var screenPos = GetControlScreenPosition();
         return new ScreenRect(
-            (int)Position.X,
-            (int)Position.Y,
+            screenPos.X,
+            screenPos.Y,
             _doc.OriginalImage.Width,
             _doc.OriginalImage.Height);
     }
 
     private void OnCloseClick(object? sender, RoutedEventArgs e)
     {
-        Close();
+        TryClose();
     }
 
-    private void OnWindowKeyDown(object? sender, KeyEventArgs e)
+    private void OnControlKeyDown(object? sender, KeyEventArgs e)
     {
         var focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement();
         if (InlineTextBox.IsVisible || focused is TextBox || e.Source is TextBox) return;
@@ -419,7 +431,13 @@ public partial class ScreenshotEditorWindow
                 return;
             }
 
-            Close();
+            if (_isEmbedded)
+            {
+                e.Handled = true;
+                return;
+            }
+
+            TryClose();
             e.Handled = true;
         }
         else if ((e.Key is Key.Delete or Key.Back) && _selectedElement != null)
@@ -517,7 +535,7 @@ public partial class ScreenshotEditorWindow
         }
 
         DimensionText.Text = $"{newFullImage.Width} × {newFullImage.Height}";
-        WindowState = WindowState.Maximized;
+        SetHostWindowState(WindowState.Maximized);
         RefreshDisplay();
         ApplyDimensions(recenter: false);
         ReactivateWindowAndIme();

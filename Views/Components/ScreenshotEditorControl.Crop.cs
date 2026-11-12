@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -6,12 +6,12 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using SkiaSharp;
 
-namespace ShawMuOCR.Views;
+namespace ShawMuOCR.Views.Components;
 
 /// <summary>
 /// 截图标注窗口 - 二次裁切交互与视觉渲染 (Crop) 模块
 /// </summary>
-public partial class ScreenshotEditorWindow
+public partial class ScreenshotEditorControl
 {
     // 裁切状态
     private Rect _cropRectDIP;

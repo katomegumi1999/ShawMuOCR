@@ -513,6 +513,9 @@ public sealed class JsonSettingsService : ISettingsService
                     case "AnnotateHotkey":
                         if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.Annotate = val.GetString()!;
                         break;
+                    case "QuickSaveHotkey":
+                        if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.QuickSave = val.GetString()!;
+                        break;
                     case "TranslateHotkey":
                         if (val.ValueKind == JsonValueKind.String) settings.Hotkeys.Translate = val.GetString()!;
                         break;
@@ -599,6 +602,12 @@ public sealed class JsonSettingsService : ISettingsService
                         break;
                     case "ClipboardPanelBackground":
                         if (val.ValueKind == JsonValueKind.String) settings.General.ClipboardPanelBackground = val.GetString()!;
+                        break;
+                    case "ClipboardAutoBackupKeep":
+                        if (val.TryGetInt32(out int cabk)) settings.General.ClipboardAutoBackupKeep = cabk;
+                        break;
+                    case "ClipboardAutoBackupIntervalHours":
+                        if (val.TryGetInt32(out int cabih)) settings.General.ClipboardAutoBackupIntervalHours = cabih;
                         break;
 
                     // OCR
@@ -722,6 +731,9 @@ public sealed class JsonSettingsService : ISettingsService
                         break;
                     case "GoogleUsedCount":
                         if (val.TryGetInt32(out int guc)) settings.Translation.GoogleUsedCount = guc;
+                        break;
+                    case "AiTranslatePromptText":
+                        if (val.ValueKind == JsonValueKind.String) settings.Translation.AiTranslatePromptText = val.GetString()!;
                         break;
                     case "OpenAiApiEndpoint":
                         if (val.ValueKind == JsonValueKind.String) settings.Translation.OpenAiApiEndpoint = val.GetString()!;

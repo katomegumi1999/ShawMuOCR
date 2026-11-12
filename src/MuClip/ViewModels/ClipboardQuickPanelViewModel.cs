@@ -237,22 +237,31 @@ public partial class ClipboardQuickPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void SelectAndPaste(MuClipItem? item)
+    public async Task SelectAndPaste(MuClipItem? item)
     {
         if (item == null || string.IsNullOrEmpty(item.Content)) return;
 
+        bool written;
         if (SelectedTabIndex == 1)
         {
             // 更新常用语热度并写入系统剪贴板（自动前移）
-            _service.UsePhrase(item.Id, item.Content);
+            written = await _service.UsePhraseAsync(item.Id, item.Content);
         }
         else
         {
             // 写入系统剪贴板（此操作会自动将重复条目前移置顶）
-            _service.CopyToSystemClipboard(item.Content);
+            written = await _service.CopyToSystemClipboardAsync(item.Content);
         }
 
-        // 关闭快捷面板并就地模拟粘贴
+        if (!written)
+        {
+            // 没写进剪贴板就绝不能模拟粘贴：那会把剪贴板里残留的旧内容打进用户的光标位置，
+            // 比"没反应"糟得多。面板保持打开，用户可以直接再点一次（重试会重新取快照）。
+            return;
+        }
+
+        // ⚠️ 必须等上面 await 完成后再粘贴。这里如果漏了 await（变成发出即走），
+        // 粘贴就会和写入赛跑，可能把上一条内容打进文档。
         if (RequestPaste != null)
         {
             RequestPaste.Invoke();
@@ -293,10 +302,10 @@ public partial class ClipboardQuickPanelViewModel : ObservableObject
     }
 
     [RelayCommand]
-    public void CopyOnly(string? content)
+    public async Task CopyOnly(string? content)
     {
         if (string.IsNullOrEmpty(content)) return;
-        _service.CopyToSystemClipboard(content);
+        await _service.CopyToSystemClipboardAsync(content);
     }
 
     [RelayCommand]
@@ -403,20 +412,20 @@ public partial class ClipboardQuickPanelViewModel : ObservableObject
         ApplyFilter();
     }
 
-    public void QuickSelectNumber(int number)
+    public async Task QuickSelectNumber(int number)
     {
         int index = number - 1;
         if (index >= 0 && index < DisplayItems.Count)
         {
-            SelectAndPaste(DisplayItems[index]);
+            await SelectAndPaste(DisplayItems[index]);
         }
     }
 
-    public void SelectCurrent()
+    public async Task SelectCurrent()
     {
         if (SelectedItem != null)
         {
-            SelectAndPaste(SelectedItem);
+            await SelectAndPaste(SelectedItem);
         }
     }
 }

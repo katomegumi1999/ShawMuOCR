@@ -271,7 +271,10 @@ public class ModelSelectionTests
         var settingsService = new FakeSettingsService();
         var diagnostics = new ShawMuOCR.Services.ModelMemoryDiagnosticsService(settingsService, provider);
         var vm = new AboutViewModel(diagnostics, null);
-        Assert.Equal("v3.0.0 (Native AOT)", vm.AppVersion);
+        // 从程序集读版本，避免每次发版都要回来改这行（曾因 3.0.0 -> 3.1.0 漏改而误报红）
+        var asmVersion = typeof(AboutViewModel).Assembly.GetName().Version!;
+        var expectedVersion = $"v{asmVersion.Major}.{asmVersion.Minor}.{asmVersion.Build} (Native AOT)";
+        Assert.Equal(expectedVersion, vm.AppVersion);
         Assert.False(string.IsNullOrWhiteSpace(vm.WindowsVersionText));
         Assert.Contains(".NET", vm.DotNetRuntimeText);
         Assert.Contains("v12.", vm.AvaloniaVersionText);

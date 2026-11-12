@@ -51,6 +51,7 @@ public partial class App : Application
     private const int HOTKEY_ID_NOTE = 8;
     private const int HOTKEY_ID_LONG_SCREENSHOT = 9;
     private const int HOTKEY_ID_RECORDING = 10;
+    private const int HOTKEY_ID_QUICK_SAVE = 11;
 
     private ISettingsService? _settingsService;
     private IStartupService? _startupService;
@@ -69,6 +70,9 @@ public partial class App : Application
     private MainViewModel? _mainViewModel;
     private TranslateFloatingWindow? _activeNoteWindow;
     private static App? s_instance;
+
+    public static App? CurrentApp => s_instance;
+    public ISettingsService? SettingsService => _settingsService;
 
     public App()
     {
@@ -291,6 +295,13 @@ public partial class App : Application
             string appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
             string clipDbPath = Path.Combine(appData, "ShawMuOCR", "Muclip", "muclip.db");
             service = new MuClipService(_clipboardService);
+            var curSettings = _settingsService?.Current;
+            if (curSettings != null)
+            {
+                service.UpdateAutoBackupSettings(
+                    curSettings.ClipboardAutoBackupKeep,
+                    curSettings.ClipboardAutoBackupIntervalHours);
+            }
             service.Initialize(clipDbPath, startSync: true, syncPort: 42424);
             _muClipService = service;
             _loggerService?.Info($"小沐剪贴板服务已就绪，当前配对信任凭证已加载 (PIN: {_muClipService.PairingPin})");
@@ -378,6 +389,26 @@ public partial class App : Application
         else
         {
             _hotkeyService.Unregister(HOTKEY_ID_ANNOTATE);
+        }
+
+        bool quickSaveSuccess = true;
+        if (!IsDisabledHotkey(settings.QuickSaveHotkey))
+        {
+            if (HotkeyGesture.TryParse(settings.QuickSaveHotkey, out var quickSaveGesture))
+            {
+                quickSaveSuccess = _hotkeyService.Register(HOTKEY_ID_QUICK_SAVE, quickSaveGesture, () =>
+                {
+                    _ = _coordinator.StartQuickSaveScreenshotAsync();
+                });
+            }
+            else
+            {
+                quickSaveSuccess = false;
+            }
+        }
+        else
+        {
+            _hotkeyService.Unregister(HOTKEY_ID_QUICK_SAVE);
         }
 
         bool longScreenshotSuccess = true;
@@ -529,7 +560,7 @@ public partial class App : Application
 
         if (_mainViewModel != null)
         {
-            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !longScreenshotSuccess && !translateSuccess && !ocrPopupSuccess && !clipboardSuccess && !noteSuccess && !recordingSuccess)
+            if (!ocrSuccess && !captureSuccess && !annotateSuccess && !quickSaveSuccess && !longScreenshotSuccess && !translateSuccess && !ocrPopupSuccess && !clipboardSuccess && !noteSuccess && !recordingSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 快捷键注册失败，请检查冲突并重新设置";
             }
@@ -544,6 +575,10 @@ public partial class App : Application
             else if (!annotateSuccess)
             {
                 _mainViewModel.StatusMessage = $"⚠️ 截图标注快捷键 {settings.AnnotateHotkey} 注册失败(可能被占用)";
+            }
+            else if (!quickSaveSuccess)
+            {
+                _mainViewModel.StatusMessage = $"⚠️ 截图快存快捷键 {settings.QuickSaveHotkey} 注册失败(可能被占用)";
             }
             else if (!longScreenshotSuccess)
             {
@@ -609,7 +644,8 @@ public partial class App : Application
             _modelProvider!,
             CreateAboutViewModel,
             _loggerService,
-            muClipEncryptionProbe: () => _muClipService?.IsEncrypted);
+            muClipEncryptionProbe: () => _muClipService?.IsEncrypted,
+            muClipService: _muClipService);
     }
 
     private AboutViewModel CreateAboutViewModel()

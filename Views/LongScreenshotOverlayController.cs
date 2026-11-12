@@ -12,12 +12,13 @@ public sealed class LongScreenshotOverlayController
         ScreenRect region,
         ScreenRect virtualBounds,
         Action onStop,
-        Action onCancel)
+        Action onCancel,
+        Action? onStartAutoScroll = null)
     {
         var mask = new LongScreenshotMaskWindow(region, virtualBounds);
         mask.Show();
 
-        var floating = new LongScreenshotFloatingWindow(region, virtualBounds, onStop, onCancel);
+        var floating = new LongScreenshotFloatingWindow(region, virtualBounds, onStop, onCancel, onStartAutoScroll);
         floating.Show();
         floating.Activate();
 

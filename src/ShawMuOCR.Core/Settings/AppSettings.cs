@@ -103,6 +103,13 @@ public sealed class AppSettings
     }
 
     [JsonIgnore]
+    public string QuickSaveHotkey
+    {
+        get => Hotkeys.QuickSave;
+        set => Hotkeys.QuickSave = value;
+    }
+
+    [JsonIgnore]
     public string TranslateHotkey
     {
         get => Hotkeys.Translate;
@@ -293,6 +300,20 @@ public sealed class AppSettings
     {
         get => General.ClipboardPanelBackground;
         set => General.ClipboardPanelBackground = value;
+    }
+
+    [JsonIgnore]
+    public int ClipboardAutoBackupKeep
+    {
+        get => General.ClipboardAutoBackupKeep;
+        set => General.ClipboardAutoBackupKeep = value;
+    }
+
+    [JsonIgnore]
+    public int ClipboardAutoBackupIntervalHours
+    {
+        get => General.ClipboardAutoBackupIntervalHours;
+        set => General.ClipboardAutoBackupIntervalHours = value;
     }
 
     // ==========================================
@@ -592,6 +613,13 @@ public sealed class AppSettings
     {
         get => Translation.GoogleUsedCount;
         set => Translation.GoogleUsedCount = value;
+    }
+
+    [JsonIgnore]
+    public string AiTranslatePromptText
+    {
+        get => Translation.AiTranslatePromptText;
+        set => Translation.AiTranslatePromptText = value;
     }
 
     [JsonIgnore]

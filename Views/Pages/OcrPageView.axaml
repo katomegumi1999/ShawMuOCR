@@ -1,12 +1,13 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:ShawMuOCR.ViewModels"
+             xmlns:components="using:ShawMuOCR.Views.Components"
              x:Class="ShawMuOCR.Views.Pages.OcrPageView"
              x:DataType="vm:MainViewModel"
              DragDrop.AllowDrop="True">
 
     <Grid RowDefinitions="Auto,*" Background="Transparent">
-        <!-- 顶部操作与信息条 (划归截屏识别 + 文件上传入口) -->
+        <!-- 顶部操作与信息条 (状态指标 + 重新识别/打开文件入口) -->
         <Border Grid.Row="0" Margin="0,0,0,12" Padding="12,8"
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
@@ -42,41 +43,25 @@
 
                 <!-- 右侧快捷与文件操作按钮 -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <!-- 核心操作 1: 截屏识别 (无 emoji) -->
-                    <Button Command="{Binding StartCaptureCommand}"
+                    <!-- 重新识别按钮 (新增) -->
+                    <Button Command="{Binding ReRecognizePreviewImageCommand}"
                             Classes="accent"
                             Padding="12,6"
-                            ToolTip.Tip="框选屏幕任意区域进行文字识别">
+                            ToolTip.Tip="直接对当前预览区中的图像重新执行一次 OCR 文字识别">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="截屏识别" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
-                            <Border Background="#25FFFFFF" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
-                                    IsVisible="{Binding HasHotkey}">
-                                <TextBlock Text="{Binding CurrentHotkey}" FontSize="10" Opacity="0.95" />
-                            </Border>
+                            <TextBlock Text="🔄" FontSize="11" VerticalAlignment="Center" />
+                            <TextBlock Text="重新识别" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
                         </StackPanel>
                     </Button>
 
-                    <!-- 核心操作 2: OCR 窗格 (新增) -->
-                    <Button Command="{Binding StartOcrPopupCommand}"
-                            Padding="12,6"
-                            ToolTip.Tip="框选屏幕后在独立随动窗格中展示识别结果 (不自动复制)">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="OCR 窗格" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
-                            <Border Background="#20888888" CornerRadius="3" Padding="4,1" VerticalAlignment="Center"
-                                    IsVisible="{Binding HasOcrPopupHotkey}">
-                                <TextBlock Text="{Binding CurrentOcrPopupHotkey}" FontSize="10" Opacity="0.85" />
-                            </Border>
-                        </StackPanel>
-                    </Button>
-
-                    <!-- 核心操作 3: 打开文件 (改名并移除 emoji) -->
+                    <!-- 核心操作: 打开文件 -->
                     <Button Command="{Binding OpenFileCommand}"
                             Padding="12,6"
                             ToolTip.Tip="打开本地图片或 PDF 文档进行文字识别">
                         <TextBlock Text="打开文件" FontWeight="SemiBold" FontSize="12" VerticalAlignment="Center" />
                     </Button>
 
-                    <!-- 辅助操作: 复制全文 (移除 emoji) -->
+                    <!-- 辅助操作: 复制全文 -->
                     <Button Content="复制全文"
                             Command="{Binding CopyTextCommand}"
                             Padding="10,6"
@@ -93,7 +78,7 @@
 
         <!-- 主工作区：左侧预览，右侧文字 -->
         <Grid Grid.Row="1" ColumnDefinitions="*,4,1.2*">
-            <!-- 左栏：截图/PDF 预览 -->
+            <!-- 左栏：截图/PDF 预览 (使用统一抽取的预览组件) -->
             <Border Grid.Column="0"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
@@ -101,165 +86,10 @@
                     CornerRadius="8"
                     ClipToBounds="True"
                     DragDrop.AllowDrop="True">
-                <Grid RowDefinitions="Auto,*">
-                    <Border Grid.Row="0" Padding="12,6"
-                            Background="{DynamicResource SubtleFillColorSecondaryBrush}">
-                        <DockPanel LastChildFill="True">
-                            <StackPanel DockPanel.Dock="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                <Button Content="🔄 旋转 90°"
-                                        Command="{Binding RotatePreviewImageCommand}"
-                                        IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                        FontSize="11"
-                                        Padding="8,3"
-                                        CornerRadius="4"
-                                        VerticalAlignment="Center"
-                                        ToolTip.Tip="将当前图片顺时针旋转 90° 并重新执行 OCR 识别" />
-                                <Button Content="💾 保存图片"
-                                        Command="{Binding SavePreviewImageCommand}"
-                                        IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                        FontSize="11"
-                                        Padding="8,3"
-                                        CornerRadius="4"
-                                        VerticalAlignment="Center"
-                                        ToolTip.Tip="将当前识别的截图另存为图片文件 (自动记忆上次保存路径与预估体积)" />
-                            </StackPanel>
-                            <TextBlock DockPanel.Dock="Left" Text="图像/文档预览 (支持拖拽图片或 PDF 至此)" FontSize="12" VerticalAlignment="Center" />
-                        </DockPanel>
-                    </Border>
-
-                    <!-- 图片展示或空白引导 -->
-                    <Grid Grid.Row="1">
-                        <!-- 占位引导与拖拽投递区 -->
-                        <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center" Spacing="12" Margin="16"
-                                    IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNull}}">
-                            <TextBlock Text="📄" FontSize="42" HorizontalAlignment="Center" Opacity="0.35" />
-                            <TextBlock Text="暂无预览内容"
-                                       HorizontalAlignment="Center"
-                                       FontWeight="SemiBold"
-                                       FontSize="15"
-                                       Foreground="{DynamicResource TextFillColorPrimaryBrush}" />
-                            <TextBlock Text="按快捷键快速截屏，或拖拽文件到此处直接识别"
-                                       HorizontalAlignment="Center"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
-
-                            <!-- 快捷提示卡片 -->
-                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
-                                    CornerRadius="6" Padding="14,10" Margin="0,4,0,0">
-                                <StackPanel Spacing="6">
-                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
-                                        <TextBlock Text="✂" FontSize="12" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-                                        <TextBlock Text="{Binding CurrentHotkey, StringFormat='快捷键 {0} 立即截屏识别'}"
-                                                   FontSize="12"
-                                                   FontWeight="Medium"
-                                                   IsVisible="{Binding HasHotkey}" />
-                                    </StackPanel>
-                                    <TextBlock Text="📁 支持 PNG, JPG, BMP, WEBP, TIFF 及多页 PDF"
-                                               FontSize="11"
-                                               Foreground="{DynamicResource TextFillColorTertiaryBrush}"
-                                               HorizontalAlignment="Center" />
-                                </StackPanel>
-                            </Border>
-                        </StackPanel>
-
-                        <!-- 真实图片/PDF 交互式无级平移与滚轮缩放视口 (移除固定横纵滚动条) -->
-                        <Panel x:Name="ImageViewportPanel"
-                               Background="Transparent"
-                               ClipToBounds="True"
-                               Cursor="Hand"
-                               IsVisible="{Binding PreviewImage, Converter={x:Static ObjectConverters.IsNotNull}}"
-                               PointerWheelChanged="OnImageViewportPointerWheelChanged"
-                               PointerPressed="OnImageViewportPointerPressed"
-                               PointerMoved="OnImageViewportPointerMoved"
-                               PointerReleased="OnImageViewportPointerReleased">
-                            <!-- 图片渲染容器 (由 TransformGroup 驱动无级精准缩放与位置平移，保留原始分辨率绝不裁切) -->
-                            <Canvas x:Name="ImageContainerCanvas"
-                                    ClipToBounds="False"
-                                    HorizontalAlignment="Center"
-                                    VerticalAlignment="Center">
-                                <Canvas.RenderTransform>
-                                    <TransformGroup>
-                                        <ScaleTransform ScaleX="1" ScaleY="1" />
-                                        <TranslateTransform X="0" Y="0" />
-                                    </TransformGroup>
-                                </Canvas.RenderTransform>
-                                <Image x:Name="PreviewImageControl"
-                                       Source="{Binding PreviewImage}"
-                                       Stretch="Fill"
-                                       RenderOptions.BitmapInterpolationMode="HighQuality" />
-                            </Canvas>
-
-                            <!-- 底部悬浮快捷控制与缩放胶囊 (极简半透明、不挡画面) -->
-                            <Border HorizontalAlignment="Right"
-                                    VerticalAlignment="Bottom"
-                                    Margin="12"
-                                    Background="#CC1E1E1E"
-                                    BorderBrush="#35FFFFFF"
-                                    BorderThickness="1"
-                                    CornerRadius="18"
-                                    Padding="6,3"
-                                    BoxShadow="0 4 12 0 #40000000">
-                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                    <!-- 缩小 -->
-                                    <Button Classes="subtle"
-                                            Padding="6,3"
-                                            CornerRadius="12"
-                                            ToolTip.Tip="缩小 (也可直接向下滚动滚轮)"
-                                            Click="OnZoomOutClick">
-                                        <TextBlock Text="➖" FontSize="11" Foreground="#CCCCCC" />
-                                    </Button>
-
-                                    <!-- 缩放比例文字 (点击可重置为 100%) -->
-                                    <Button Classes="subtle"
-                                            Padding="6,3"
-                                            CornerRadius="4"
-                                            ToolTip.Tip="点击重置为 100% 原始尺寸"
-                                            Click="OnResetActualSizeClick">
-                                        <TextBlock x:Name="ZoomPercentTextBlock"
-                                                   Text="100%"
-                                                   FontSize="11"
-                                                   FontWeight="SemiBold"
-                                                   Foreground="White"
-                                                   VerticalAlignment="Center" />
-                                    </Button>
-
-                                    <!-- 放大 -->
-                                    <Button Classes="subtle"
-                                            Padding="6,3"
-                                            CornerRadius="12"
-                                            ToolTip.Tip="放大 (也可直接向上滚动滚轮)"
-                                            Click="OnZoomInClick">
-                                        <TextBlock Text="➕" FontSize="11" Foreground="#CCCCCC" />
-                                    </Button>
-
-                                    <Rectangle Width="1" Height="14" Fill="#30FFFFFF" Margin="2,0" VerticalAlignment="Center" />
-
-                                    <!-- 适应视图 -->
-                                    <Button Classes="subtle"
-                                            Padding="8,3"
-                                            CornerRadius="12"
-                                            ToolTip.Tip="适应窗口居中 (双击图片也可快速切换)"
-                                            Click="OnResetFitClick">
-                                        <TextBlock Text="⛶ 适应" FontSize="11" Foreground="#40A9FF" FontWeight="Medium" />
-                                    </Button>
-                                </StackPanel>
-                            </Border>
-
-                            <!-- 左下角交互提示 (优雅小字，不打扰视觉) -->
-                            <Border HorizontalAlignment="Left"
-                                    VerticalAlignment="Bottom"
-                                    Margin="12"
-                                    Background="#801E1E1E"
-                                    CornerRadius="4"
-                                    Padding="8,3"
-                                    IsHitTestVisible="False">
-                                <TextBlock Text="🖱️ 滚轮缩放 • 按住拖拽平移 • 双击适应全图"
-                                           FontSize="10.5"
-                                           Foreground="#AAAAAA" />
-                            </Border>
-                        </Panel>
-                    </Grid>
-                </Grid>
+                <components:ImageDocumentPreviewControl Source="{Binding PreviewImage}"
+                                                        HeaderTitle="图像/文档预览 (支持拖拽图片或 PDF 至此)"
+                                                        RotateCommand="{Binding RotatePreviewImageCommand}"
+                                                        SaveCommand="{Binding SavePreviewImageCommand}" />
             </Border>
 
             <!-- 分割条 -->

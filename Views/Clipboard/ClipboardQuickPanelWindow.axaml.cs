@@ -847,7 +847,9 @@ public unsafe partial class ClipboardQuickPanelWindow : Window
         if (e.Key == Key.Enter)
         {
             e.Handled = true;
-            ViewModel?.SelectCurrent();
+            // 故意不 await：粘贴动作在方法内部于"写入完成之后"执行，这里 await 与否行为一致；
+            // 若改成 async void，反而会把内部异常升级成进程崩溃。
+            _ = ViewModel?.SelectCurrent();
             return;
         }
 
@@ -858,7 +860,7 @@ public unsafe partial class ClipboardQuickPanelWindow : Window
             {
                 e.Handled = true;
                 int num = e.Key - Key.D1 + 1;
-                ViewModel?.QuickSelectNumber(num);
+                _ = ViewModel?.QuickSelectNumber(num);   // 同上：粘贴在方法内部完成，无需 await
                 return;
             }
         }
@@ -1171,7 +1173,7 @@ public unsafe partial class ClipboardQuickPanelWindow : Window
                 e.Handled = true;
                 Dispatcher.UIThread.Post(() =>
                 {
-                    ViewModel?.SelectAndPaste(item);
+                    _ = ViewModel?.SelectAndPaste(item);   // 同上：粘贴在方法内部完成
                 });
             }
         }

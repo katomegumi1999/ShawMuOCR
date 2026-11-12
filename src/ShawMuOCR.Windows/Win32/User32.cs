@@ -444,6 +444,16 @@ public static class User32
     [DllImport("user32.dll", EntryPoint = "GetWindowLongW", SetLastError = true)]
     private static extern int GetWindowLong32(IntPtr hWnd, int nIndex);
 
+    public const uint MOUSEEVENTF_WHEEL = 0x0800;
+    public const int WHEEL_DELTA = 120;
+
+    [DllImport("user32.dll")]
+    public static extern void mouse_event(uint dwFlags, int dx, int dy, int dwData, UIntPtr dwExtraInfo);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetCursorPos(int X, int Y);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct MSG
     {

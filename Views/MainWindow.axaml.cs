@@ -280,6 +280,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 0.5 如果当前在截屏页面且拖入了单个文件：载入截屏画布直接编辑，绝不跳转 OCR 页面，绝不触发识别
+        if (vm.CurrentPage == AppNavPage.Capture && files.Count == 1)
+        {
+            await vm.LoadImageForEditingAsync(files[0]);
+            return;
+        }
+
         // 1. 如果当前在批量转换页，或者拖入了文件夹/多个文件：直接加入批量转换队列（若不在批量页且拖入多个/文件夹则自动切到批量页）
         if (vm.CurrentPage == AppNavPage.Batch || directories.Count > 0 || files.Count > 1)
         {
@@ -360,6 +367,15 @@ public partial class MainWindow : Window
             return;
         }
 
+        // 截图快存快捷键
+        if (HotkeyGesture.TryParse(vm.CurrentQuickSaveHotkey, out var quickSaveGesture) &&
+            mod == quickSaveGesture.Modifiers && vk == quickSaveGesture.VirtualKey)
+        {
+            e.Handled = true;
+            vm.StartQuickSaveCommand.Execute(null);
+            return;
+        }
+
         // 长截屏快捷键
         if (HotkeyGesture.TryParse(vm.CurrentLongScreenshotHotkey, out var longShotGesture) &&
             mod == longShotGesture.Modifiers && vk == longShotGesture.VirtualKey)
@@ -421,6 +437,10 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingAnnotateHotkey)
             {
                 settingsVm.ClearAnnotateHotkeyCommand.Execute(null);
+            }
+            else if (settingsVm.IsRecordingQuickSaveHotkey)
+            {
+                settingsVm.ClearQuickSaveHotkeyCommand.Execute(null);
             }
             else if (settingsVm.IsRecordingLongScreenshotHotkey)
             {
@@ -484,6 +504,10 @@ public partial class MainWindow : Window
             else if (settingsVm.IsRecordingAnnotateHotkey)
             {
                 settingsVm.OnAnnotateHotkeyRecorded(gesture);
+            }
+            else if (settingsVm.IsRecordingQuickSaveHotkey)
+            {
+                settingsVm.OnQuickSaveHotkeyRecorded(gesture);
             }
             else if (settingsVm.IsRecordingLongScreenshotHotkey)
             {

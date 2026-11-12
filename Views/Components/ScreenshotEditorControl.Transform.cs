@@ -1,16 +1,16 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using ShawMuOCR.Core.Editor;
 using SkiaSharp;
 
-namespace ShawMuOCR.Views;
+namespace ShawMuOCR.Views.Components;
 
 /// <summary>
 /// 截图标注窗口 - 图元选择、手柄碰撞与几何变换 (Transform & Selection) 模块
 /// </summary>
-public partial class ScreenshotEditorWindow
+public partial class ScreenshotEditorControl
 {
     // 交互与变换状态 (选择、四角缩放、旋转)
     private IImageElement? _selectedElement;

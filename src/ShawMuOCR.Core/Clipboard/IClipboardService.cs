@@ -9,6 +9,13 @@ public interface IClipboardService
     Task<bool> SetTextAsync(string text);
 
     /// <summary>
+    /// 带「自写回显抑制」的异步写入：写完后让监听方忽略这次变化，不要把刚写进去的内容
+    /// 再当成一次外部复制（MuClip 点了历史项/常用语后就是这种场景）。
+    /// 默认实现忽略抑制标记，测试替身无需关心。
+    /// </summary>
+    Task<bool> SetTextAsync(string text, bool suppressNotification) => SetTextAsync(text);
+
+    /// <summary>
     /// 写入「纯文本 + HTML」双格式：富文本目标（Excel / WPS / Word）优先用 HTML，
     /// 纯文本目标（聊天窗口、搜索框、记事本）只读到 <paramref name="text"/>。
     /// 默认实现退化为纯文本写入，便于测试替身保持最小实现。
@@ -41,7 +48,7 @@ public interface IClipboardService
         remove { }
     }
 
-    bool SetText(string text, bool suppressNotification = false) => SetTextAsync(text).GetAwaiter().GetResult();
+    bool SetText(string text, bool suppressNotification = false) => SetTextAsync(text, suppressNotification).GetAwaiter().GetResult();
     string? GetText() => GetTextAsync().GetAwaiter().GetResult();
     void StartListening() { }
     void StopListening() { }

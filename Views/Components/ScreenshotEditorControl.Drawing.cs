@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using Avalonia;
@@ -10,12 +10,12 @@ using Avalonia.Media;
 using ShawMuOCR.Core.Editor;
 using SkiaSharp;
 
-namespace ShawMuOCR.Views;
+namespace ShawMuOCR.Views.Components;
 
 /// <summary>
 /// 截图标注窗口 - 画布图元绘制、擦除与动态交互预览 (Drawing & Interaction) 模块
 /// </summary>
-public partial class ScreenshotEditorWindow
+public partial class ScreenshotEditorControl
 {
     // 绘制状态
     private bool _isDrawing;

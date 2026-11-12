@@ -83,13 +83,14 @@ public partial class MuClipService
         return ok;
     }
 
-    public void UsePhrase(long id, string content)
+    public async Task<bool> UsePhraseAsync(long id, string content)
     {
-        if (_core == null) return;
+        if (_core == null) return false;
         _core.UpdatePhraseUsed(id);
         string finalContent = GetProcessedPhraseContent(id, content);
-        CopyToSystemClipboard(finalContent);
+        bool written = await CopyToSystemClipboardAsync(finalContent).ConfigureAwait(false);
         RefreshPhrases();
+        return written;
     }
 
     public void ReorderPhrases(IReadOnlyList<long> orderedIds)

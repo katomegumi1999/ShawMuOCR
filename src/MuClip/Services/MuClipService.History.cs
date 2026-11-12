@@ -31,9 +31,9 @@ public partial class MuClipService
 
     public event Action? HistoryChanged;
 
-    public void CopyToSystemClipboard(string text)
+    public async Task<bool> CopyToSystemClipboardAsync(string text)
     {
-        if (string.IsNullOrEmpty(text)) return;
+        if (string.IsNullOrEmpty(text)) return false;
 
         lock (_lock)
         {
@@ -41,11 +41,20 @@ public partial class MuClipService
             _lastCapturedTick = Environment.TickCount64;
         }
 
-        _clipboardService.SetText(text, suppressNotification: true);
+        // 真正的剪贴板 I/O 在线程池上跑（见 WindowsClipboardService.RunCommitAsync），
+        // 所以这里必须 await，而不是同步调用 —— 否则点击剪贴板的复制动作会在 UI 线程上阻塞。
+        // suppressNotification 保留：我们自己写进去的内容不该再被当成一次外部复制。
+        if (!await _clipboardService.SetTextAsync(text, suppressNotification: true).ConfigureAwait(false))
+        {
+            // 没写进去就什么都不做：既不改历史排序，也不让调用方宣称"已复制"。
+            // 剪贴板里现在躺着的是别人的内容（很可能比我们更新），动历史只会制造混乱。
+            return false;
+        }
 
         // 用户在 MuClip 界面中主动点击某项历史记录复制时，该项在历史中同样前移至首位
         _core?.AddHistory(text);
         RefreshHistory();
+        return true;
     }
 
     public void AddRecord(string content, bool broadcast = true)

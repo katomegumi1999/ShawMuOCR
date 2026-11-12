@@ -178,6 +178,35 @@ public class SettingsAutoSaveTests
     }
 
     [Fact]
+    public void SettingsViewModel_QuickSaveHotkey_DefaultAndRecording_AutoSaves()
+    {
+        var settingsService = new FakeSettingsService();
+        var startupService = new FakeStartupService();
+        var hotkeyService = new FakeHotkeyService();
+        var modelProvider = new FakeModelProvider();
+
+        var vm = new SettingsViewModel(settingsService, startupService, hotkeyService, modelProvider);
+
+        // 默认值应为 Alt+S
+        Assert.Equal("Alt+S", vm.QuickSaveHotkey);
+        Assert.Equal("Alt+S", settingsService.Current.QuickSaveHotkey);
+
+        // 录制新快捷键 Ctrl+Alt+S
+        int initialSaveCalls = settingsService.SaveCallCount;
+        var gesture = new HotkeyGesture(HotkeyModifiers.Ctrl | HotkeyModifiers.Alt, 0x53); // Ctrl+Alt+S
+        vm.OnQuickSaveHotkeyRecorded(gesture);
+
+        Assert.True(settingsService.SaveCallCount > initialSaveCalls);
+        Assert.Equal("Ctrl+Alt+S", settingsService.Current.QuickSaveHotkey);
+        Assert.Contains("Ctrl+Alt+S", vm.StatusMessage);
+
+        // 清空快捷键
+        vm.ClearQuickSaveHotkeyCommand.Execute(null);
+        Assert.Equal("无", vm.QuickSaveHotkey);
+        Assert.Equal("无", settingsService.Current.QuickSaveHotkey);
+    }
+
+    [Fact]
     public void SettingsViewModel_RecordingHotkey_DefaultAndRecording_AutoSaves()
     {
         var settingsService = new FakeSettingsService();

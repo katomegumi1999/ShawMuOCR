@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MuClip.Models;
 
 namespace MuClip.Services;
@@ -19,7 +20,12 @@ public interface IClipboardPhraseService
     long AddPhrase(string content);
     bool EditPhrase(long id, string newContent);
     bool DeletePhrase(long id);
-    void UsePhrase(long id, string content);
+
+    /// <summary>
+    /// 套用规则后把常用语写进系统剪贴板。返回值语义同
+    /// <see cref="IClipboardHistoryService.CopyToSystemClipboardAsync"/>：false 表示没写进去。
+    /// </summary>
+    Task<bool> UsePhraseAsync(long id, string content);
     void ReorderPhrases(IReadOnlyList<long> orderedIds);
     PhraseConditionalRule? GetPhraseRule(long phraseId);
     void SetPhraseRule(long phraseId, PhraseConditionalRule? rule);

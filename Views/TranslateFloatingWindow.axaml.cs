@@ -661,15 +661,25 @@ public partial class TranslateFloatingWindow : Window
             var baiduItem = new ComboBoxItem { Tag = "Baidu", Content = "百度翻译" };
             var googleItem = new ComboBoxItem { Tag = "Google", Content = "谷歌翻译" };
 
-            var openAiItem = new ComboBoxItem { Tag = "OpenAI", Content = "OpenAI" };
-            string openAiTip = string.IsNullOrWhiteSpace(s.OpenAiModel)
-                ? "OpenAI 兼容接口"
-                : $"OpenAI ({s.OpenAiModel})";
-            ToolTip.SetTip(openAiItem, openAiTip);
-
             items.Add(baiduItem);
             items.Add(googleItem);
-            items.Add(openAiItem);
+
+            // 加入统一 AI 节点池中的各可用节点
+            if (s.Ai?.Profiles != null)
+            {
+                foreach (var profile in s.Ai.Profiles)
+                {
+                    string tag = AiSettings.TranslateProviderPrefix + profile.Id;
+                    var aiNodeItem = new ComboBoxItem
+                    {
+                        Tag = tag,
+                        Content = string.IsNullOrWhiteSpace(profile.Name) ? "AI 节点" : profile.Name
+                    };
+                    string tip = $"{profile.Name} ({profile.Model})\n地址: {profile.BaseUrl}";
+                    ToolTip.SetTip(aiNodeItem, tip);
+                    items.Add(aiNodeItem);
+                }
+            }
 
             var volcengineItem = new ComboBoxItem { Tag = "Volcengine", Content = "火山引擎" };
             var aliyunItem = new ComboBoxItem { Tag = "Aliyun", Content = "阿里云翻译" };

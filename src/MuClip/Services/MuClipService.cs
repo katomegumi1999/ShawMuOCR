@@ -30,11 +30,11 @@ public partial class MuClipService : IMuClipService
     private Timer? _peerRefreshTimer;
     private Timer? _autoBackupTimer;
 
-    /// <summary>滚动快照保留份数（配合 24h 间隔 ≈ 最近一周）。</summary>
-    private const int AutoBackupKeep = 7;
+    /// <summary>滚动快照保留份数（默认 7 份）。</summary>
+    private int _autoBackupKeep = 7;
 
-    /// <summary>两次快照之间的最小间隔（小时）。</summary>
-    private const int AutoBackupIntervalHours = 24;
+    /// <summary>两次快照之间的最小间隔（小时，默认 24 小时）。</summary>
+    private int _autoBackupIntervalHours = 24;
     private string? _lastCapturedText;
     private long _lastCapturedTick;
     private bool _disposed;
@@ -181,15 +181,32 @@ public partial class MuClipService : IMuClipService
     /// </remarks>
     private void TryAutoBackup()
     {
+        _ = TriggerAutoBackup();
+    }
+
+    public void UpdateAutoBackupSettings(int keep, int intervalHours)
+    {
+        _autoBackupKeep = Math.Max(1, keep);
+        _autoBackupIntervalHours = Math.Max(0, intervalHours);
+    }
+
+    public AutoBackupResult TriggerAutoBackup(int? keep = null, int? intervalHours = null)
+    {
         try
         {
             MuClipCore? core = _core;
-            if (core == null || string.IsNullOrWhiteSpace(_dbPath)) return;
+            if (core == null || string.IsNullOrWhiteSpace(_dbPath))
+                return new AutoBackupResult { Error = "核心服务未初始化或数据库路径为空" };
+
             string? dbDir = Path.GetDirectoryName(_dbPath);
-            if (string.IsNullOrWhiteSpace(dbDir)) return;
+            if (string.IsNullOrWhiteSpace(dbDir))
+                return new AutoBackupResult { Error = "无法获取数据库上级目录" };
+
+            int effectiveKeep = keep.HasValue ? Math.Max(1, keep.Value) : _autoBackupKeep;
+            int effectiveInterval = intervalHours.HasValue ? Math.Max(0, intervalHours.Value) : _autoBackupIntervalHours;
 
             AutoBackupResult result = core.AutoBackup(
-                Path.Combine(dbDir, "auto-backup"), AutoBackupKeep, AutoBackupIntervalHours);
+                Path.Combine(dbDir, "auto-backup"), effectiveKeep, effectiveInterval);
 
             if (!string.IsNullOrEmpty(result.Error))
             {
@@ -200,10 +217,13 @@ public partial class MuClipService : IMuClipService
                 Console.WriteLine(
                     $"[MuClip] 自动备份完成: {result.Path} ({result.Size} B)，清理 {result.Pruned} 个，保留 {result.Kept} 个");
             }
+
+            return result;
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[MuClip] 自动备份异常: {ex.Message}");
+            return new AutoBackupResult { Error = ex.Message };
         }
     }
 

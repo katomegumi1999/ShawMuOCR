@@ -37,7 +37,12 @@ public sealed class TranslationSettings
     public int GoogleMonthlyLimit { get; set; } = 500000;      // 默认 50 万字符
     public int GoogleUsedCount { get; set; } = 0;
 
-    // --- OpenAI 兼容接口 ---
+    /// <summary>
+    /// AI 接口翻译提示词模板（支持自定义，宏 {TargetLanguage}、{SourceLanguage}）
+    /// </summary>
+    public string AiTranslatePromptText { get; set; } = AiTranslatePrompt.Default;
+
+    // --- OpenAI 兼容接口 (已废弃，兼容读取历史配置并迁移至通用 AI 接口池) ---
     public string OpenAiApiEndpoint { get; set; } = "https://api.openai.com/v1/chat/completions";
     public string OpenAiApiKey { get; set; } = string.Empty;
     public string OpenAiModel { get; set; } = "gpt-4o-mini";
@@ -64,6 +69,7 @@ public sealed class TranslationSettings
         SourceLang = SourceLang,
         TargetLang = TargetLang,
         UsageMonth = UsageMonth,
+        AiTranslatePromptText = AiTranslatePromptText,
         BaiduAppId = BaiduAppId,
         BaiduSecretKey = BaiduSecretKey,
         BaiduApiKey = BaiduApiKey,

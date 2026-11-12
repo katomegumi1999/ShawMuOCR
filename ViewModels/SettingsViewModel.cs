@@ -10,6 +10,7 @@ using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.OCR;
 using ShawMuOCR.Windows.Clipboard;
+using MuClip.Services;
 
 namespace ShawMuOCR.ViewModels;
 
@@ -22,6 +23,7 @@ public partial class SettingsViewModel : ViewModelBase
     private readonly ILoggerService? _loggerService;
     private readonly Func<AboutViewModel>? _aboutVmFactory;
     private readonly Func<bool?>? _muClipEncryptionProbe;
+    private readonly IMuClipService? _muClipService;
     private bool _isInitializing = true;
     private bool _isSaving;
     private CancellationTokenSource? _autoSaveCts;
@@ -46,6 +48,13 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
     private bool _isRecordingAnnotateHotkey;
+
+    [ObservableProperty]
+    private string _quickSaveHotkey;
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
+    private bool _isRecordingQuickSaveHotkey;
 
     [ObservableProperty]
     private string _longScreenshotHotkey;
@@ -98,6 +107,12 @@ public partial class SettingsViewModel : ViewModelBase
     private string _clipboardPanelBackground;
 
     [ObservableProperty]
+    private int _clipboardAutoBackupKeep = 7;
+
+    [ObservableProperty]
+    private int _clipboardAutoBackupIntervalHours = 24;
+
+    [ObservableProperty]
     private bool _enableClipboard;
 
     [ObservableProperty]
@@ -108,7 +123,7 @@ public partial class SettingsViewModel : ViewModelBase
     [NotifyPropertyChangedFor(nameof(IsRecordingAnyHotkey))]
     private bool _isRecordingPhrasesPanelHotkey;
 
-    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingLongScreenshotHotkey || IsRecordingRecordingHotkey || IsRecordingTranslateHotkey || IsRecordingOcrPopupHotkey || IsRecordingQuickNoteHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
+    public bool IsRecordingAnyHotkey => IsRecordingHotkey || IsRecordingCaptureImageHotkey || IsRecordingAnnotateHotkey || IsRecordingQuickSaveHotkey || IsRecordingLongScreenshotHotkey || IsRecordingRecordingHotkey || IsRecordingTranslateHotkey || IsRecordingOcrPopupHotkey || IsRecordingQuickNoteHotkey || IsRecordingClipboardPanelHotkey || IsRecordingPhrasesPanelHotkey;
 
     // ==========================================
     // 翻译服务配置属性
@@ -342,6 +357,12 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private string _aiVisionPromptText = AiOcrPrompt.Default;
 
+    /// <summary>
+    /// AI 翻译提示词模板。默认通用翻译模板，支持用户自定义与宏替换。
+    /// </summary>
+    [ObservableProperty]
+    private string _aiTranslatePromptText = AiTranslatePrompt.Default;
+
     public bool HasAiNodes => AiNodes.Count > 0;
     public bool HasVisionAiNodes => VisionAiNodes.Count > 0;
 
@@ -559,6 +580,9 @@ public partial class SettingsViewModel : ViewModelBase
     public ObservableCollection<int> AvailableLongScreenshotHeights { get; } = new();
     public ObservableCollection<int> AvailableIdleSleepMinutes { get; } = new();
     public ObservableCollection<int> AvailableLogRetentionDays { get; } = new();
+    public ObservableCollection<int> AvailableClipboardAutoBackupIntervalHours { get; } = new();
+    public ObservableCollection<int> AvailableClipboardAutoBackupKeeps { get; } = new();
+    public string MuClipAutoBackupDirectory => Path.Combine(MuClipDataDirectory, "auto-backup");
 
     public event Action? RequestClose;
     public event Action<AboutViewModel>? RequestOpenAbout;
@@ -571,7 +595,8 @@ public partial class SettingsViewModel : ViewModelBase
         IOcrModelProvider modelProvider,
         Func<AboutViewModel>? aboutVmFactory = null,
         ILoggerService? loggerService = null,
-        Func<bool?>? muClipEncryptionProbe = null)
+        Func<bool?>? muClipEncryptionProbe = null,
+        IMuClipService? muClipService = null)
     {
         _settingsService = settingsService;
         _startupService = startupService;
@@ -580,11 +605,13 @@ public partial class SettingsViewModel : ViewModelBase
         _aboutVmFactory = aboutVmFactory;
         _loggerService = loggerService;
         _muClipEncryptionProbe = muClipEncryptionProbe;
+        _muClipService = muClipService;
 
         var current = _settingsService.Current;
         _hotkey = current.Hotkey;
         _captureImageHotkey = current.CaptureImageHotkey;
         _annotateHotkey = current.AnnotateHotkey;
+        _quickSaveHotkey = current.QuickSaveHotkey;
         _longScreenshotHotkey = current.LongScreenshotHotkey;
         _recordingHotkey = current.RecordingHotkey;
         _autoCopy = current.AutoCopy;
@@ -611,6 +638,7 @@ public partial class SettingsViewModel : ViewModelBase
         string keepAiNodeId = _selectedAiNode?.Id ?? string.Empty;
         ResetNodes(current.Ai.Profiles);
         _aiVisionPromptText = current.Ocr.AiVisionPrompt;
+        _aiTranslatePromptText = current.Translation.AiTranslatePromptText;
         _selectedOcrAiNode = VisionAiNodes.FirstOrDefault(n => string.Equals(n.Id, current.Ocr.AiProfileId, StringComparison.Ordinal))
                              ?? VisionAiNodes.FirstOrDefault();
         _selectedAiNode = AiNodes.FirstOrDefault(n => string.Equals(n.Id, keepAiNodeId, StringComparison.Ordinal))
@@ -637,6 +665,8 @@ public partial class SettingsViewModel : ViewModelBase
         _clipboardPanelHotkey = current.ClipboardPanelHotkey;
         _phrasesPanelHotkey = current.PhrasesPanelHotkey;
         _clipboardPanelBackground = current.ClipboardPanelBackground;
+        _clipboardAutoBackupKeep = current.ClipboardAutoBackupKeep > 0 ? current.ClipboardAutoBackupKeep : 7;
+        _clipboardAutoBackupIntervalHours = current.ClipboardAutoBackupIntervalHours >= 0 ? current.ClipboardAutoBackupIntervalHours : 24;
         _selectedTranslateProvider = AvailableTranslateProviders.FirstOrDefault(p => string.Equals(p.Id, current.TranslateProvider, StringComparison.OrdinalIgnoreCase)) ?? AvailableTranslateProviders[0];
         _selectedTranslateSourceLang = TranslateSourceLanguages.FirstOrDefault(x => x.Code == current.TranslateSourceLang) ?? TranslateSourceLanguages[0];
         _selectedTranslateTargetLang = TranslateTargetLanguages.FirstOrDefault(x => x.Code == current.TranslateTargetLang) ?? TranslateTargetLanguages[0];
@@ -674,6 +704,7 @@ public partial class SettingsViewModel : ViewModelBase
         LoadLongScreenshotHeights();
         LoadIdleSleepMinutes();
         LoadLogRetentionDays();
+        LoadClipboardAutoBackupOptions();
         RefreshMuClipEncryptionStatus();
         _settingsService.SettingsChanged += OnExternalSettingsChanged;
         StatusMessage = HasNoModels
@@ -798,6 +829,33 @@ public partial class SettingsViewModel : ViewModelBase
         if (!AvailableIdleSleepMinutes.Contains(IdleSleepMinutes))
         {
             IdleSleepMinutes = 3;
+        }
+    }
+
+    private void LoadClipboardAutoBackupOptions()
+    {
+        AvailableClipboardAutoBackupIntervalHours.Clear();
+        AvailableClipboardAutoBackupIntervalHours.Add(6);
+        AvailableClipboardAutoBackupIntervalHours.Add(12);
+        AvailableClipboardAutoBackupIntervalHours.Add(24);
+        AvailableClipboardAutoBackupIntervalHours.Add(72);
+        AvailableClipboardAutoBackupIntervalHours.Add(168);
+
+        if (!AvailableClipboardAutoBackupIntervalHours.Contains(ClipboardAutoBackupIntervalHours))
+        {
+            AvailableClipboardAutoBackupIntervalHours.Add(ClipboardAutoBackupIntervalHours);
+        }
+
+        AvailableClipboardAutoBackupKeeps.Clear();
+        AvailableClipboardAutoBackupKeeps.Add(3);
+        AvailableClipboardAutoBackupKeeps.Add(7);
+        AvailableClipboardAutoBackupKeeps.Add(14);
+        AvailableClipboardAutoBackupKeeps.Add(30);
+        AvailableClipboardAutoBackupKeeps.Add(60);
+
+        if (!AvailableClipboardAutoBackupKeeps.Contains(ClipboardAutoBackupKeep))
+        {
+            AvailableClipboardAutoBackupKeeps.Add(ClipboardAutoBackupKeep);
         }
     }
 
@@ -942,6 +1000,13 @@ public partial class SettingsViewModel : ViewModelBase
     {
         AiVisionPromptText = AiOcrPrompt.Default;
         StatusMessage = "✓ AI 识别提示词已恢复为默认文字识别模板";
+    }
+
+    [RelayCommand]
+    public void ResetAiTranslatePrompt()
+    {
+        AiTranslatePromptText = AiTranslatePrompt.Default;
+        StatusMessage = "✓ AI 翻译提示词已恢复为默认模板";
     }
 
     [RelayCommand]
@@ -1196,6 +1261,32 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    private void StartRecordQuickSaveHotkey()
+    {
+        _hotkeyService.IsPaused = true;
+        CancelRecordingInternal();
+        IsRecordingQuickSaveHotkey = true;
+        StatusMessage = "请按下【截图快存】快捷键 (默认 Alt+S，按 Backspace 清空，按 Esc 取消)...";
+    }
+
+    public void OnQuickSaveHotkeyRecorded(HotkeyGesture gesture)
+    {
+        IsRecordingQuickSaveHotkey = false;
+        _hotkeyService.IsPaused = false;
+        QuickSaveHotkey = gesture.ToString();
+        StatusMessage = $"✓ 已设置截图快存快捷键: {QuickSaveHotkey}";
+    }
+
+    [RelayCommand]
+    private void ClearQuickSaveHotkey()
+    {
+        IsRecordingQuickSaveHotkey = false;
+        _hotkeyService.IsPaused = false;
+        QuickSaveHotkey = "无";
+        StatusMessage = "截图快存快捷键已清空(已禁用)";
+    }
+
+    [RelayCommand]
     private void StartRecordLongScreenshotHotkey()
     {
         _hotkeyService.IsPaused = true;
@@ -1441,6 +1532,7 @@ public partial class SettingsViewModel : ViewModelBase
         IsRecordingHotkey = false;
         IsRecordingCaptureImageHotkey = false;
         IsRecordingAnnotateHotkey = false;
+        IsRecordingQuickSaveHotkey = false;
         IsRecordingLongScreenshotHotkey = false;
         IsRecordingRecordingHotkey = false;
         IsRecordingTranslateHotkey = false;
@@ -1583,6 +1675,7 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(Hotkey):
             case nameof(CaptureImageHotkey):
             case nameof(AnnotateHotkey):
+            case nameof(QuickSaveHotkey):
             case nameof(LongScreenshotHotkey):
             case nameof(RecordingHotkey):
             case nameof(TranslateHotkey):
@@ -1591,6 +1684,8 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(ClipboardPanelHotkey):
             case nameof(PhrasesPanelHotkey):
             case nameof(ClipboardPanelBackground):
+            case nameof(ClipboardAutoBackupKeep):
+            case nameof(ClipboardAutoBackupIntervalHours):
                 TriggerAutoSave(debounce: false);
                 break;
 
@@ -1630,6 +1725,7 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(ExternalModelPath):
             case nameof(ExternalApiUrl):
             case nameof(AiVisionPromptText):
+            case nameof(AiTranslatePromptText):
             case nameof(SelectedOcrAiNode):
                 TriggerAutoSave(debounce: true);
                 break;
@@ -1652,6 +1748,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (!IsDisabledHotkey(Hotkey)) activeHotkeys.Add(("截图 OCR", Hotkey));
         if (!IsDisabledHotkey(CaptureImageHotkey)) activeHotkeys.Add(("截图复制", CaptureImageHotkey));
         if (!IsDisabledHotkey(AnnotateHotkey)) activeHotkeys.Add(("截图标注", AnnotateHotkey));
+        if (!IsDisabledHotkey(QuickSaveHotkey)) activeHotkeys.Add(("截图快存", QuickSaveHotkey));
         if (!IsDisabledHotkey(LongScreenshotHotkey)) activeHotkeys.Add(("长截屏", LongScreenshotHotkey));
         if (!IsDisabledHotkey(RecordingHotkey)) activeHotkeys.Add(("屏幕录制", RecordingHotkey));
         if (!IsDisabledHotkey(TranslateHotkey)) activeHotkeys.Add(("选区翻译", TranslateHotkey));
@@ -1689,6 +1786,11 @@ public partial class SettingsViewModel : ViewModelBase
         if (!IsDisabledHotkey(AnnotateHotkey) && !HotkeyGesture.TryParse(AnnotateHotkey, out _))
         {
             StatusMessage = "⚠️ 截图标注快捷键格式无效！";
+            return false;
+        }
+        if (!IsDisabledHotkey(QuickSaveHotkey) && !HotkeyGesture.TryParse(QuickSaveHotkey, out _))
+        {
+            StatusMessage = "⚠️ 截图快存快捷键格式无效！";
             return false;
         }
         if (!IsDisabledHotkey(LongScreenshotHotkey) && !HotkeyGesture.TryParse(LongScreenshotHotkey, out _))
@@ -1736,6 +1838,7 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.Hotkey = Hotkey;
         newSettings.CaptureImageHotkey = CaptureImageHotkey;
         newSettings.AnnotateHotkey = AnnotateHotkey;
+        newSettings.QuickSaveHotkey = QuickSaveHotkey;
         newSettings.LongScreenshotHotkey = LongScreenshotHotkey;
         newSettings.RecordingHotkey = RecordingHotkey;
         newSettings.TranslateHotkey = TranslateHotkey;
@@ -1745,6 +1848,8 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.ClipboardPanelHotkey = ClipboardPanelHotkey;
         newSettings.PhrasesPanelHotkey = PhrasesPanelHotkey;
         newSettings.ClipboardPanelBackground = ClipboardPanelBackground;
+        newSettings.ClipboardAutoBackupKeep = ClipboardAutoBackupKeep;
+        newSettings.ClipboardAutoBackupIntervalHours = ClipboardAutoBackupIntervalHours;
         newSettings.TranslateProvider = TranslateProvider;
         newSettings.TranslateSourceLang = SelectedTranslateSourceLang?.Code ?? "auto";
         newSettings.TranslateTargetLang = SelectedTranslateTargetLang?.Code ?? "zh";
@@ -1810,6 +1915,9 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.Ocr.AiVisionPrompt = string.IsNullOrWhiteSpace(AiVisionPromptText)
             ? AiOcrPrompt.Default
             : AiVisionPromptText;
+        newSettings.Translation.AiTranslatePromptText = string.IsNullOrWhiteSpace(AiTranslatePromptText)
+            ? AiTranslatePrompt.Default
+            : AiTranslatePromptText;
         newSettings.OcrBackend = NormalizeBackendValue(OcrBackend);
         newSettings.SelectedGpuIndex = SelectedGpuIndex;
         newSettings.EnableAngleDetection = EnableAngleDetection;
@@ -1831,6 +1939,7 @@ public partial class SettingsViewModel : ViewModelBase
             _isSaving = false;
         }
         _startupService.SetEnabled(StartWithWindows);
+        _muClipService?.UpdateAutoBackupSettings(ClipboardAutoBackupKeep, ClipboardAutoBackupIntervalHours);
 
         StatusMessage = isAutoSave ? "✓ 设置已自动保存" : "✓ 设置已保存";
         return true;
@@ -1936,6 +2045,7 @@ public partial class SettingsViewModel : ViewModelBase
             Hotkey = current.Hotkey;
             CaptureImageHotkey = current.CaptureImageHotkey;
             AnnotateHotkey = current.AnnotateHotkey;
+            QuickSaveHotkey = current.QuickSaveHotkey;
             LongScreenshotHotkey = current.LongScreenshotHotkey;
             RecordingHotkey = current.RecordingHotkey;
             TranslateHotkey = current.TranslateHotkey;
@@ -1945,6 +2055,8 @@ public partial class SettingsViewModel : ViewModelBase
             ClipboardPanelHotkey = current.ClipboardPanelHotkey;
             PhrasesPanelHotkey = current.PhrasesPanelHotkey;
             ClipboardPanelBackground = current.ClipboardPanelBackground;
+            ClipboardAutoBackupKeep = current.ClipboardAutoBackupKeep;
+            ClipboardAutoBackupIntervalHours = current.ClipboardAutoBackupIntervalHours;
             AutoCopy = current.AutoCopy;
             AutoCopyTableAsCells = current.AutoCopyTableAsCells;
             SilentMode = current.SilentMode;
@@ -1963,6 +2075,7 @@ public partial class SettingsViewModel : ViewModelBase
             string keepAiNodeId = SelectedAiNode?.Id ?? string.Empty;
             ResetNodes(current.Ai.Profiles);
             AiVisionPromptText = current.Ocr.AiVisionPrompt;
+            AiTranslatePromptText = current.Translation.AiTranslatePromptText;
             SelectedOcrAiNode = VisionAiNodes.FirstOrDefault(n => string.Equals(n.Id, current.Ocr.AiProfileId, StringComparison.Ordinal))
                                 ?? VisionAiNodes.FirstOrDefault();
             SelectedAiNode = AiNodes.FirstOrDefault(n => string.Equals(n.Id, keepAiNodeId, StringComparison.Ordinal))
@@ -2110,6 +2223,62 @@ public partial class SettingsViewModel : ViewModelBase
         catch
         {
             StatusMessage = "复制路径失败";
+        }
+    }
+
+    [RelayCommand]
+    public void OpenMuClipAutoBackupFolder()
+    {
+        try
+        {
+            if (!Directory.Exists(MuClipAutoBackupDirectory))
+            {
+                Directory.CreateDirectory(MuClipAutoBackupDirectory);
+            }
+
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = MuClipAutoBackupDirectory,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"打开自动备份目录失败: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public void TriggerMuClipAutoBackup()
+    {
+        if (_muClipService == null)
+        {
+            StatusMessage = "⚠️ 小沐剪贴板后台服务未运行，无法执行备份";
+            return;
+        }
+
+        try
+        {
+            // 手动触发快照时将 intervalHours 传 0，避免因距上次快照不足时间间隔被 Rust 核心跳过
+            var res = _muClipService.TriggerAutoBackup(ClipboardAutoBackupKeep, intervalHours: 0);
+            if (string.IsNullOrEmpty(res.Error) && (res.Created || !string.IsNullOrEmpty(res.Path)))
+            {
+                string fileName = Path.GetFileName(res.Path ?? string.Empty);
+                string cleanInfo = res.Pruned > 0 ? $"，并清理了 {res.Pruned} 份旧快照" : string.Empty;
+                StatusMessage = $"✓ 快照已生成: {fileName}（当前保留 {res.Kept} 份{cleanInfo}）";
+            }
+            else if (res.Skipped)
+            {
+                StatusMessage = "ℹ️ 距离上次备份时间过短，本次已跳过";
+            }
+            else
+            {
+                StatusMessage = $"⚠️ 自动备份快照失败: {res.Error}";
+            }
+        }
+        catch (Exception ex)
+        {
+            StatusMessage = $"⚠️ 执行自动备份异常: {ex.Message}";
         }
     }
 

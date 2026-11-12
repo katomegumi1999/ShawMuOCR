@@ -1,15 +1,15 @@
-using System;
+﻿using System;
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.Media;
 using ShawMuOCR.Core.Editor;
 
-namespace ShawMuOCR.Views;
+namespace ShawMuOCR.Views.Components;
 
 /// <summary>
 /// 截图标注窗口 - 画布视口中心缩放与平移 (Zoom & Pan) 模块
 /// </summary>
-public partial class ScreenshotEditorWindow
+public partial class ScreenshotEditorControl
 {
     // 画布中心缩放与平移状态
     private double _zoomFactor = 1.0;

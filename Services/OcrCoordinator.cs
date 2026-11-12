@@ -1,9 +1,12 @@
 using System.Diagnostics;
 using Avalonia;
+using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using ShawMuOCR.Core.Ai;
 using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
+using ShawMuOCR.Core.Editor;
 using ShawMuOCR.Core.Logging;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Services;
@@ -47,6 +50,16 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
     /// <summary>当前正在跑的长截图采集器；非采集期间为 null。用于「再次按热键提前收尾」。</summary>
     private LongScreenshotCapturer? _longScreenshotCapturer;
+
+    /// <summary>
+    /// 最近一次截屏选区的物理屏幕坐标。
+    /// 截图复制或截图识别时记录，供内嵌工作台（CapturePageView）贴图置顶或长截屏复用。
+    /// </summary>
+    private ScreenRect? _lastCaptureScreenBounds;
+    public ScreenRect? LastCaptureScreenBounds => _lastCaptureScreenBounds;
+
+    /// <summary>最近一次后台异步保存与会话更新任务（供测试与诊断等待）。</summary>
+    public Task? LastBackgroundSaveTask { get; private set; }
 
     public OcrState CurrentState => _currentState;
     public OcrSession? CurrentSession => _currentSession;
@@ -365,21 +378,23 @@ public sealed class OcrCoordinator : IOcrCoordinator
             var virtualBounds = _captureService.GetVirtualScreenBounds();
             var fullScreenshot = _captureService.CaptureVirtualScreen();
 
-            // 2. 唤起全屏选择遮罩交互（Win32 原生极速或 Avalonia 回退）
-            var cropImage = await _selectionService.SelectRegionAsync(fullScreenshot, virtualBounds);
+            // 2. 唤起全屏选择遮罩交互（带物理坐标）
+            var selection = await _selectionService.SelectRegionExAsync(fullScreenshot, virtualBounds);
 
             // 3. 释放全屏快照原图（由于已获得裁剪后的局部图，原图不再保留）
             fullScreenshot.Dispose();
 
-            if (cropImage == null)
+            if (selection == null)
             {
                 // 用户按 ESC 或取消了截屏
                 SetState(OcrState.Idle, "截屏已取消");
                 return;
             }
 
+            _lastCaptureScreenBounds = selection.ScreenBounds;
+
             // 4. 执行 OCR 识别
-            await RunOcrAsync(cropImage);
+            await RunOcrAsync(selection.Image, selection.ScreenBounds);
         }
         catch (Exception ex)
         {
@@ -411,22 +426,18 @@ public sealed class OcrCoordinator : IOcrCoordinator
             var fullScreenshot = _captureService.CaptureVirtualScreen();
 
             // 2. 唤起全屏选择遮罩交互
-            var cropImage = await _selectionService.SelectRegionAsync(fullScreenshot, virtualBounds);
+            var selection = await _selectionService.SelectRegionExAsync(fullScreenshot, virtualBounds);
 
             fullScreenshot.Dispose();
 
-            if (cropImage == null)
+            if (selection == null)
             {
                 SetState(OcrState.Idle, "截屏已取消");
                 return;
             }
 
-            // 3. 将截取的图片直接复制到系统剪贴板
-            bool copied = await _clipboardService.SetImageAsync(cropImage);
-
-            // 4. 更新当前会话为图片会话（空 OCR 结果）供主窗口预览查看
-            _currentSession?.Dispose();
-            _currentSession = new OcrSession(cropImage, OcrResult.Empty());
+            // 3. 将截取的图片直接复制到系统剪贴板（最高优先级执行，毫秒级响应）
+            bool copied = await _clipboardService.SetImageAsync(selection.Image);
 
             string status = copied ? "✓ 截图已复制到剪贴板" : "✕ 截图复制到剪贴板失败";
             SetState(copied ? OcrState.Success : OcrState.Failed, status);
@@ -439,15 +450,93 @@ public sealed class OcrCoordinator : IOcrCoordinator
                     copied ? "截图已复制到剪贴板" : "截图复制失败");
             }
 
-            SessionCompleted?.Invoke(_currentSession);
+            // 4. 非关键数据异步后台线程保存与会话更新，绝不阻塞用户剪贴板与弹窗主链路
+            LastBackgroundSaveTask = Task.Run(() =>
+            {
+                try
+                {
+                    _lastCaptureScreenBounds = selection.ScreenBounds;
+                    _currentSession?.Dispose();
+                    _currentSession = new OcrSession(selection.Image, OcrResult.Empty(), selection.ScreenBounds);
+                    SessionCompleted?.Invoke(_currentSession);
 
-            // 截图完成后轻量回收临时内存（涵盖 Gen 2 及 LOH 托管资源）
-            GC.Collect(2, GCCollectionMode.Optimized, false, false);
+                    // 截图完成后轻量回收临时内存（涵盖 Gen 2 及 LOH 托管资源）
+                    GC.Collect(2, GCCollectionMode.Optimized, false, false);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Warn($"截图复制后台会话同步异常: {ex.Message}");
+                }
+            });
         }
         catch (Exception ex)
         {
             _logger?.Error("截图复制流程失败", ex);
             SetState(OcrState.Failed, $"截屏错误: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 截图快存：框选区域后直接保存至目标目录，无有效路径时弹窗选择路径。保存成功弹出气泡，点击可直达目录。
+    /// </summary>
+    public async Task StartQuickSaveScreenshotAsync()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+
+        lock (_stateLock)
+        {
+            if (_currentState is OcrState.Selecting or OcrState.Recognizing)
+            {
+                return;
+            }
+            SetState(OcrState.Selecting, "正在框选快存截屏区域...");
+        }
+
+        try
+        {
+            // 立即销毁未消失的气泡通知，避免二次截屏时被截入画面或阻挡框选视线
+            ToastNotificationWindow.Dismiss();
+
+            // 1. 抓取物理全屏（包括所有显示器）
+            var virtualBounds = _captureService.GetVirtualScreenBounds();
+            var fullScreenshot = _captureService.CaptureVirtualScreen();
+
+            // 2. 唤起全屏选择遮罩交互
+            var cropImage = await _selectionService.SelectRegionAsync(fullScreenshot, virtualBounds);
+
+            fullScreenshot.Dispose();
+
+            if (cropImage == null)
+            {
+                SetState(OcrState.Idle, "截屏已取消");
+                return;
+            }
+
+            // 3. 执行全局统一快存（与截图标注 100% 共享相同目录、格式及参数配置）
+            var sessionImage = cropImage.Clone();
+            string? filePath = await QuickSaveHelper.QuickSaveAsync(cropImage, _settingsService, successTitle: "✓ 截图快存成功");
+            if (string.IsNullOrEmpty(filePath))
+            {
+                sessionImage.Dispose();
+                cropImage.Dispose();
+                SetState(OcrState.Idle, "截图快存已取消 (未选择路径)");
+                return;
+            }
+
+            // 更新会话供主窗口预览
+            _currentSession?.Dispose();
+            _currentSession = new OcrSession(sessionImage, OcrResult.Empty());
+
+            SetState(OcrState.Success, $"✓ 截图已快存至 {Path.GetFileName(filePath)}");
+            SessionCompleted?.Invoke(_currentSession);
+
+            GC.Collect(2, GCCollectionMode.Optimized, false, false);
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("截图快存流程失败", ex);
+            SetState(OcrState.Failed, $"截屏快存错误: {ex.Message}");
+            ToastNotificationWindow.Show($"快存失败: {ex.Message}", "截图快存");
         }
     }
 
@@ -534,7 +623,8 @@ public sealed class OcrCoordinator : IOcrCoordinator
                     targetBounds,
                     virtualBounds,
                     onStop: () => capturer.RequestStop(),
-                    onCancel: () => capturer.RequestCancel());
+                    onCancel: () => capturer.RequestCancel(),
+                    onStartAutoScroll: () => capturer.StartAutoScroll(targetBounds));
             });
         }
 
@@ -776,7 +866,9 @@ public sealed class OcrCoordinator : IOcrCoordinator
         }
     }
 
-    public async Task RunOcrAsync(OcrImage image)
+    public Task RunOcrAsync(OcrImage image) => RunOcrAsync(image, null);
+
+    public async Task RunOcrAsync(OcrImage image, ScreenRect? screenBounds = null)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(image);
@@ -836,7 +928,11 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
             // 释放旧会话中的图片
             _currentSession?.Dispose();
-            _currentSession = new OcrSession(image, result);
+            if (screenBounds != null)
+            {
+                _lastCaptureScreenBounds = screenBounds;
+            }
+            _currentSession = new OcrSession(image, result, screenBounds ?? _lastCaptureScreenBounds);
 
             if (result.IsSuccess)
             {
@@ -995,6 +1091,14 @@ public sealed class OcrCoordinator : IOcrCoordinator
     private void OnTranslateWindowNewSessionRequested()
     {
         _ = StartTranslateSelectionAsync();
+    }
+
+    public async Task TranslateImageAsync(OcrImage image)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        var virtualBounds = _captureService.GetVirtualScreenBounds();
+        var bounds = new ScreenRect(virtualBounds.X + 150, virtualBounds.Y + 150, image.Width, image.Height);
+        await PushTranslationPipelineAsync(image, bounds);
     }
 
     private async Task PushTranslationPipelineAsync(OcrImage image, ScreenRect bounds, ScreenPoint? startPoint = null)

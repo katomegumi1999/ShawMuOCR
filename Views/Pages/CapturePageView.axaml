@@ -1,30 +1,25 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:ShawMuOCR.ViewModels"
+             xmlns:components="using:ShawMuOCR.Views.Components"
              x:Class="ShawMuOCR.Views.Pages.CapturePageView"
              x:DataType="vm:MainViewModel">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="16">
-            <!-- 头部说明卡片 -->
-            <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                    BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="20,16">
-                <Grid ColumnDefinitions="Auto,*">
-                    <TextBlock Classes="emoji" Text="✂️" FontSize="28" VerticalAlignment="Center" Margin="0,0,16,0" />
-                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="4">
-                        <TextBlock Text="截屏与图像工具箱" FontSize="16" FontWeight="SemiBold" />
-                        <TextBlock Text="集成截屏 OCR 识别、快捷截图复制及截图标注贴图功能，配合底层全局低级键盘钩子，秒级框选呼出。"
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   TextWrapping="Wrap" />
-                    </StackPanel>
-                </Grid>
+            <!-- 顶部图片与标注工作区 (移除窗口外框，高度对齐默认网格底部，只保留图片与上下操作工具栏) -->
+            <Border Background="Transparent"
+                    BorderThickness="0"
+                    ClipToBounds="True"
+                    MinHeight="500"
+                    Height="565">
+                <components:ScreenshotEditorControl x:Name="EmbeddedEditor"
+                                                    IsEmbedded="True"
+                                                    HorizontalAlignment="Stretch"
+                                                    VerticalAlignment="Stretch" />
             </Border>
 
-            <!-- 三大核心功能卡片 -->
+            <!-- 三大核心功能卡片 (保持不变) -->
             <Grid ColumnDefinitions="*,*,*" Margin="0,4">
                 <!-- 卡片 1: 截屏识别 -->
                 <Border Grid.Column="0" Margin="0,0,8,0"
@@ -151,7 +146,7 @@
                 </Border>
             </Grid>
 
-            <!-- 底层技术特性卡片 -->
+            <!-- 底层技术特性卡片 (保持不变) -->
             <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"

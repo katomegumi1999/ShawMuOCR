@@ -28,10 +28,12 @@ public class FileOcrTests
         public Task StartScreenCaptureAsync() => Task.CompletedTask;
         public Task StartCaptureImageAsync() => Task.CompletedTask;
         public Task StartAnnotateScreenshotAsync() => Task.CompletedTask;
+        public Task StartQuickSaveScreenshotAsync() => Task.CompletedTask;
         public Task StartLongScreenshotAsync(ScreenRect? initialRegion = null) => Task.CompletedTask;
         public Task StartTranslateSelectionAsync() => Task.CompletedTask;
         public Task StartOcrPopupAsync() => Task.CompletedTask;
-        public Task RunOcrAsync(OcrImage image)
+        public Task TranslateImageAsync(OcrImage image) => Task.CompletedTask;
+        public Task RunOcrAsync(OcrImage image, ScreenRect? screenBounds = null)
         {
             WasRunOcrCalled = true;
             return Task.CompletedTask;

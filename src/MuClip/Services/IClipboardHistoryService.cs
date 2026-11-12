@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using MuClip.Models;
 
 namespace MuClip.Services;
@@ -15,7 +16,13 @@ public interface IClipboardHistoryService
     event Action? HistoryChanged;
 
     void AddRecord(string content, bool broadcast = true);
-    void CopyToSystemClipboard(string text);
+
+    /// <summary>
+    /// 把文本写进系统剪贴板（异步：真正的 I/O 在线程池上执行，UI 线程只 await）。
+    /// 返回 false 表示**没写进去**：要么剪贴板被其他程序占着超过重试窗口，
+    /// 要么这期间已有更新的内容落地而主动让位。调用方必须如实反映，不要宣称"已复制"。
+    /// </summary>
+    Task<bool> CopyToSystemClipboardAsync(string text);
     void DeleteRecord(long id);
     void ClearRecords();
     int DeleteHistoryByTimeRange(DateTime? startTime, DateTime? endTime);

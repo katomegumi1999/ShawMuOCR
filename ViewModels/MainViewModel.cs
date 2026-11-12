@@ -1,12 +1,15 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using ShawMuOCR.Core.Capture;
 using ShawMuOCR.Core.Clipboard;
 using ShawMuOCR.Core.Editor;
 using ShawMuOCR.Core.Logging;
@@ -45,6 +48,10 @@ public partial class MainViewModel : ViewModelBase
     public ThemeViewModel ThemeVm { get; }
     public LogViewModel LogVm { get; }
     public RecordingViewModel RecordingVm { get; }
+    public IOcrCoordinator Coordinator => _coordinator;
+    public IClipboardService ClipboardService => _clipboardService;
+    public ISettingsService SettingsService => _settingsService;
+    public ILoggerService? Logger => _logger;
     private readonly IThemeService _themeService;
     private IMuClipService? _muClipService;
 
@@ -183,6 +190,9 @@ public partial class MainViewModel : ViewModelBase
     private Bitmap? _previewImage;
 
     [ObservableProperty]
+    private ScreenRect? _currentScreenBounds;
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(CharCount))]
     [NotifyPropertyChangedFor(nameof(HasResult))]
     private string _recognizedText = string.Empty;
@@ -226,6 +236,10 @@ public partial class MainViewModel : ViewModelBase
     private string _currentAnnotateHotkey = "Alt+C";
 
     [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(HasQuickSaveHotkey))]
+    private string _currentQuickSaveHotkey = "Alt+S";
+
+    [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(HasTranslateHotkey))]
     private string _currentTranslateHotkey = "Alt+T";
 
@@ -247,6 +261,7 @@ public partial class MainViewModel : ViewModelBase
     public bool HasHotkey => !string.IsNullOrWhiteSpace(CurrentHotkey) && CurrentHotkey != "无" && CurrentHotkey != "None";
     public bool HasCaptureImageHotkey => !string.IsNullOrWhiteSpace(CurrentCaptureImageHotkey) && CurrentCaptureImageHotkey != "无" && CurrentCaptureImageHotkey != "None";
     public bool HasAnnotateHotkey => !string.IsNullOrWhiteSpace(CurrentAnnotateHotkey) && CurrentAnnotateHotkey != "无" && CurrentAnnotateHotkey != "None";
+    public bool HasQuickSaveHotkey => !string.IsNullOrWhiteSpace(CurrentQuickSaveHotkey) && CurrentQuickSaveHotkey != "无" && CurrentQuickSaveHotkey != "None";
     public bool HasLongScreenshotHotkey => !string.IsNullOrWhiteSpace(CurrentLongScreenshotHotkey) && CurrentLongScreenshotHotkey != "无" && CurrentLongScreenshotHotkey != "None";
     public bool HasTranslateHotkey => !string.IsNullOrWhiteSpace(CurrentTranslateHotkey) && CurrentTranslateHotkey != "无" && CurrentTranslateHotkey != "None";
     public bool HasOcrPopupHotkey => !string.IsNullOrWhiteSpace(CurrentOcrPopupHotkey) && CurrentOcrPopupHotkey != "无" && CurrentOcrPopupHotkey != "None";
@@ -364,6 +379,7 @@ public partial class MainViewModel : ViewModelBase
         _currentHotkey = _settingsService.Current.Hotkey;
         _currentCaptureImageHotkey = _settingsService.Current.CaptureImageHotkey;
         _currentAnnotateHotkey = _settingsService.Current.AnnotateHotkey;
+        _currentQuickSaveHotkey = _settingsService.Current.QuickSaveHotkey;
         _currentLongScreenshotHotkey = _settingsService.Current.LongScreenshotHotkey;
         _currentTranslateHotkey = _settingsService.Current.TranslateHotkey;
         _currentOcrPopupHotkey = _settingsService.Current.OcrPopupHotkey;
@@ -404,6 +420,8 @@ public partial class MainViewModel : ViewModelBase
     {
         Dispatcher.UIThread.Post(() =>
         {
+            CurrentScreenBounds = session.ScreenBounds;
+
             if (session.Result != null)
             {
                 RecognizedText = session.Result.Text;
@@ -465,6 +483,7 @@ public partial class MainViewModel : ViewModelBase
             CurrentHotkey = settings.Hotkey;
             CurrentCaptureImageHotkey = settings.CaptureImageHotkey;
             CurrentAnnotateHotkey = settings.AnnotateHotkey;
+            CurrentQuickSaveHotkey = settings.QuickSaveHotkey;
             CurrentLongScreenshotHotkey = settings.LongScreenshotHotkey;
             CurrentTranslateHotkey = settings.TranslateHotkey;
             CurrentOcrPopupHotkey = settings.OcrPopupHotkey;
@@ -502,6 +521,13 @@ public partial class MainViewModel : ViewModelBase
     {
         User32.AllowSetForegroundWindow(User32.ASFW_ANY);
         await _coordinator.StartAnnotateScreenshotAsync();
+    }
+
+    [RelayCommand]
+    private async Task StartQuickSaveAsync()
+    {
+        User32.AllowSetForegroundWindow(User32.ASFW_ANY);
+        await _coordinator.StartQuickSaveScreenshotAsync();
     }
 
     [RelayCommand]
@@ -577,6 +603,66 @@ public partial class MainViewModel : ViewModelBase
         }
     }
 
+    public void UpdateAnnotatedBitmap(SKBitmap annotatedBmp)
+    {
+        SetCurrentBitmap(annotatedBmp);
+        UpdatePreviewBitmap(annotatedBmp);
+    }
+
+    /// <summary>
+    /// 当在截屏页面拖入或打开单个图片文件时，直接解码并载入截屏标注画布进行编辑查看，
+    /// 绝不跳转至 OCR 识别页面，绝不触发 OCR 自动识别。
+    /// </summary>
+    public async Task<bool> LoadImageForEditingAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath)) return false;
+
+        try
+        {
+            var ext = Path.GetExtension(filePath).ToLowerInvariant();
+            if (ext is not (".png" or ".jpg" or ".jpeg" or ".bmp" or ".webp" or ".gif" or ".ico" or ".tiff" or ".tif"))
+            {
+                StatusMessage = "仅支持加载常见位图格式 (PNG/JPG/BMP/WebP) 进行标注编辑";
+                return false;
+            }
+
+            var skBmp = await Task.Run(() => SKBitmap.Decode(filePath));
+            if (skBmp == null || skBmp.IsNull)
+            {
+                StatusMessage = "图片解码失败，请确认文件完整有效";
+                return false;
+            }
+
+            CurrentScreenBounds = null;
+            UpdateAnnotatedBitmap(skBmp);
+            StatusMessage = $"已加载图像: {Path.GetFileName(filePath)}";
+            return true;
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("载入图片至截屏标注编辑异常", ex);
+            StatusMessage = $"载入图片失败: {ex.Message}";
+            return false;
+        }
+    }
+
+    public SKBitmap? GetCurrentSkBitmapCopy()
+    {
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap != null && !_currentSkBitmap.IsNull)
+            {
+                return _currentSkBitmap.Copy();
+            }
+        }
+        var sessionImg = _coordinator.CurrentSession?.Image;
+        if (sessionImg?.Bitmap != null && !sessionImg.Bitmap.IsNull)
+        {
+            return sessionImg.Bitmap.Copy();
+        }
+        return null;
+    }
+
     [RelayCommand]
     public async Task RotatePreviewImageAsync()
     {
@@ -599,11 +685,250 @@ public partial class MainViewModel : ViewModelBase
     }
 
     [RelayCommand]
+    public async Task ReRecognizePreviewImageAsync()
+    {
+        if (IsRecognizing) return;
+
+        SKBitmap? bmpCopy = null;
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap != null && !_currentSkBitmap.IsNull)
+            {
+                bmpCopy = _currentSkBitmap.Copy();
+            }
+        }
+
+        if (bmpCopy == null)
+        {
+            var sessionImg = _coordinator.CurrentSession?.Image;
+            if (sessionImg?.Bitmap != null && !sessionImg.Bitmap.IsNull)
+            {
+                bmpCopy = sessionImg.Bitmap.Copy();
+            }
+        }
+
+        if (bmpCopy != null)
+        {
+            StatusMessage = "正在重新识别当前图像...";
+            var ocrImg = new OcrImage(bmpCopy);
+            await _coordinator.RunOcrAsync(ocrImg);
+            return;
+        }
+
+        StatusMessage = "当前暂无图像可供重新识别";
+    }
+
+    [RelayCommand]
+    public async Task CopyPreviewImageAsync()
+    {
+        SKBitmap? bmpCopy = null;
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap != null && !_currentSkBitmap.IsNull)
+            {
+                bmpCopy = _currentSkBitmap.Copy();
+            }
+        }
+
+        if (bmpCopy == null)
+        {
+            var sessionImg = _coordinator.CurrentSession?.Image;
+            if (sessionImg?.Bitmap != null && !sessionImg.Bitmap.IsNull)
+            {
+                bmpCopy = sessionImg.Bitmap.Copy();
+            }
+        }
+
+        if (bmpCopy != null)
+        {
+            using var ocrImg = new OcrImage(bmpCopy);
+            bool success = await _clipboardService.SetImageAsync(ocrImg);
+            if (success)
+            {
+                ToastNotificationWindow.Show("图片已成功复制到剪贴板", "✓ 复制成功");
+            }
+            else
+            {
+                ToastNotificationWindow.Show("写入系统剪贴板失败", "✕ 复制失败");
+            }
+            return;
+        }
+
+        await StartCaptureImageAsync();
+    }
+
+    [RelayCommand]
+    public async Task QuickSavePreviewImageAsync()
+    {
+        SKBitmap? bmpCopy = null;
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap != null && !_currentSkBitmap.IsNull)
+            {
+                bmpCopy = _currentSkBitmap.Copy();
+            }
+        }
+
+        if (bmpCopy == null)
+        {
+            var sessionImg = _coordinator.CurrentSession?.Image;
+            if (sessionImg?.Bitmap != null && !sessionImg.Bitmap.IsNull)
+            {
+                bmpCopy = sessionImg.Bitmap.Copy();
+            }
+        }
+
+        if (bmpCopy == null)
+        {
+            await StartQuickSaveAsync();
+            return;
+        }
+
+        try
+        {
+            using var ocrImg = new OcrImage(bmpCopy);
+            string? filePath = await QuickSaveHelper.QuickSaveAsync(ocrImg, _settingsService, successTitle: "✓ 截图快存成功");
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                StatusMessage = $"✓ 图片已快存至 {Path.GetFileName(filePath)}";
+            }
+            else
+            {
+                StatusMessage = "截图快存已取消 (未选择路径)";
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("快速保存图像失败", ex);
+            StatusMessage = $"快存失败: {ex.Message}";
+        }
+    }
+
+    [RelayCommand]
+    public void PinPreviewImage()
+    {
+        SKBitmap? bmpCopy = null;
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap != null && !_currentSkBitmap.IsNull)
+            {
+                bmpCopy = _currentSkBitmap.Copy();
+            }
+        }
+
+        if (bmpCopy == null)
+        {
+            var sessionImg = _coordinator.CurrentSession?.Image;
+            if (sessionImg?.Bitmap != null && !sessionImg.Bitmap.IsNull)
+            {
+                bmpCopy = sessionImg.Bitmap.Copy();
+            }
+        }
+
+        if (bmpCopy != null)
+        {
+            PixelPoint pinPos = new PixelPoint(200, 200);
+            if (Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop &&
+                desktop.MainWindow != null)
+            {
+                pinPos = new PixelPoint((int)desktop.MainWindow.Position.X + 60, (int)desktop.MainWindow.Position.Y + 60);
+            }
+
+            var ocrImg = new OcrImage(bmpCopy);
+            var pinWin = new PinnedImageWindow(ocrImg, pinPos);
+            pinWin.Show();
+            StatusMessage = "✓ 已生成独立置顶贴图";
+            return;
+        }
+
+        StatusMessage = "当前暂无图像可供置顶";
+    }
+
+    [RelayCommand]
+    public async Task TranslatePreviewImageAsync()
+    {
+        SKBitmap? bmpCopy = null;
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap != null && !_currentSkBitmap.IsNull)
+            {
+                bmpCopy = _currentSkBitmap.Copy();
+            }
+        }
+
+        if (bmpCopy == null)
+        {
+            var sessionImg = _coordinator.CurrentSession?.Image;
+            if (sessionImg?.Bitmap != null && !sessionImg.Bitmap.IsNull)
+            {
+                bmpCopy = sessionImg.Bitmap.Copy();
+            }
+        }
+
+        if (bmpCopy != null)
+        {
+            var ocrImg = new OcrImage(bmpCopy);
+            await _coordinator.TranslateImageAsync(ocrImg);
+            return;
+        }
+
+        await StartTranslateSelectionAsync();
+    }
+
+    [RelayCommand]
+    public async Task AnnotatePreviewImageAsync()
+    {
+        SKBitmap? bmpCopy = null;
+        lock (_bitmapLock)
+        {
+            if (_currentSkBitmap != null && !_currentSkBitmap.IsNull)
+            {
+                bmpCopy = _currentSkBitmap.Copy();
+            }
+        }
+
+        if (bmpCopy == null)
+        {
+            var sessionImg = _coordinator.CurrentSession?.Image;
+            if (sessionImg?.Bitmap != null && !sessionImg.Bitmap.IsNull)
+            {
+                bmpCopy = sessionImg.Bitmap.Copy();
+            }
+        }
+
+        if (bmpCopy != null)
+        {
+            User32.AllowSetForegroundWindow(User32.ASFW_ANY);
+            var ocrImg = new OcrImage(bmpCopy);
+            var cropOffset = new ScreenPoint(0, 0);
+            var editor = new ScreenshotEditorWindow(
+                ocrImg,
+                _clipboardService,
+                async img => await _coordinator.RunOcrAsync(img),
+                async (img, bounds) => await _coordinator.TranslateImageAsync(img),
+                _settingsService,
+                _logger,
+                new ScreenRect(100, 100, bmpCopy.Width, bmpCopy.Height),
+                fullScreenshot: ocrImg.Clone(),
+                cropOffset: cropOffset,
+                isPrewarm: false,
+                longScreenshotCallback: async bounds => await _coordinator.StartLongScreenshotAsync(bounds),
+                regionRecordCallback: null
+            );
+            editor.Show();
+            return;
+        }
+
+        await StartAnnotateAsync();
+    }
+
+    [RelayCommand]
     private void Clear()
     {
         RecognizedText = string.Empty;
         PreviewImage?.Dispose();
         PreviewImage = null;
+        CurrentScreenBounds = null;
         SetCurrentBitmap(null);
         ElapsedText = "耗时: -- ms";
         StatusMessage = "已清空";

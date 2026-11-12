@@ -211,6 +211,10 @@ public class OcrCoordinatorSelectionTests
         coordinator.SessionCompleted += s => session = s;
 
         await coordinator.StartCaptureImageAsync();
+        if (coordinator.LastBackgroundSaveTask != null)
+        {
+            await coordinator.LastBackgroundSaveTask;
+        }
 
         Assert.Equal(OcrState.Success, coordinator.CurrentState);
         Assert.NotNull(clipboardService.LastImageCopied);

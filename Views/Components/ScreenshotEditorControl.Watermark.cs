@@ -1,15 +1,15 @@
-using System;
+﻿using System;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using ShawMuOCR.Core.Editor;
 
-namespace ShawMuOCR.Views;
+namespace ShawMuOCR.Views.Components;
 
 /// <summary>
 /// 截图标注窗口 - 防伪/版权水印生成与调节 (Watermark) 模块
 /// </summary>
-public partial class ScreenshotEditorWindow
+public partial class ScreenshotEditorControl
 {
     private void OnCancelWatermarkClick(object? sender, RoutedEventArgs e)
     {

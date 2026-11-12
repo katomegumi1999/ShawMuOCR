@@ -609,10 +609,9 @@ public class TranslationServiceTests
     [Fact]
     public void TranslationProviders_ReturnsCorrectChineseNames()
     {
-        Assert.Equal(5, TranslationProviders.All.Count);
+        Assert.Equal(4, TranslationProviders.All.Count);
         Assert.Equal("百度翻译", TranslationProviders.GetDisplayName("Baidu"));
         Assert.Equal("谷歌翻译", TranslationProviders.GetDisplayName("Google"));
-        Assert.Equal("OpenAI", TranslationProviders.GetDisplayName("OpenAI"));
         Assert.Equal("火山引擎", TranslationProviders.GetDisplayName("Volcengine"));
         Assert.Equal("阿里云翻译", TranslationProviders.GetDisplayName("Aliyun"));
 

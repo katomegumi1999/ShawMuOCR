@@ -51,6 +51,11 @@ public sealed class HotkeySettings
     public string LongScreenshot { get; set; } = "Alt+L";
 
     /// <summary>
+    /// 截图快存全局快捷键（默认 Alt+S）：框选区域后直接保存至目标目录
+    /// </summary>
+    public string QuickSave { get; set; } = "Alt+S";
+
+    /// <summary>
     /// 录屏全局快捷键（默认 Alt+R）
     /// </summary>
     public string Recording { get; set; } = "Alt+R";
@@ -60,6 +65,7 @@ public sealed class HotkeySettings
         Ocr = Ocr,
         CaptureImage = CaptureImage,
         Annotate = Annotate,
+        QuickSave = QuickSave,
         Translate = Translate,
         OcrPopup = OcrPopup,
         QuickNote = QuickNote,
