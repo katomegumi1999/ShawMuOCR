@@ -167,11 +167,25 @@
                     PointerPressed="OnHostBorderPointerPressed"
                     PointerMoved="OnHostBorderPointerMoved"
                     PointerReleased="OnHostBorderPointerReleased">
-                <Panel Name="CanvasContainer" HorizontalAlignment="Center" VerticalAlignment="Center" ClipToBounds="False">
-                    <!-- 底层渲染图像 -->
-                    <Image Name="BaseImageControl"
-                           Stretch="Uniform"
-                           RenderOptions.BitmapInterpolationMode="MediumQuality" />
+                <Panel>
+                    <!-- 空状态提示 (当未加载任何图片时显示，彻底移除 100x100 伪造占位) -->
+                    <StackPanel Name="EmptyPlaceholderPanel"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center"
+                                Spacing="10"
+                                IsHitTestVisible="False"
+                                IsVisible="False">
+                        <TextBlock Text="🖼️" FontSize="36" HorizontalAlignment="Center" Opacity="0.38" />
+                        <TextBlock Text="暂无图片" FontSize="14" FontWeight="SemiBold" Foreground="#888888" HorizontalAlignment="Center" />
+                        <TextBlock Text="可直接拖入图片文件、按 Ctrl+V 粘贴剪贴板图片，或点击上方「📁 打开图片」"
+                                   FontSize="12" Foreground="#666666" HorizontalAlignment="Center" />
+                    </StackPanel>
+
+                    <Panel Name="CanvasContainer" HorizontalAlignment="Center" VerticalAlignment="Center" ClipToBounds="False">
+                        <!-- 底层渲染图像 -->
+                        <Image Name="BaseImageControl"
+                               Stretch="Uniform"
+                               RenderOptions.BitmapInterpolationMode="MediumQuality" />
 
                     <!-- 动态交互绘制与选取层 -->
                     <Canvas Name="DrawingOverlayCanvas"
@@ -208,6 +222,7 @@
                                  KeyDown="OnInlineTextBoxKeyDown"
                                  TextChanged="OnInlineTextBoxTextChanged" />
                     </Canvas>
+                </Panel>
                 </Panel>
             </Border>
 

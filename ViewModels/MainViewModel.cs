@@ -925,11 +925,19 @@ public partial class MainViewModel : ViewModelBase
     [RelayCommand]
     private void Clear()
     {
+        // 顺序红线：先把两个「图像来源」斩断，再改任何会发通知的属性。
+        // CapturePageView 监听 PreviewImage / CurrentScreenBounds / CurrentPage，
+        // 任一变化都会调 SyncCurrentImageFromViewModel()；
+        // 而它依赖的 GetCurrentSkBitmapCopy() 在 _currentSkBitmap 为空时会兜底回读
+        // _coordinator.CurrentSession.Image。若先发通知再清数据，
+        // 兜底会把旧图取回来并 SetImage 灌回编辑器 —— 这就是「点一次没反应」的直接原因。
+        SetCurrentBitmap(null);
+        _coordinator.ClearCurrentSession();
+
         RecognizedText = string.Empty;
+        CurrentScreenBounds = null;
         PreviewImage?.Dispose();
         PreviewImage = null;
-        CurrentScreenBounds = null;
-        SetCurrentBitmap(null);
         ElapsedText = "耗时: -- ms";
         StatusMessage = "已清空";
     }

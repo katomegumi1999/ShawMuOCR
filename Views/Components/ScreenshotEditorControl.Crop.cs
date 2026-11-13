@@ -23,6 +23,11 @@ public partial class ScreenshotEditorControl
 
     private void StartCrop()
     {
+        if (_doc == null)
+        {
+            ToolCropBtn.IsChecked = false;
+            return;
+        }
         _selectedElement = null;
         UpdateSelectionHighlight();
 
@@ -213,7 +218,7 @@ public partial class ScreenshotEditorControl
 
     private void CommitCrop()
     {
-        if (_currentTool != EditorTool.Crop) return;
+        if (_doc == null || _currentTool != EditorTool.Crop) return;
 
         if (TopCropActionBar != null) TopCropActionBar.IsVisible = false;
 

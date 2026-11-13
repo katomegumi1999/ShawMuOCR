@@ -112,7 +112,7 @@ public partial class ScreenshotEditorControl
 
     private void CommitInlineText()
     {
-        if (!InlineTextBox.IsVisible) return;
+        if (_doc == null || !InlineTextBox.IsVisible) return;
 
         string text = InlineTextBox.Text?.Trim() ?? string.Empty;
         InlineTextBox.IsVisible = false;

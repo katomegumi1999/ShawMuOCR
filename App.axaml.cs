@@ -26,6 +26,7 @@ using ShawMuOCR.Windows.Startup;
 using MuClip.Services;
 using MuRecorder.ViewModels;
 using ShawMuOCR.Views.Clipboard;
+using ShawMuOCR.Windows.Win32;
 
 namespace ShawMuOCR;
 
@@ -299,6 +300,7 @@ public partial class App : Application
             if (curSettings != null)
             {
                 service.UpdateAutoBackupSettings(
+                    curSettings.EnableClipboardAutoBackup,
                     curSettings.ClipboardAutoBackupKeep,
                     curSettings.ClipboardAutoBackupIntervalHours);
             }
@@ -659,6 +661,7 @@ public partial class App : Application
         {
             if (_mainWindow != null)
             {
+                User32.AllowSetForegroundWindow(User32.ASFW_ANY);
                 if (_mainViewModel != null)
                 {
                     _mainWindow.EnsurePageLoaded(_mainViewModel.CurrentPage);

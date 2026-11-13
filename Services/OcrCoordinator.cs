@@ -1370,6 +1370,33 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
     #endregion
 
+    /// <summary>
+    /// 清空当前会话：释放会话图像并把状态复位为 Idle。
+    /// </summary>
+    /// <remarks>
+    /// 必须连带清会话，不能只清 UI 侧缓存。<c>MainViewModel.Clear()</c> 只把自身的
+    /// <c>_currentSkBitmap</c> 与 <c>PreviewImage</c> 置空，而
+    /// <c>MainViewModel.GetCurrentSkBitmapCopy()</c> 在 <c>_currentSkBitmap</c> 为空时会兜底回读
+    /// <c>CurrentSession.Image</c>；会话不清则兜底立刻把旧图取回来，由
+    /// <c>CapturePageView.SyncCurrentImageFromViewModel</c> 重新 SetImage 灌回编辑器。
+    /// 第一次点击必然踩中（<c>PreviewImage</c> 由非 null 变 null 会发通知），
+    /// 第二次因 <c>SetProperty</c> 相等去重不再发通知而侥幸生效 —— 这正是「要点两次」的成因。
+    /// </remarks>
+    public void ClearCurrentSession()
+    {
+        if (_disposed) return;
+
+        _currentSession?.Dispose();
+        _currentSession = null;
+
+        // 只复位状态字段，不触发 StateChanged：
+        // MainViewModel.OnCoordinatorStateChanged 内是 Dispatcher.UIThread.Post（异步一帧），
+        // 若在此处广播 Idle，会把 Clear() 刚写入的 StatusMessage="已清空" 覆盖成"就绪"。
+        // 清空工作区是纯 UI 动作，状态文案由 MainViewModel 自己收口。
+        _currentState = OcrState.Idle;
+        _statusMessage = "就绪";
+    }
+
     public void Dispose()
     {
         if (!_disposed)

@@ -26,6 +26,7 @@ public partial class ScreenshotEditorControl
     // ==========================================
     private void OnUndoClick(object? sender, RoutedEventArgs e)
     {
+        if (_doc == null) return;
         CommitInlineText();
         int prevW = _doc.OriginalImage.Width;
         int prevH = _doc.OriginalImage.Height;
@@ -45,6 +46,7 @@ public partial class ScreenshotEditorControl
 
     private void OnRedoClick(object? sender, RoutedEventArgs e)
     {
+        if (_doc == null) return;
         CommitInlineText();
         int prevW = _doc.OriginalImage.Width;
         int prevH = _doc.OriginalImage.Height;
@@ -64,7 +66,7 @@ public partial class ScreenshotEditorControl
 
     private void SyncRestoreFullSnapshotBtnState()
     {
-        if (_fullScreenshot == null || RestoreFullSnapshotBtn == null) return;
+        if (_doc == null || _fullScreenshot == null || RestoreFullSnapshotBtn == null) return;
         bool isFull = _doc.OriginalImage.Width == _fullScreenshot.Width && _doc.OriginalImage.Height == _fullScreenshot.Height;
         _isFullSnapshotRestored = isFull;
         RestoreFullSnapshotBtn.IsEnabled = !isFull;
@@ -81,7 +83,7 @@ public partial class ScreenshotEditorControl
     // ==========================================
     private async void OnCopyClick(object? sender, RoutedEventArgs e)
     {
-        if (_isProcessingAction) return;
+        if (_doc == null || _isProcessingAction) return;
         _isProcessingAction = true;
 
         try
@@ -113,6 +115,7 @@ public partial class ScreenshotEditorControl
 
     private async void OnQuickSaveClick(object? sender, RoutedEventArgs e)
     {
+        if (_doc == null) return;
         CommitInlineText();
 
         try
@@ -138,6 +141,7 @@ public partial class ScreenshotEditorControl
 
     private async void OnSaveClick(object? sender, RoutedEventArgs e)
     {
+        if (_doc == null) return;
         CommitInlineText();
 
         var dialog = new SaveImageDialog(_doc, _settingsService);
@@ -160,7 +164,7 @@ public partial class ScreenshotEditorControl
 
     private void OnPinClick(object? sender, RoutedEventArgs e)
     {
-        if (_isProcessingAction) return;
+        if (_doc == null || _isProcessingAction) return;
         _isProcessingAction = true;
 
         try
@@ -190,7 +194,7 @@ public partial class ScreenshotEditorControl
 
     private async void OnOcrClick(object? sender, RoutedEventArgs e)
     {
-        if (_isProcessingAction) return;
+        if (_doc == null || _isProcessingAction) return;
         _isProcessingAction = true;
 
         try
@@ -228,7 +232,7 @@ public partial class ScreenshotEditorControl
 
     private async void OnTranslateClick(object? sender, RoutedEventArgs e)
     {
-        if (_isProcessingAction) return;
+        if (_doc == null || _isProcessingAction) return;
         _isProcessingAction = true;
 
         try
@@ -274,7 +278,7 @@ public partial class ScreenshotEditorControl
 
     private async void OnLongScreenshotClick(object? sender, RoutedEventArgs e)
     {
-        if (_isProcessingAction) return;
+        if (_doc == null || _isProcessingAction) return;
         _isProcessingAction = true;
 
         try
@@ -299,7 +303,7 @@ public partial class ScreenshotEditorControl
 
     private async void OnRegionRecordClick(object? sender, RoutedEventArgs e)
     {
-        if (_isProcessingAction) return;
+        if (_doc == null || _isProcessingAction) return;
         _isProcessingAction = true;
 
         try
@@ -324,21 +328,23 @@ public partial class ScreenshotEditorControl
 
     private ScreenRect GetEffectiveSelectionBounds()
     {
+        int w = _doc?.OriginalImage.Width ?? 100;
+        int h = _doc?.OriginalImage.Height ?? 100;
         if (_selectionBounds.HasValue)
         {
             return new ScreenRect(
                 _selectionBounds.Value.X,
                 _selectionBounds.Value.Y,
-                _doc.OriginalImage.Width,
-                _doc.OriginalImage.Height);
+                w,
+                h);
         }
 
         var screenPos = GetControlScreenPosition();
         return new ScreenRect(
             screenPos.X,
             screenPos.Y,
-            _doc.OriginalImage.Width,
-            _doc.OriginalImage.Height);
+            w,
+            h);
     }
 
     private void OnCloseClick(object? sender, RoutedEventArgs e)
@@ -403,6 +409,11 @@ public partial class ScreenshotEditorControl
             OnCopyClick(sender, e);
             e.Handled = true;
         }
+        else if (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            _ = TryPasteImageFromClipboardAsync();
+            e.Handled = true;
+        }
         else if (e.Key == Key.Escape)
         {
             if (_selectedElement != null)
@@ -442,7 +453,7 @@ public partial class ScreenshotEditorControl
         }
         else if ((e.Key is Key.Delete or Key.Back) && _selectedElement != null)
         {
-            _doc.RemoveElement(_selectedElement);
+            _doc?.RemoveElement(_selectedElement);
             _selectedElement = null;
             RefreshDisplay();
             e.Handled = true;
@@ -499,7 +510,7 @@ public partial class ScreenshotEditorControl
 
     private void OnRestoreFullSnapshotClick(object? sender, RoutedEventArgs e)
     {
-        if (_fullScreenshot == null || _fullScreenshot.Bitmap == null || _fullScreenshot.Bitmap.IsNull)
+        if (_doc == null || _fullScreenshot == null || _fullScreenshot.Bitmap == null || _fullScreenshot.Bitmap.IsNull)
         {
             ToastNotificationWindow.Show("当前截图无可用全屏快照", TimeSpan.FromSeconds(2), "✕ 无法恢复");
             return;

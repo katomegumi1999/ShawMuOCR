@@ -56,6 +56,7 @@ public partial class ScreenshotEditorControl
 
     private void OnConfirmWatermarkClick(object? sender, RoutedEventArgs e)
     {
+        if (_doc == null) return;
         WatermarkBtn.Flyout?.Hide();
         string text = WatermarkTextBox.Text?.Trim() ?? string.Empty;
         if (string.IsNullOrEmpty(text))

@@ -110,6 +110,11 @@ public sealed class GeneralSettings
     public string ClipboardPanelBackground { get; set; } = "#F4F4F6";
 
     /// <summary>
+    /// 是否开启小沐剪贴板加密数据库自动快照与滚动清理
+    /// </summary>
+    public bool EnableClipboardAutoBackup { get; set; } = true;
+
+    /// <summary>
     /// 小沐剪贴板数据库自动备份保留份数（滚动快照上限，超过自动清理最旧的）
     /// </summary>
     public int ClipboardAutoBackupKeep { get; set; } = 7;
@@ -140,6 +145,7 @@ public sealed class GeneralSettings
         AnnotationFontSize = AnnotationFontSize,
         EnableClipboard = EnableClipboard,
         ClipboardPanelBackground = ClipboardPanelBackground,
+        EnableClipboardAutoBackup = EnableClipboardAutoBackup,
         ClipboardAutoBackupKeep = ClipboardAutoBackupKeep,
         ClipboardAutoBackupIntervalHours = ClipboardAutoBackupIntervalHours
     };

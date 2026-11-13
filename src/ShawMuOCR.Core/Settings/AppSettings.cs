@@ -303,6 +303,13 @@ public sealed class AppSettings
     }
 
     [JsonIgnore]
+    public bool EnableClipboardAutoBackup
+    {
+        get => General.EnableClipboardAutoBackup;
+        set => General.EnableClipboardAutoBackup = value;
+    }
+
+    [JsonIgnore]
     public int ClipboardAutoBackupKeep
     {
         get => General.ClipboardAutoBackupKeep;

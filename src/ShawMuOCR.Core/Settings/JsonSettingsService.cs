@@ -600,6 +600,9 @@ public sealed class JsonSettingsService : ISettingsService
                     case "EnableClipboard":
                         if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.EnableClipboard = val.GetBoolean();
                         break;
+                    case "EnableClipboardAutoBackup":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.General.EnableClipboardAutoBackup = val.GetBoolean();
+                        break;
                     case "ClipboardPanelBackground":
                         if (val.ValueKind == JsonValueKind.String) settings.General.ClipboardPanelBackground = val.GetString()!;
                         break;

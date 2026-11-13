@@ -35,6 +35,7 @@ public interface IMuClipService : IClipboardHistoryService, IClipboardPhraseServ
     // === 自动快照备份配置与主动触发 ===
     AutoBackupResult TriggerAutoBackup(int? keep = null, int? intervalHours = null);
     void UpdateAutoBackupSettings(int keep, int intervalHours);
+    void UpdateAutoBackupSettings(bool enabled, int keep, int intervalHours);
 
     // === 细粒度子领域服务访问入口 ===
     IClipboardHistoryService History { get; }

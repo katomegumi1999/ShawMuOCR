@@ -43,6 +43,7 @@ public partial class ScreenshotEditorControl
 
     private void OnCanvasPointerWheelChanged(object? sender, PointerWheelEventArgs e)
     {
+        if (_doc == null) return;
         if (InlineTextBox.IsVisible) return;
         if (_currentTool == EditorTool.Crop) return;
 
@@ -105,6 +106,12 @@ public partial class ScreenshotEditorControl
     private void UpdateDimensionText()
     {
         if (DimensionText == null) return;
+        if (_doc == null)
+        {
+            DimensionText.Text = "-- × --";
+            if (EmbeddedDimensionText != null) EmbeddedDimensionText.Text = "-- × --";
+            return;
+        }
         int w = _doc.OriginalImage.Width;
         int h = _doc.OriginalImage.Height;
         if (Math.Abs(_zoomFactor - 1.0) < 0.01)
@@ -120,6 +127,7 @@ public partial class ScreenshotEditorControl
 
     private void OnHostBorderPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (_doc == null) return;
         var props = e.GetCurrentPoint(EditorCanvasHostBorder).Properties;
         if (!props.IsLeftButtonPressed && !props.IsMiddleButtonPressed) return;
 
@@ -202,6 +210,7 @@ public partial class ScreenshotEditorControl
 
     private void OnHostBorderPointerMoved(object? sender, PointerEventArgs e)
     {
+        if (_doc == null) return;
         if (_isPanning)
         {
             var currentPos = e.GetPosition(EditorCanvasHostBorder);

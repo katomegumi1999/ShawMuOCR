@@ -107,6 +107,9 @@ public partial class SettingsViewModel : ViewModelBase
     private string _clipboardPanelBackground;
 
     [ObservableProperty]
+    private bool _enableClipboardAutoBackup = true;
+
+    [ObservableProperty]
     private int _clipboardAutoBackupKeep = 7;
 
     [ObservableProperty]
@@ -665,6 +668,7 @@ public partial class SettingsViewModel : ViewModelBase
         _clipboardPanelHotkey = current.ClipboardPanelHotkey;
         _phrasesPanelHotkey = current.PhrasesPanelHotkey;
         _clipboardPanelBackground = current.ClipboardPanelBackground;
+        _enableClipboardAutoBackup = current.EnableClipboardAutoBackup;
         _clipboardAutoBackupKeep = current.ClipboardAutoBackupKeep > 0 ? current.ClipboardAutoBackupKeep : 7;
         _clipboardAutoBackupIntervalHours = current.ClipboardAutoBackupIntervalHours >= 0 ? current.ClipboardAutoBackupIntervalHours : 24;
         _selectedTranslateProvider = AvailableTranslateProviders.FirstOrDefault(p => string.Equals(p.Id, current.TranslateProvider, StringComparison.OrdinalIgnoreCase)) ?? AvailableTranslateProviders[0];
@@ -1684,6 +1688,7 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(ClipboardPanelHotkey):
             case nameof(PhrasesPanelHotkey):
             case nameof(ClipboardPanelBackground):
+            case nameof(EnableClipboardAutoBackup):
             case nameof(ClipboardAutoBackupKeep):
             case nameof(ClipboardAutoBackupIntervalHours):
                 TriggerAutoSave(debounce: false);
@@ -1848,6 +1853,7 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.ClipboardPanelHotkey = ClipboardPanelHotkey;
         newSettings.PhrasesPanelHotkey = PhrasesPanelHotkey;
         newSettings.ClipboardPanelBackground = ClipboardPanelBackground;
+        newSettings.EnableClipboardAutoBackup = EnableClipboardAutoBackup;
         newSettings.ClipboardAutoBackupKeep = ClipboardAutoBackupKeep;
         newSettings.ClipboardAutoBackupIntervalHours = ClipboardAutoBackupIntervalHours;
         newSettings.TranslateProvider = TranslateProvider;
@@ -1939,7 +1945,7 @@ public partial class SettingsViewModel : ViewModelBase
             _isSaving = false;
         }
         _startupService.SetEnabled(StartWithWindows);
-        _muClipService?.UpdateAutoBackupSettings(ClipboardAutoBackupKeep, ClipboardAutoBackupIntervalHours);
+        _muClipService?.UpdateAutoBackupSettings(EnableClipboardAutoBackup, ClipboardAutoBackupKeep, ClipboardAutoBackupIntervalHours);
 
         StatusMessage = isAutoSave ? "✓ 设置已自动保存" : "✓ 设置已保存";
         return true;
@@ -2055,6 +2061,7 @@ public partial class SettingsViewModel : ViewModelBase
             ClipboardPanelHotkey = current.ClipboardPanelHotkey;
             PhrasesPanelHotkey = current.PhrasesPanelHotkey;
             ClipboardPanelBackground = current.ClipboardPanelBackground;
+            EnableClipboardAutoBackup = current.EnableClipboardAutoBackup;
             ClipboardAutoBackupKeep = current.ClipboardAutoBackupKeep;
             ClipboardAutoBackupIntervalHours = current.ClipboardAutoBackupIntervalHours;
             AutoCopy = current.AutoCopy;

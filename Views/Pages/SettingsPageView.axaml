@@ -512,15 +512,27 @@
                             </StackPanel>
 
                             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                                <TextBlock Text="每" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <CheckBox Content="启用"
+                                          IsChecked="{Binding EnableClipboardAutoBackup}"
+                                          VerticalAlignment="Center"
+                                          Margin="0,0,4,0" />
+                                <TextBlock Text="每" VerticalAlignment="Center"
+                                           IsEnabled="{Binding EnableClipboardAutoBackup}"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 <ComboBox ItemsSource="{Binding AvailableClipboardAutoBackupIntervalHours}"
                                           SelectedItem="{Binding ClipboardAutoBackupIntervalHours}"
+                                          IsEnabled="{Binding EnableClipboardAutoBackup}"
                                           Width="75" />
-                                <TextBlock Text="小时备份，保留" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="小时备份，保留" VerticalAlignment="Center"
+                                           IsEnabled="{Binding EnableClipboardAutoBackup}"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 <ComboBox ItemsSource="{Binding AvailableClipboardAutoBackupKeeps}"
                                           SelectedItem="{Binding ClipboardAutoBackupKeep}"
+                                          IsEnabled="{Binding EnableClipboardAutoBackup}"
                                           Width="70" />
-                                <TextBlock Text="份" VerticalAlignment="Center" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                <TextBlock Text="份" VerticalAlignment="Center"
+                                           IsEnabled="{Binding EnableClipboardAutoBackup}"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                                 <Button Content="打开备份目录"
                                         Command="{Binding OpenMuClipAutoBackupFolderCommand}"
                                         Padding="10,5"

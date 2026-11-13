@@ -30,6 +30,9 @@ public partial class MuClipService : IMuClipService
     private Timer? _peerRefreshTimer;
     private Timer? _autoBackupTimer;
 
+    /// <summary>是否开启滚动快照自动备份。</summary>
+    private bool _autoBackupEnabled = true;
+
     /// <summary>滚动快照保留份数（默认 7 份）。</summary>
     private int _autoBackupKeep = 7;
 
@@ -174,20 +177,111 @@ public partial class MuClipService : IMuClipService
     /// <summary>
     /// 滚动自动备份：把库文件整体快照到 <c>&lt;库目录&gt;\auto-backup</c>，并按数量清理旧的。
     /// </summary>
-    /// <remarks>
-    /// 失败只记日志、绝不抛出——备份是保险，不能变成新的故障源。
-    /// 库已是密文，快照即密文；恢复时把文件放回原路径即可（沿用同一把 DPAPI 托管的 key）。
-    /// 节流在 Rust 侧做，所以这里可以放心地每小时调一次。
-    /// </remarks>
-    private void TryAutoBackup()
+    /// <summary>
+    /// 自动快照倒计时调度：计算距上次备份剩余时间，设置单次精确倒计时（中间零唤醒、零轮询）。
+    /// </summary>
+    private void ScheduleNextAutoBackup()
     {
-        _ = TriggerAutoBackup();
+        if (!_autoBackupEnabled || _autoBackupIntervalHours <= 0)
+        {
+            _autoBackupTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            return;
+        }
+
+        DateTime? latestBackupTime = GetLatestAutoBackupTime();
+        TimeSpan delay;
+
+        if (latestBackupTime == null)
+        {
+            // 从未备份过，立即执行备份
+            delay = TimeSpan.Zero;
+        }
+        else
+        {
+            TimeSpan elapsed = DateTime.UtcNow - latestBackupTime.Value;
+            TimeSpan interval = TimeSpan.FromHours(_autoBackupIntervalHours);
+
+            if (elapsed >= interval)
+            {
+                // 已超过设定的备份周期，立即执行备份
+                delay = TimeSpan.Zero;
+            }
+            else
+            {
+                // 距离下次备份还剩 remaining 时间，精确单次倒计时至目标时刻（中途彻底休眠）
+                TimeSpan remaining = interval - elapsed;
+                delay = remaining > TimeSpan.FromSeconds(1) ? remaining : TimeSpan.FromSeconds(1);
+            }
+        }
+
+        if (_autoBackupTimer == null)
+        {
+            _autoBackupTimer = new Timer(_ => OnAutoBackupCountdownFired(), null, delay, Timeout.InfiniteTimeSpan);
+        }
+        else
+        {
+            _autoBackupTimer.Change(delay, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void OnAutoBackupCountdownFired()
+    {
+        if (!_autoBackupEnabled) return;
+
+        try
+        {
+            TriggerAutoBackup();
+        }
+        finally
+        {
+            // 备份完成后，开启下一个周期的单次完整倒计时（中途彻底休眠不轮询）
+            if (_autoBackupEnabled && _autoBackupIntervalHours > 0)
+            {
+                TimeSpan nextInterval = TimeSpan.FromHours(_autoBackupIntervalHours);
+                _autoBackupTimer?.Change(nextInterval, Timeout.InfiniteTimeSpan);
+            }
+            else
+            {
+                _autoBackupTimer?.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+            }
+        }
+    }
+
+    private DateTime? GetLatestAutoBackupTime()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_dbPath)) return null;
+            string? dbDir = Path.GetDirectoryName(_dbPath);
+            if (string.IsNullOrWhiteSpace(dbDir)) return null;
+
+            string backupDir = Path.Combine(dbDir, "auto-backup");
+            if (!Directory.Exists(backupDir)) return null;
+
+            var dirInfo = new DirectoryInfo(backupDir);
+            var latestFile = dirInfo.GetFiles()
+                .OrderByDescending(f => f.LastWriteTimeUtc)
+                .FirstOrDefault();
+
+            return latestFile?.LastWriteTimeUtc;
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     public void UpdateAutoBackupSettings(int keep, int intervalHours)
     {
+        UpdateAutoBackupSettings(true, keep, intervalHours);
+    }
+
+    public void UpdateAutoBackupSettings(bool enabled, int keep, int intervalHours)
+    {
+        _autoBackupEnabled = enabled;
         _autoBackupKeep = Math.Max(1, keep);
         _autoBackupIntervalHours = Math.Max(0, intervalHours);
+        ScheduleNextAutoBackup();
     }
 
     public AutoBackupResult TriggerAutoBackup(int? keep = null, int? intervalHours = null)
@@ -216,6 +310,12 @@ public partial class MuClipService : IMuClipService
             {
                 Console.WriteLine(
                     $"[MuClip] 自动备份完成: {result.Path} ({result.Size} B)，清理 {result.Pruned} 个，保留 {result.Kept} 个");
+
+                if (_autoBackupEnabled && _autoBackupIntervalHours > 0)
+                {
+                    TimeSpan nextInterval = TimeSpan.FromHours(_autoBackupIntervalHours);
+                    _autoBackupTimer?.Change(nextInterval, Timeout.InfiniteTimeSpan);
+                }
             }
 
             return result;
@@ -312,9 +412,8 @@ public partial class MuClipService : IMuClipService
             }
         }
 
-        // 启动即尝试一次滚动备份（Rust 侧按 24h 节流，不会每次启动都生成）。
-        TryAutoBackup();
-        _autoBackupTimer = new Timer(_ => TryAutoBackup(), null, TimeSpan.FromHours(1), TimeSpan.FromHours(1));
+        // 启动精准单次倒计时调度（计算距下次备份剩余时间，中间零轮询，到点触发一次后进入下个完整周期）
+        ScheduleNextAutoBackup();
 
         if (!string.IsNullOrEmpty(customDeviceId))
         {

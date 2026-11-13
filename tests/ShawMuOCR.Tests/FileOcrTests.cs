@@ -17,8 +17,15 @@ public class FileOcrTests
     private sealed class FakeCoordinator : IOcrCoordinator
     {
         public OcrState CurrentState => OcrState.Idle;
-        public OcrSession? CurrentSession => null;
+        public OcrSession? CurrentSession { get; private set; }
         public string? StatusMessage => "就绪";
+
+        /// <summary>模拟「上一次识别留下的会话图像」，用于验证清空是否连带丢弃会话。</summary>
+        public void SetSession(OcrSession? session)
+        {
+            CurrentSession?.Dispose();
+            CurrentSession = session;
+        }
 
         public event Action<OcrState, string?>? StateChanged { add { } remove { } }
         public event Action<OcrSession>? SessionCompleted { add { } remove { } }
@@ -51,6 +58,12 @@ public class FileOcrTests
         }
 
         public void PreloadEngineInBackground(string scene = "启动预载", int delayMs = 0) { }
+
+        public void ClearCurrentSession()
+        {
+            CurrentSession?.Dispose();
+            CurrentSession = null;
+        }
 
         public void Dispose() { }
     }
@@ -265,6 +278,58 @@ public class FileOcrTests
         Assert.Contains(nameof(vm.WindowTitle), changedProperties);
         Assert.Contains(nameof(vm.AppLogo), changedProperties);
         Assert.Contains(nameof(vm.WindowIcon), changedProperties);
+    }
+
+    [Fact]
+    public void MainViewModel_ClearCommand_ResetsCurrentBitmapBeforePreviewImageNotification()
+    {
+        var coordinator = new FakeCoordinator();
+        var clipboard = new FakeClipboardService();
+        var settings = new FakeSettingsService();
+        var vm = new MainViewModel(coordinator, clipboard, settings, () => null!);
+
+        using var bmp = new SKBitmap(100, 100);
+        vm.UpdateAnnotatedBitmap(bmp);
+        Assert.NotNull(vm.GetCurrentSkBitmapCopy());
+
+        // 执行清空
+        vm.ClearCommand.Execute(null);
+
+        Assert.Null(vm.GetCurrentSkBitmapCopy());
+        Assert.Null(vm.PreviewImage);
+    }
+
+    /// <summary>
+    /// 回归测试：「清空图片」必须连带丢弃协调器会话。
+    /// 曾出现的缺陷：Clear() 只清自身的 _currentSkBitmap / PreviewImage，
+    /// 而 GetCurrentSkBitmapCopy() 在 _currentSkBitmap 为空时会兜底回读 CurrentSession.Image，
+    /// 于是第一次清空被 CapturePageView 的同步逻辑原样灌回编辑器，
+    /// 第二次因 PreviewImage 相等去重不再发通知才侥幸生效 —— 表现为「要点两次」。
+    /// </summary>
+    [Fact]
+    public void MainViewModel_ClearCommand_AlsoDropsCoordinatorSession_SoBitmapFallbackCannotRestoreImage()
+    {
+        var coordinator = new FakeCoordinator();
+        var clipboard = new FakeClipboardService();
+        var settings = new FakeSettingsService();
+        var vm = new MainViewModel(coordinator, clipboard, settings, () => null!);
+
+        // 造出「上一次识别留下的会话图像」，但 UI 侧缓存为空 —— 正是兜底会生效的状态。
+        using (var bmp = new SKBitmap(16, 16))
+        {
+            coordinator.SetSession(new OcrSession(new OcrImage(bmp.Copy()), OcrResult.Empty()));
+        }
+
+        using (var beforeClear = vm.GetCurrentSkBitmapCopy())
+        {
+            // 前置条件：清空前兜底确实能取到图，否则后面的断言会假通过。
+            Assert.NotNull(beforeClear);
+        }
+
+        vm.ClearCommand.Execute(null);
+
+        Assert.Null(coordinator.CurrentSession);
+        Assert.Null(vm.GetCurrentSkBitmapCopy());
     }
 }
 

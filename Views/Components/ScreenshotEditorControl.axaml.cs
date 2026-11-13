@@ -71,7 +71,7 @@ public partial class ScreenshotEditorControl : UserControl
         Left
     }
 
-    private ImageDocument _doc;
+    private ImageDocument? _doc;
     private IClipboardService _clipboardService;
     private Func<OcrImage, Task>? _ocrCallback;
     private Func<OcrImage, ScreenRect, Task>? _translateCallback;
@@ -113,17 +113,18 @@ public partial class ScreenshotEditorControl : UserControl
 
     public bool ShouldCloseOnAction => !_isEmbedded;
 
-    public ImageDocument Document => _doc;
+    public ImageDocument? Document => _doc;
+    public bool HasImage => _doc != null;
     public double DisplayScale => _displayScale;
     public ScreenRect? SelectionBounds => _selectionBounds;
     public OcrImage? FullScreenshot => _fullScreenshot;
 
-    public ScreenshotEditorControl() : this(new OcrImage(new SKBitmap(100, 100)))
+    public ScreenshotEditorControl() : this((OcrImage?)null)
     {
     }
 
     public ScreenshotEditorControl(
-        OcrImage image,
+        OcrImage? image,
         IClipboardService? clipboardService = null,
         Func<OcrImage, Task>? ocrCallback = null,
         Func<OcrImage, ScreenRect, Task>? translateCallback = null,
@@ -136,9 +137,7 @@ public partial class ScreenshotEditorControl : UserControl
         Func<ScreenRect, Task>? longScreenshotCallback = null,
         Func<ScreenRect, Task>? regionRecordCallback = null)
     {
-        ArgumentNullException.ThrowIfNull(image);
-
-        _doc = new ImageDocument(image);
+        _doc = image != null ? new ImageDocument(image) : null;
         _clipboardService = clipboardService ?? new WindowsClipboardService();
         _ocrCallback = ocrCallback;
         _translateCallback = translateCallback;
@@ -163,10 +162,11 @@ public partial class ScreenshotEditorControl : UserControl
 
         UpdateToolControlsState();
 
-        DimensionText.Text = $"{image.Width} × {image.Height}";
+        string dimText = image != null ? $"{image.Width} × {image.Height}" : "-- × --";
+        DimensionText.Text = dimText;
         if (EmbeddedDimensionText != null)
         {
-            EmbeddedDimensionText.Text = $"{image.Width} × {image.Height}";
+            EmbeddedDimensionText.Text = dimText;
         }
 
         AddHandler(KeyDownEvent, OnControlKeyDown, RoutingStrategies.Tunnel);
@@ -175,7 +175,7 @@ public partial class ScreenshotEditorControl : UserControl
     }
 
     public void Initialize(
-        OcrImage image,
+        OcrImage? image,
         IClipboardService? clipboardService = null,
         Func<OcrImage, Task>? ocrCallback = null,
         Func<OcrImage, ScreenRect, Task>? translateCallback = null,
@@ -188,11 +188,9 @@ public partial class ScreenshotEditorControl : UserControl
         Func<ScreenRect, Task>? longScreenshotCallback = null,
         Func<ScreenRect, Task>? regionRecordCallback = null)
     {
-        ArgumentNullException.ThrowIfNull(image);
-
         _isPrewarmInstance = isPrewarm;
         _doc?.Dispose();
-        _doc = new ImageDocument(image);
+        _doc = image != null ? new ImageDocument(image) : null;
         if (clipboardService != null) _clipboardService = clipboardService;
         _ocrCallback = ocrCallback;
         _translateCallback = translateCallback;
@@ -213,10 +211,11 @@ public partial class ScreenshotEditorControl : UserControl
         }
 
         UpdateToolControlsState();
-        DimensionText.Text = $"{image.Width} × {image.Height}";
+        string dimText = image != null ? $"{image.Width} × {image.Height}" : "-- × --";
+        DimensionText.Text = dimText;
         if (EmbeddedDimensionText != null)
         {
-            EmbeddedDimensionText.Text = $"{image.Width} × {image.Height}";
+            EmbeddedDimensionText.Text = dimText;
         }
 
         ApplyDimensions(recenter: true);
@@ -394,6 +393,12 @@ public partial class ScreenshotEditorControl : UserControl
 
     private void OnPopoutEditorClick(object? sender, RoutedEventArgs e)
     {
+        if (_doc == null)
+        {
+            ToastNotificationWindow.Show("当前暂无图片可弹出标注", "ℹ️ 提示");
+            return;
+        }
+
         try
         {
             CommitInlineText();
@@ -427,9 +432,7 @@ public partial class ScreenshotEditorControl : UserControl
     public void ResetToEmpty()
     {
         _doc?.Dispose();
-        using var emptyBmp = new SKBitmap(100, 100);
-        emptyBmp.Erase(SKColors.Transparent);
-        _doc = new ImageDocument(new OcrImage(emptyBmp));
+        _doc = null;
         _fullScreenshot?.Dispose();
         _fullScreenshot = null;
         _selectionBounds = null;
@@ -452,7 +455,10 @@ public partial class ScreenshotEditorControl : UserControl
     {
         ResetToEmpty();
         RequestClearImage?.Invoke(this, EventArgs.Empty);
-        ToastNotificationWindow.Show("已清空当前截屏工作区图片", TimeSpan.FromSeconds(2), "🗑️ 清空工作区");
+        // 清空是零耗时操作，第二个参数是「耗时文本」而非停留时长，
+        // 传 TimeSpan.FromSeconds(2) 会让气泡右上角永远挂一行「时长: 2.0s」。
+        // 停留时长走 displaySeconds（默认 1.5s），这里不需要改。
+        ToastNotificationWindow.Show("已清空当前截屏工作区图片", "🗑️ 清空工作区");
     }
 
     protected override void OnAttachedToVisualTree(VisualTreeAttachmentEventArgs e)
@@ -477,6 +483,51 @@ public partial class ScreenshotEditorControl : UserControl
 
     public void ApplyDimensions(bool recenter = false)
     {
+        if (_doc == null)
+        {
+            if (CanvasContainer != null)
+            {
+                CanvasContainer.IsVisible = false;
+                CanvasContainer.Width = 0;
+                CanvasContainer.Height = 0;
+            }
+            if (BaseImageControl != null)
+            {
+                BaseImageControl.Source = null;
+                BaseImageControl.Width = 0;
+                BaseImageControl.Height = 0;
+            }
+            if (DrawingOverlayCanvas != null)
+            {
+                DrawingOverlayCanvas.Width = 0;
+                DrawingOverlayCanvas.Height = 0;
+            }
+            if (EmptyPlaceholderPanel != null)
+            {
+                EmptyPlaceholderPanel.IsVisible = true;
+            }
+            if (BottomToolbarBorder != null)
+            {
+                BottomToolbarBorder.IsEnabled = false;
+                BottomToolbarBorder.Opacity = 0.45;
+            }
+            if (ClearImageBtn != null) ClearImageBtn.IsEnabled = false;
+            if (PopoutEditorBtn != null) PopoutEditorBtn.IsEnabled = false;
+            if (DimensionText != null) DimensionText.Text = "-- × --";
+            if (EmbeddedDimensionText != null) EmbeddedDimensionText.Text = "-- × --";
+            return;
+        }
+
+        if (CanvasContainer != null) CanvasContainer.IsVisible = true;
+        if (EmptyPlaceholderPanel != null) EmptyPlaceholderPanel.IsVisible = false;
+        if (BottomToolbarBorder != null)
+        {
+            BottomToolbarBorder.IsEnabled = true;
+            BottomToolbarBorder.Opacity = 1.0;
+        }
+        if (ClearImageBtn != null) ClearImageBtn.IsEnabled = true;
+        if (PopoutEditorBtn != null) PopoutEditorBtn.IsEnabled = true;
+
         if (_isEmbedded)
         {
             double availW = EditorCanvasHostBorder?.Bounds.Width ?? 0;
@@ -658,7 +709,6 @@ public partial class ScreenshotEditorControl : UserControl
                         SetImage(skBmp);
                         ToastNotificationWindow.Show(
                             $"已载入图像: {Path.GetFileName(path)}",
-                            TimeSpan.FromSeconds(2.5),
                             "📁 图片已载入标注画布");
                     }
                 }
@@ -691,7 +741,6 @@ public partial class ScreenshotEditorControl : UserControl
     private async void OnControlDrop(object? sender, DragEventArgs e)
     {
         if (!_isEmbedded) return;
-
         if (!e.DataTransfer.Contains(DataFormat.File)) return;
 
         var storageItems = e.DataTransfer.TryGetFiles();
@@ -711,7 +760,6 @@ public partial class ScreenshotEditorControl : UserControl
                 SetImage(skBmp);
                 ToastNotificationWindow.Show(
                     $"已载入图像: {Path.GetFileName(path)}",
-                    TimeSpan.FromSeconds(2.5),
                     "📁 拖拽图片已载入标注画布");
                 e.Handled = true;
             }
@@ -719,6 +767,36 @@ public partial class ScreenshotEditorControl : UserControl
         catch (Exception ex)
         {
             _logger?.Error("拖入图片载入异常", ex);
+        }
+    }
+
+    public async Task TryPasteImageFromClipboardAsync()
+    {
+        try
+        {
+            if (_clipboardService != null)
+            {
+                string? text = await _clipboardService.GetTextAsync();
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    string cleanPath = text.Trim().Trim('\"');
+                    if (File.Exists(cleanPath))
+                    {
+                        var skBmp = await Task.Run(() => SKBitmap.Decode(cleanPath));
+                        if (skBmp != null && !skBmp.IsNull)
+                        {
+                            SetImage(skBmp);
+                            ToastNotificationWindow.Show(
+                                $"已载入图像: {Path.GetFileName(cleanPath)}",
+                                "📋 剪贴板路径载入成功");
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger?.Error("从剪贴板粘贴载入图片异常", ex);
         }
     }
 
@@ -779,7 +857,21 @@ public partial class ScreenshotEditorControl : UserControl
 
     public void RefreshDisplay()
     {
-        if (_doc == null) return;
+        if (_doc == null)
+        {
+            if (BaseImageControl != null) BaseImageControl.Source = null;
+            if (DrawingOverlayCanvas != null)
+            {
+                var strayShapes = DrawingOverlayCanvas.Children.OfType<Avalonia.Controls.Shapes.Shape>().ToList();
+                foreach (var s in strayShapes)
+                {
+                    DrawingOverlayCanvas.Children.Remove(s);
+                }
+                _previewControl = null;
+            }
+            if (UndoBtn != null) UndoBtn.IsEnabled = false;
+            return;
+        }
 
         OcrImage rendered;
         bool shouldDispose = false;

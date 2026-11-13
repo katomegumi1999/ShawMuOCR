@@ -147,4 +147,16 @@ public class ScreenshotAnnotationReuseTests
         Assert.Equal(95, newOptions.Quality);
         Assert.Equal(@"D:\NewSharedFolder", settingsService.Current.LastSaveDirectory);
     }
+
+    [Fact]
+    public void ScreenshotEditorControl_DoesNotUseFake100x100BitmapPlaceholder()
+    {
+        string csPath = Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "Views", "Components", "ScreenshotEditorControl.axaml.cs");
+        if (File.Exists(csPath))
+        {
+            string cs = File.ReadAllText(csPath);
+            // 确保不再通过 new SKBitmap(100, 100) 伪造空白位图占位
+            Assert.DoesNotContain("new SKBitmap(100, 100)", cs);
+        }
+    }
 }

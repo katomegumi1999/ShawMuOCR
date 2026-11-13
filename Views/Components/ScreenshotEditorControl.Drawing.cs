@@ -47,6 +47,12 @@ public partial class ScreenshotEditorControl
         }
         _previewControl = null;
 
+        if (_doc == null)
+        {
+            _selectedElement = null;
+            return;
+        }
+
         if (_doc.Elements.Count > 0)
         {
             _doc.ClearElements();
@@ -86,6 +92,7 @@ public partial class ScreenshotEditorControl
 
     private void OnCanvasPointerPressed(object? sender, PointerPressedEventArgs e)
     {
+        if (_doc == null) return;
         e.Handled = true;
         var pt = e.GetPosition(DrawingOverlayCanvas);
         var props = e.GetCurrentPoint(DrawingOverlayCanvas).Properties;
@@ -355,6 +362,7 @@ public partial class ScreenshotEditorControl
 
     private void OnCanvasPointerMoved(object? sender, PointerEventArgs e)
     {
+        if (_doc == null) return;
         e.Handled = true;
 
         if (_isPanning)
@@ -704,6 +712,7 @@ public partial class ScreenshotEditorControl
 
     private void OnCanvasPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (_doc == null) return;
         e.Handled = true;
         e.Pointer.Capture(null);
 
@@ -876,7 +885,7 @@ public partial class ScreenshotEditorControl
 
     private void UpdateLiveMosaicPreview()
     {
-        if (_liveMosaicElement == null || _liveMosaicElement.Points.Count == 0) return;
+        if (_doc == null || _liveMosaicElement == null || _liveMosaicElement.Points.Count == 0) return;
 
         float minX = float.MaxValue, minY = float.MaxValue, maxX = float.MinValue, maxY = float.MinValue;
         foreach (var p in _liveMosaicElement.Points)

@@ -82,12 +82,12 @@ public partial class ScreenshotEditorWindow : Window
         }
     }
 
-    public ScreenshotEditorWindow() : this(new OcrImage(new SKBitmap(100, 100)))
+    public ScreenshotEditorWindow() : this((OcrImage?)null)
     {
     }
 
     public ScreenshotEditorWindow(
-        OcrImage image,
+        OcrImage? image,
         IClipboardService? clipboardService = null,
         Func<OcrImage, Task>? ocrCallback = null,
         Func<OcrImage, ScreenRect, Task>? translateCallback = null,
@@ -100,8 +100,6 @@ public partial class ScreenshotEditorWindow : Window
         Func<ScreenRect, Task>? longScreenshotCallback = null,
         Func<ScreenRect, Task>? regionRecordCallback = null)
     {
-        ArgumentNullException.ThrowIfNull(image);
-
         _isPrewarmInstance = isPrewarm;
 
         InitializeComponent();
@@ -247,6 +245,8 @@ public partial class ScreenshotEditorWindow : Window
 
         double maxW = availDipW * 0.94;
         double maxH = availDipH * 0.92;
+
+        if (EditorControl.Document == null) return;
 
         double imgW = EditorControl.Document.OriginalImage.Width;
         double imgH = EditorControl.Document.OriginalImage.Height;
