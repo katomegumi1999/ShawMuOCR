@@ -28,7 +28,7 @@ public static class HttpMultipartParser
         => Parse(stream, contentType, DefaultMaxBytes, CancellationToken.None);
 
     /// <summary>
-    /// 解析 Multipart 请求体，并对读取总量设置硬上限，防止超大请求耗尽内存。
+    /// 解析 Multipart 请求体，并对读取总量设置硬上限（若 maxBytes 小于等于 0 则不限大小）。
     /// </summary>
     /// <exception cref="PayloadTooLargeException">累计读取量超过 <paramref name="maxBytes"/> 时抛出</exception>
     public static ParseResult? Parse(Stream stream, string? contentType, long maxBytes, CancellationToken cancellationToken = default)
@@ -57,7 +57,7 @@ public static class HttpMultipartParser
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     total += read;
-                    if (total > maxBytes)
+                    if (maxBytes > 0 && total > maxBytes)
                     {
                         throw new PayloadTooLargeException(maxBytes, total);
                     }

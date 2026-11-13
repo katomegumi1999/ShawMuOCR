@@ -56,6 +56,9 @@ public partial class HttpApiViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(PythonExample))]
     [NotifyPropertyChangedFor(nameof(CsharpExample))]
     [NotifyPropertyChangedFor(nameof(AuthHeaderHint))]
+    [NotifyPropertyChangedFor(nameof(TokenBadgeText))]
+    [NotifyPropertyChangedFor(nameof(TokenBadgeColor))]
+    [NotifyPropertyChangedFor(nameof(CanClearToken))]
     private string _accessToken = "";
 
     /// <summary>
@@ -67,12 +70,69 @@ public partial class HttpApiViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(PythonExample))]
     [NotifyPropertyChangedFor(nameof(CsharpExample))]
     [NotifyPropertyChangedFor(nameof(AuthHeaderHint))]
+    [NotifyPropertyChangedFor(nameof(TokenBadgeText))]
+    [NotifyPropertyChangedFor(nameof(TokenBadgeColor))]
     private bool _allowAnonymousRemote = false;
+
+    /// <summary>
+    /// 是否开启接口令牌鉴权（关闭时所有接口免密直连，无需请求头）
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TokenBadgeText))]
+    [NotifyPropertyChangedFor(nameof(TokenBadgeColor))]
+    [NotifyPropertyChangedFor(nameof(AuthHeaderHint))]
+    [NotifyPropertyChangedFor(nameof(CurlExample))]
+    [NotifyPropertyChangedFor(nameof(PythonExample))]
+    [NotifyPropertyChangedFor(nameof(CsharpExample))]
+    [NotifyPropertyChangedFor(nameof(CanRegenerateToken))]
+    private bool _enableTokenAuth = false;
+
+    /// <summary>
+    /// 是否允许本机免令牌直连（开启后来自 127.0.0.1 的请求免传 Authorization 请求头，仅对局域网外部设备强制鉴权）
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(TokenBadgeText))]
+    [NotifyPropertyChangedFor(nameof(AuthHeaderHint))]
+    [NotifyPropertyChangedFor(nameof(CurlExample))]
+    [NotifyPropertyChangedFor(nameof(PythonExample))]
+    [NotifyPropertyChangedFor(nameof(CsharpExample))]
+    private bool _allowLocalWithoutToken = true;
 
     /// <summary>
     /// 令牌输入行是否可见（无令牌模式下列表隐藏，避免用户误以为仍在鉴权）
     /// </summary>
     public bool IsTokenRowVisible => !AllowAnonymousRemote;
+
+    /// <summary>
+    /// 令牌状态徽章文案
+    /// </summary>
+    public string TokenBadgeText => !EnableTokenAuth
+        ? "已关闭鉴权 (免密直连)"
+        : (!string.IsNullOrEmpty(AccessToken)
+            ? (AllowLocalWithoutToken ? "局域网鉴权 (本机免密)" : "严格鉴权 (全设备校验)")
+            : "未配置令牌");
+
+    /// <summary>
+    /// 令牌状态徽章背景颜色
+    /// </summary>
+    public string TokenBadgeColor => !EnableTokenAuth
+        ? "#6E6E6E"
+        : (!string.IsNullOrEmpty(AccessToken)
+            ? (AllowLocalWithoutToken ? "#0078D4" : "#107C41")
+            : "#D83B01");
+
+    /// <summary>
+    /// 单个请求体最大体积上限（MB）。0 表示无限制（不限制请求文件大小）。
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(MaxRequestBodyHint))]
+    [NotifyPropertyChangedFor(nameof(SecurityHintText))]
+    private int _maxRequestBodyMb = 0;
+
+    public string MaxRequestBodyHint => MaxRequestBodyMb <= 0 ? "0 为不限制大小" : $"当前: {MaxRequestBodyMb} MB (0为不限)";
+
+    public string SecurityHintText =>
+        $"• 安全限制: 单请求体{(MaxRequestBodyMb <= 0 ? "不限大小" : $"上限 {MaxRequestBodyMb}MB")}；并发超限返回 429；不接受服务器本地文件路径 (?path= / imagePath 已禁用)";
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ConcurrencyLabel))]
@@ -133,12 +193,16 @@ public partial class HttpApiViewModel : ViewModelBase, IDisposable
     [NotifyPropertyChangedFor(nameof(StatusBadgeColor))]
     [NotifyPropertyChangedFor(nameof(ToggleServerButtonText))]
     [NotifyPropertyChangedFor(nameof(IsSettingsEnabled))]
+    [NotifyPropertyChangedFor(nameof(CanClearToken))]
+    [NotifyPropertyChangedFor(nameof(CanRegenerateToken))]
     private bool _isRunning;
 
     public string StatusBadgeText => IsRunning ? "运行中" : "已停止";
     public string StatusBadgeColor => IsRunning ? "#107C41" : "#8A8886";
     public string ToggleServerButtonText => IsRunning ? "停止服务" : "启动服务";
     public bool IsSettingsEnabled => !IsRunning;
+    public bool CanClearToken => !string.IsNullOrEmpty(AccessToken) && IsSettingsEnabled;
+    public bool CanRegenerateToken => EnableTokenAuth && IsSettingsEnabled;
 
     public string EndpointUrl => $"http://{(AllowRemote ? "0.0.0.0" : "127.0.0.1")}:{Port}/ocr";
 
@@ -250,41 +314,67 @@ public partial class HttpApiViewModel : ViewModelBase, IDisposable
     /// <summary>
     /// 令牌鉴权提示（示例代码顶部展示）
     /// </summary>
-    public string AuthHeaderHint => string.IsNullOrEmpty(AccessToken)
-        ? (AllowAnonymousRemote
-            ? "# 当前为【局域网无令牌】模式：同网段设备可直接调用，无需请求头"
-            : "# 当前未配置访问令牌：接口仅接受本机直连调用（浏览器跨域与非本机来源一律拒绝）")
-        : $"# 已启用令牌鉴权，每个请求都必须携带请求头：Authorization: Bearer {AccessToken}";
+    public string AuthHeaderHint => !EnableTokenAuth
+        ? "# 当前已【关闭令牌鉴权】：所有接口均可免令牌直接调用（无需携带 Authorization 请求头）"
+        : (string.IsNullOrEmpty(AccessToken)
+            ? (AllowAnonymousRemote
+                ? "# 当前为【局域网无令牌】模式：同网段设备可直接调用，无需请求头"
+                : "# 当前未配置访问令牌：接口仅接受本机直连调用（浏览器跨域与非本机来源一律拒绝）")
+            : (AllowLocalWithoutToken
+                ? $"# 本机直连已开启免令牌（若从局域网外部设备调用，请携带请求头：Authorization: Bearer {AccessToken}）"
+                : $"# 已启用严格令牌鉴权，每个请求都必须携带请求头：Authorization: Bearer {AccessToken}"));
 
-    public string CurlExample =>
+    public string CurlExample
+    {
+        get
+        {
+            string authHeader = (EnableTokenAuth && !AllowLocalWithoutToken && !string.IsNullOrEmpty(AccessToken))
+                ? $"-H \"Authorization: Bearer {AccessToken}\" "
+                : "";
+
+            return
 $@"{AuthHeaderHint}
 
 # 1. 表单文件上传识别 (最常用)
-curl -X POST ""{EndpointUrl}"" -F ""file=@sample.png""
+curl -X POST ""{EndpointUrl}"" {authHeader}-F ""file=@sample.png""
 
 # 2. 表单上传并按框分列 (多列数据导出 \t 制表符)
-curl -X POST ""{EndpointUrl}?splitColumns=true"" -F ""file=@sample.png""
+curl -X POST ""{EndpointUrl}?splitColumns=true"" {authHeader}-F ""file=@sample.png""
 
 # 3. 纯文本格式直接返回 (无须解析 JSON)
-curl -X POST ""{EndpointUrl}?format=text"" -F ""file=@sample.png""
+curl -X POST ""{EndpointUrl}?format=text"" {authHeader}-F ""file=@sample.png""
 
 # 4. JSON Base64 编码调用
 curl -X POST ""{EndpointUrl}"" \
-  -H ""Content-Type: application/json"" \
+  {authHeader}-H ""Content-Type: application/json"" \
   -d '{{""image"": ""iVBORw0KGgoAAAANSUhEUgAA...""}}'
 
 # 5. 二进制图像流直传
 curl -X POST ""{EndpointUrl}"" \
-  -H ""Content-Type: image/png"" \
+  {authHeader}-H ""Content-Type: image/png"" \
   --data-binary @sample.png";
+        }
+    }
 
-    public string PythonExample =>
+    public string PythonExample
+    {
+        get
+        {
+            string headerDef = (!EnableTokenAuth || (AllowLocalWithoutToken && !string.IsNullOrEmpty(AccessToken)))
+                ? (EnableTokenAuth
+                    ? $@"# 本机已开启免令牌直连：在当前机器可直接传空 headers，若部署到外部设备请携带令牌：
+# headers = {{""Authorization"": ""Bearer {AccessToken}""}}
+headers = {{}}"
+                    : "headers = {}  # 鉴权已关闭，直接请求即可")
+                : $@"# 请求头携带访问令牌
+headers = {{""Authorization"": ""Bearer {AccessToken}""}}";
+
+            return
 $@"import requests
 
 url = ""{EndpointUrl}""
 
-# 若已启用令牌鉴权，请填入页面显示的访问令牌；未启用时该请求头会被服务端忽略
-headers = {{""Authorization"": ""Bearer {AccessToken}""}}
+{headerDef}
 
 # 方式 1: 上传图片并获取 JSON 详细结果 (包含文字框位置与置信度)
 with open(""sample.png"", ""rb"") as f:
@@ -298,22 +388,34 @@ with open(""sample.png"", ""rb"") as f:
 with open(""sample.png"", ""rb"") as f:
     text = requests.post(f""{{url}}?format=text"", files={{""file"": f}}, headers=headers).text
     print(text)";
+        }
+    }
 
-    public string CsharpExample =>
+    public string CsharpExample
+    {
+        get
+        {
+            string authLine = (EnableTokenAuth && !AllowLocalWithoutToken && !string.IsNullOrEmpty(AccessToken))
+                ? $@"client.DefaultRequestHeaders.Add(""Authorization"", ""Bearer {AccessToken}"");"
+                : $@"// 若开启了强制鉴权且从外部设备调用，请取消下行注释：
+// client.DefaultRequestHeaders.Add(""Authorization"", ""Bearer {AccessToken}"");";
+
+            return
 $@"using System;
 using System.IO;
 using System.Net.Http;
 using System.Threading.Tasks;
 
 using var client = new HttpClient();
-// 若已启用令牌鉴权，请附加此行（未启用时服务端会忽略）：
-// client.DefaultRequestHeaders.Add(""Authorization"", ""Bearer {AccessToken}"");
+{authLine}
 using var form = new MultipartFormDataContent();
 form.Add(new ByteArrayContent(await File.ReadAllBytesAsync(""sample.png"")), ""file"", ""sample.png"");
 
 var response = await client.PostAsync(""{EndpointUrl}"", form);
 string json = await response.Content.ReadAsStringAsync();
 Console.WriteLine(json);";
+        }
+    }
 
     public HttpApiViewModel(
         IOcrEngineFactory engineFactory,
@@ -346,11 +448,19 @@ Console.WriteLine(json);";
             _concurrencyWarningConfirmed = false;
         }
         CpuLimitPercent = Math.Clamp(s.HttpApiCpuLimitPercent, 10, 100);
+        MaxRequestBodyMb = Math.Max(0, s.HttpApiMaxRequestBodyMb);
+        EnableTokenAuth = s.HttpApiEnableTokenAuth;
+        AllowLocalWithoutToken = s.HttpApiAllowLocalWithoutToken;
         _isLoadingSettings = false;
 
         _settingsService.SettingsChanged += OnSettingsChanged;
 
-        _server = new HttpOcrServer(engineFactory, settingsService, logger);
+        _server = new HttpOcrServer(engineFactory, settingsService, logger)
+        {
+            MaxRequestBodyBytes = MaxRequestBodyMb <= 0 ? 0 : (long)MaxRequestBodyMb * 1024 * 1024,
+            EnableTokenAuth = EnableTokenAuth,
+            AllowLocalWithoutToken = AllowLocalWithoutToken
+        };
         _server.RequestLogged += OnServerRequestLogged;
         _server.StateChanged += OnServerStateChanged;
     }
@@ -531,6 +641,20 @@ Console.WriteLine(json);";
         StatusMessage = "✓ 已生成新的访问令牌，请同步更新所有调用方（旧令牌立即失效）";
     }
 
+    [RelayCommand]
+    public void ClearAccessToken()
+    {
+        if (IsRunning)
+        {
+            StatusMessage = "请先停止服务，再清空访问令牌";
+            return;
+        }
+
+        AccessToken = string.Empty;
+        SaveSettings();
+        StatusMessage = "✓ 已清空访问令牌，当前处于本机免鉴权直连模式";
+    }
+
     partial void OnMaxCoresChanged(int oldValue, int newValue)
     {
         if (_isLoadingSettings || _isAdjustingCoresInternally) return;
@@ -624,6 +748,58 @@ Console.WriteLine(json);";
         SaveSettings();
     }
 
+    partial void OnMaxRequestBodyMbChanged(int value)
+    {
+        if (_server != null)
+        {
+            _server.MaxRequestBodyBytes = value <= 0 ? 0 : (long)value * 1024 * 1024;
+        }
+        SaveSettings();
+    }
+
+    partial void OnEnableTokenAuthChanged(bool value)
+    {
+        if (_server != null)
+        {
+            _server.EnableTokenAuth = value;
+        }
+
+        if (!_isLoadingSettings)
+        {
+            if (value)
+            {
+                if (string.IsNullOrWhiteSpace(AccessToken) && !_isNormalizingToken)
+                {
+                    _isNormalizingToken = true;
+                    try
+                    {
+                        AccessToken = GenerateAccessToken();
+                    }
+                    finally
+                    {
+                        _isNormalizingToken = false;
+                    }
+                }
+                StatusMessage = "✓ 已开启令牌鉴权" + (AllowLocalWithoutToken ? "（本机免密直连，外部设备需 Token）" : "（所有设备均需 Token）");
+            }
+            else
+            {
+                StatusMessage = "✓ 已关闭令牌鉴权，当前处于免密调用模式";
+            }
+        }
+
+        SaveSettings();
+    }
+
+    partial void OnAllowLocalWithoutTokenChanged(bool value)
+    {
+        if (_server != null)
+        {
+            _server.AllowLocalWithoutToken = value;
+        }
+        SaveSettings();
+    }
+
     private void SaveSettings()
     {
         if (_isLoadingSettings) return;
@@ -686,6 +862,9 @@ Console.WriteLine(json);";
             s.HttpApiMaxCores = MaxCores;
         }
         s.HttpApiCpuLimitPercent = CpuLimitPercent;
+        s.HttpApiMaxRequestBodyMb = MaxRequestBodyMb;
+        s.HttpApiEnableTokenAuth = EnableTokenAuth;
+        s.HttpApiAllowLocalWithoutToken = AllowLocalWithoutToken;
         _settingsService.Save(s);
     }
 
@@ -703,6 +882,9 @@ Console.WriteLine(json);";
             try
             {
                 StatusMessage = "正在启动服务...";
+                _server.MaxRequestBodyBytes = MaxRequestBodyMb <= 0 ? 0 : (long)MaxRequestBodyMb * 1024 * 1024;
+                _server.EnableTokenAuth = EnableTokenAuth;
+                _server.AllowLocalWithoutToken = AllowLocalWithoutToken;
                 await _server.StartAsync(
                     Port,
                     AllowRemote,
@@ -711,12 +893,14 @@ Console.WriteLine(json);";
                     string.IsNullOrWhiteSpace(AccessToken) ? null : AccessToken,
                     AllowAnonymousRemote);
                 StatusMessage = !AllowRemote
-                    ? $"✓ 服务已启动，正在监听 {EndpointUrl}"
+                    ? (_server.RequiresAuth
+                        ? $"✓ 服务已启动（已启用令牌鉴权），正在监听 {EndpointUrl}"
+                        : $"✓ 服务已启动（免密直连），正在监听 {EndpointUrl}")
                     : _server.IsRemoteBindingFallback
                         ? $"⚠ 仅本机可访问：绑定 0.0.0.0 失败。请以管理员身份运行，或先执行 netsh http add urlacl url=http://+:{Port}/ user=Everyone"
                         : _server.RequiresAuth
                             ? $"✓ 服务已启动（已启用令牌鉴权），局域网可用 {LanEndpointUrl}"
-                            : $"⚠ 服务已启动（局域网无令牌开放），同网段设备可直接调用 {LanEndpointUrl}";
+                            : $"⚠ 服务已启动（局域网免令牌开放），同网段设备可直接调用 {LanEndpointUrl}";
             }
             catch (Exception ex)
             {

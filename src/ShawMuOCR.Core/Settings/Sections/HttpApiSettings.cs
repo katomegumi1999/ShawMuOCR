@@ -30,15 +30,34 @@ public sealed class HttpApiSettings
     /// </summary>
     public string SchedulerMode { get; set; } = "Auto";
 
+    /// <summary>
+    /// 是否开启访问令牌鉴权。关闭时所有调用免令牌放行。
+    /// </summary>
+    public bool EnableTokenAuth { get; set; } = false;
+
+    /// <summary>
+    /// 是否允许本机免令牌直连（开启后即使配置了令牌，来自 127.0.0.1 的本机请求也免传令牌，仅局域网外部设备强制鉴权）。
+    /// </summary>
+    public bool AllowLocalWithoutToken { get; set; } = true;
+
+    /// <summary>
+    /// 单个请求体的最大大小上限（MB）。
+    /// 默认 0 表示无限制（不限制请求文件大小）；大于 0 时限制为对应 MB 数。
+    /// </summary>
+    public int MaxRequestBodyMb { get; set; } = 0;
+
     public HttpApiSettings Clone() => new()
     {
         Port = Port,
         AllowRemote = AllowRemote,
         AccessToken = AccessToken,
         AllowAnonymousRemote = AllowAnonymousRemote,
+        EnableTokenAuth = EnableTokenAuth,
+        AllowLocalWithoutToken = AllowLocalWithoutToken,
         MaxCores = MaxCores,
         GpuStreams = GpuStreams,
         CpuLimitPercent = CpuLimitPercent,
-        SchedulerMode = SchedulerMode
+        SchedulerMode = SchedulerMode,
+        MaxRequestBodyMb = MaxRequestBodyMb
     };
 }

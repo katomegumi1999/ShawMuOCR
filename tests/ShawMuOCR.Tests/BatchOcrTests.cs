@@ -450,6 +450,7 @@ public class BatchOcrTests
             httpVm.Port = 9095;
             httpVm.AllowRemote = true;
             httpVm.CpuLimitPercent = 70;
+            httpVm.MaxRequestBodyMb = 80;
 
             Assert.True(File.Exists(tempJsonPath));
 
@@ -466,6 +467,7 @@ public class BatchOcrTests
             Assert.Equal(9095, httpVm2.Port);
             Assert.True(httpVm2.AllowRemote);
             Assert.Equal(70, httpVm2.CpuLimitPercent);
+            Assert.Equal(80, httpVm2.MaxRequestBodyMb);
         }
         finally
         {

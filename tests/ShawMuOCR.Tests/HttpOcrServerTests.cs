@@ -338,6 +338,63 @@ $"--{boundary}--\r\n";
     }
 
     [Fact]
+    public async Task Auth_AllowsLocalWithoutToken_WhenOptionEnabled()
+    {
+        int port = 18098;
+        const string token = "shawmu-test-token-local-free";
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService())
+        {
+            AllowLocalWithoutToken = true // 开启本机免令牌
+        };
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100, accessToken: token);
+
+        using var client = new HttpClient();
+        byte[] png = CreateTestPng();
+        string url = $"http://127.0.0.1:{port}/ocr";
+
+        try
+        {
+            // 本机请求无须携带任何 Token，直接放行返回 200
+            var noToken = await client.PostAsync(url, PngContent(png));
+            Assert.Equal(HttpStatusCode.OK, noToken.StatusCode);
+            Assert.Contains("\"success\":true", await noToken.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Auth_AllowsAnyRequest_WhenEnableTokenAuthIsFalse()
+    {
+        int port = 18099;
+        const string token = "some-token";
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService())
+        {
+            EnableTokenAuth = false // 关闭鉴权
+        };
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100, accessToken: token);
+
+        Assert.False(server.RequiresAuth);
+
+        using var client = new HttpClient();
+        byte[] png = CreateTestPng();
+        string url = $"http://127.0.0.1:{port}/ocr";
+
+        try
+        {
+            var noToken = await client.PostAsync(url, PngContent(png));
+            Assert.Equal(HttpStatusCode.OK, noToken.StatusCode);
+            Assert.Contains("\"success\":true", await noToken.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
     public async Task StartAsync_RemoteWithoutToken_Throws()
     {
         using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
@@ -354,7 +411,10 @@ $"--{boundary}--\r\n";
     public async Task Ocr_OversizedBody_Returns413()
     {
         int port = 18097;
-        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService());
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService())
+        {
+            MaxRequestBodyBytes = 20L * 1024 * 1024 // 显式配置 20MB 上限
+        };
         await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
 
         using var client = new HttpClient();
@@ -366,6 +426,31 @@ $"--{boundary}--\r\n";
 
             Assert.Equal(413, (int)resp.StatusCode);
             Assert.Contains("请求体过大", await resp.Content.ReadAsStringAsync());
+        }
+        finally
+        {
+            await server.StopAsync();
+        }
+    }
+
+    [Fact]
+    public async Task Ocr_UnlimitedBody_WhenSetToZero_AllowsLargePayload()
+    {
+        int port = 18096;
+        using var server = new HttpOcrServer(new FakeEngineFactory(), new FakeSettingsService())
+        {
+            MaxRequestBodyBytes = 0 // 0 表示无限制
+        };
+        await server.StartAsync(port, allowRemote: false, maxCores: 1, cpuLimitPercent: 100);
+
+        using var client = new HttpClient();
+        try
+        {
+            // 构造稍微大一些的数据（比如 2MB 合法 PNG），验证不被 413 拦截
+            byte[] testPng = CreateTestPng();
+            var resp = await client.PostAsync($"http://127.0.0.1:{port}/ocr", PngContent(testPng));
+
+            Assert.Equal(200, (int)resp.StatusCode);
         }
         finally
         {

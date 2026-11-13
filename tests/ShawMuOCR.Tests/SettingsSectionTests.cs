@@ -77,6 +77,8 @@ public class SettingsSectionTests : IDisposable
         // HttpApi
         settings.HttpApiPort = 8090;
         Assert.Equal(8090, settings.HttpApi.Port);
+        settings.HttpApiMaxRequestBodyMb = 100;
+        Assert.Equal(100, settings.HttpApi.MaxRequestBodyMb);
 
         // General
         settings.AutoCopy = false;

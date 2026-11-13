@@ -876,6 +876,12 @@ public sealed class JsonSettingsService : ISettingsService
                     case "HttpApiAllowAnonymousRemote":
                         if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.HttpApi.AllowAnonymousRemote = val.GetBoolean();
                         break;
+                    case "HttpApiEnableTokenAuth":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.HttpApi.EnableTokenAuth = val.GetBoolean();
+                        break;
+                    case "HttpApiAllowLocalWithoutToken":
+                        if (val.ValueKind is JsonValueKind.True or JsonValueKind.False) settings.HttpApi.AllowLocalWithoutToken = val.GetBoolean();
+                        break;
                     case "HttpApiMaxCores":
                         if (val.TryGetInt32(out int hamc)) settings.HttpApi.MaxCores = hamc;
                         break;
@@ -887,6 +893,9 @@ public sealed class JsonSettingsService : ISettingsService
                         break;
                     case "HttpApiSchedulerMode":
                         if (val.ValueKind == JsonValueKind.String) settings.HttpApi.SchedulerMode = val.GetString()!;
+                        break;
+                    case "HttpApiMaxRequestBodyMb":
+                        if (val.TryGetInt32(out int hamrb)) settings.HttpApi.MaxRequestBodyMb = hamrb;
                         break;
                 }
             }

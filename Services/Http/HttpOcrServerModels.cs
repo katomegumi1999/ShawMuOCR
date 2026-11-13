@@ -70,7 +70,7 @@ public sealed class PayloadTooLargeException : Exception
     public long ReceivedBytes { get; }
 
     public PayloadTooLargeException(long maxBytes, long receivedBytes)
-        : base($"请求体过大：服务端上限 {maxBytes / (1024 * 1024)} MB，当前已接收 {receivedBytes / (1024.0 * 1024.0):F1} MB。请压缩图片或降低分辨率后重试。")
+        : base($"请求体过大：服务端上限 {maxBytes / (1024 * 1024)} MB，当前已接收 {receivedBytes / (1024.0 * 1024.0):F1} MB。请在 HTTP 调用设置中调大上限或设为 0（无限制），或压缩图片后重试。")
     {
         MaxBytes = maxBytes;
         ReceivedBytes = receivedBytes;

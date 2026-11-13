@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <strong>轻量 · 极速 · 纯离线 · 现代化的 Windows 桌面 OCR 文字识别、截图标注翻译与跨设备协同利器</strong>
+  <strong>轻量 · 极速 · 纯离线 · 现代化的 Windows 桌面 OCR 文字识别、截图标注翻译与屏幕录制、剪贴板同步一体利器</strong>
 </p>
 
 <p align="center">
@@ -29,7 +29,7 @@
 
 **小沐 OCR (ShawMuOCR)** 是一款专为 Windows 用户量身打造的开源桌面 OCR 文字识别与办公协作利器。
 
-不同于传统 OCR 软件对 Python 环境、CUDA 显卡驱动或庞大外部运行时的笨重依赖，小沐 OCR 基于 **.NET 11 + Avalonia UI 12 + SkiaSharp + Sdcb.SimdPaddleOCR 2.0 + Rust (MuClip)** 构建：
+不同于传统 OCR 软件对 Python 环境、CUDA 显卡驱动或庞大外部运行时的笨重依赖，小沐 OCR 基于 **.NET 11 + Avalonia UI 12 + SkiaSharp + Sdcb.SimdPaddleOCR 2.0 + Rust (MuClip + MuRecorder)** 构建：
 - **CPU SIMD / GPU Vulkan 双轨引擎**：既支持 AVX2 指令集内存级推理，也支持基于 Vulkan 计算着色器的 GPU 高速推理，并在多显卡环境下支持智能识别与手动切换；
 - **全链路零拷贝直通**：截图像素通过 `Bgra32` 直通神经网络张量，无中间格式转换与临时位图缓冲；
 - **纯离线隐私安全**：文字识别、排版整理及剪贴板管理完全在本地物理机执行；

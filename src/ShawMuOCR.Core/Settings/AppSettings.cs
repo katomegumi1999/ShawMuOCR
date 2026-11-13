@@ -862,6 +862,20 @@ public sealed class AppSettings
     }
 
     [JsonIgnore]
+    public bool HttpApiEnableTokenAuth
+    {
+        get => HttpApi.EnableTokenAuth;
+        set => HttpApi.EnableTokenAuth = value;
+    }
+
+    [JsonIgnore]
+    public bool HttpApiAllowLocalWithoutToken
+    {
+        get => HttpApi.AllowLocalWithoutToken;
+        set => HttpApi.AllowLocalWithoutToken = value;
+    }
+
+    [JsonIgnore]
     public int HttpApiMaxCores
     {
         get => HttpApi.MaxCores;
@@ -887,6 +901,13 @@ public sealed class AppSettings
     {
         get => HttpApi.SchedulerMode;
         set => HttpApi.SchedulerMode = value;
+    }
+
+    [JsonIgnore]
+    public int HttpApiMaxRequestBodyMb
+    {
+        get => HttpApi.MaxRequestBodyMb;
+        set => HttpApi.MaxRequestBodyMb = value;
     }
 
     // ==========================================

@@ -6,19 +6,37 @@
               x:DataType="vm:HttpApiViewModel">
 
     <UserControl.Styles>
-        <!-- 统一定制 TabItem 标题字号与边距，杜绝 FluentTheme 默认过大字号 (20px)，保持整洁协调 -->
-        <Style Selector="TabItem">
+        <!-- 主 TabControl 标题字号加大，层级更清晰醒目 -->
+        <Style Selector="TabControl.main-tabs > TabItem">
+            <Setter Property="FontSize" Value="14" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="MinHeight" Value="36" />
+            <Setter Property="Padding" Value="14,6" />
+        </Style>
+
+        <!-- 内部代码子 Tab (cURL / Python / C#) 标题紧凑协调 -->
+        <Style Selector="TabControl.sub-tabs > TabItem">
             <Setter Property="FontSize" Value="12.5" />
+            <Setter Property="FontWeight" Value="Medium" />
+            <Setter Property="MinHeight" Value="28" />
+            <Setter Property="Padding" Value="10,3" />
+        </Style>
+
+        <!-- 默认兜底 TabItem 样式 -->
+        <Style Selector="TabItem">
+            <Setter Property="FontSize" Value="13" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="MinHeight" Value="32" />
             <Setter Property="Padding" Value="12,4" />
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,*" Margin="0,0,0,4">
+    <Grid>
+        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="10" Margin="0,0,6,12">
 
-        <!-- 1. 顶部服务状态与控制栏 -->
-        <Border Grid.Row="0" Margin="0,0,0,10" Padding="16,12"
+                <!-- 1. 顶部服务状态与控制栏 -->
+                <Border Padding="16,12"
                 Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                 BorderThickness="1"
@@ -91,30 +109,46 @@
             </Grid>
         </Border>
 
-        <!-- 2. 中间卡片：服务网络配置与 CPU 核心调度控制 -->
-        <Grid Grid.Row="1" ColumnDefinitions="*,12,*" Margin="0,0,0,10">
+                <!-- 2. 中间卡片：服务网络配置与 CPU 核心调度控制 -->
+                <Grid ColumnDefinitions="*,12,*">
             <!-- 左卡片：网络与端口配置 -->
-            <Border Grid.Column="0" Padding="16,12"
+            <Border Grid.Column="0" Padding="14,10"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8">
-                <StackPanel Spacing="10">
-                    <TextBlock Text="🌐 网络与端口配置" FontWeight="SemiBold" FontSize="13" />
+                <StackPanel Spacing="8">
+                    <TextBlock Text="🌐 网络与端口配置" FontWeight="SemiBold" FontSize="13.5" />
 
-                    <!-- 端口配置 -->
-                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
-                        <TextBlock Grid.Column="0" Text="服务端口 (Port):" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
-                        <NumericUpDown Grid.Column="1"
-                                       Value="{Binding Port}"
-                                       Minimum="1024"
-                                       Maximum="65535"
-                                       Increment="1"
-                                       FormatString="F0"
-                                       IsEnabled="{Binding IsSettingsEnabled}"
-                                       VerticalAlignment="Center" />
-                        <TextBlock Grid.Column="2" Text="默认: 8080" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" Margin="8,0,0,0" VerticalAlignment="Center" />
+                    <!-- 端口与单请求体大小上限双列配置 -->
+                    <Grid ColumnDefinitions="*,10,*" VerticalAlignment="Center">
+                        <Grid Grid.Column="0" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="0" Text="服务端口:" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding Port}"
+                                           Minimum="1024"
+                                           Maximum="65535"
+                                           Increment="1"
+                                           FormatString="F0"
+                                           IsEnabled="{Binding IsSettingsEnabled}"
+                                           VerticalAlignment="Center" />
+                        </Grid>
+                        <Grid Grid.Column="2" ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                            <TextBlock Grid.Column="0" Text="单请求上限:" FontSize="12" VerticalAlignment="Center" Margin="0,0,6,0" />
+                            <NumericUpDown Grid.Column="1"
+                                           Value="{Binding MaxRequestBodyMb}"
+                                           Minimum="0"
+                                           Maximum="2048"
+                                           Increment="10"
+                                           FormatString="F0"
+                                           VerticalAlignment="Center"
+                                           ToolTip.Tip="设置单次 HTTP 请求上传图片的最大体积（MB）。设置为 0 表示无限制大小（支持超大图片与长图批量调用）。" />
+                        </Grid>
                     </Grid>
+
+                    <!-- 参数说明与提示 -->
+                    <TextBlock Text="{Binding MaxRequestBodyHint, StringFormat='💡 端口默认 8080；{0}'}"
+                               FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
 
                     <!-- 局域网访问开关 -->
                     <CheckBox IsChecked="{Binding AllowRemote}"
@@ -130,16 +164,27 @@
                                TextWrapping="Wrap"
                                Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
 
-                    <!-- 无令牌开放（仅局域网模式下有意义） -->
-                    <CheckBox IsChecked="{Binding AllowAnonymousRemote}"
-                              IsVisible="{Binding AllowRemote}"
-                              IsEnabled="{Binding IsSettingsEnabled}"
-                              Content="允许局域网无令牌访问（同网段设备可直接调用）"
+                    <!-- 接口鉴权主开关 -->
+                    <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                        <TextBlock Grid.Column="0" Text="接口令牌鉴权:" FontSize="12" VerticalAlignment="Center" />
+                        <ToggleSwitch Grid.Column="2"
+                                      IsChecked="{Binding EnableTokenAuth}"
+                                      IsEnabled="{Binding IsSettingsEnabled}"
+                                      OnContent="已开启"
+                                      OffContent="已关闭 (免密)"
+                                      FontSize="11.5"
+                                      VerticalAlignment="Center" />
+                    </Grid>
+
+                    <!-- 允许本机免令牌直连开关 -->
+                    <CheckBox IsChecked="{Binding AllowLocalWithoutToken}"
+                              IsEnabled="{Binding EnableTokenAuth}"
+                              Content="允许本机免令牌直连 (127.0.0.1 免传 Header)"
                               FontSize="12"
-                              ToolTip.Tip="用于临时分享给同事：勾选后清空令牌，同网段任何设备都能调用本机 OCR 并占用 CPU。接口不会读取本机任何文件" />
+                              ToolTip.Tip="开启后：在本机编写脚本、调用 cURL 时无需配置 Token；若从局域网外部设备调用，仍然强制校验 Token。" />
 
                     <!-- 访问令牌（配置后所有调用都需携带 Authorization: Bearer） -->
-                    <Grid ColumnDefinitions="Auto,*,Auto,Auto" IsVisible="{Binding IsTokenRowVisible}" VerticalAlignment="Center">
+                    <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" IsVisible="{Binding IsTokenRowVisible}" VerticalAlignment="Center">
                         <TextBlock Grid.Column="0" Text="访问令牌:" FontSize="12" VerticalAlignment="Center" Margin="0,0,10,0" />
                         <TextBox Grid.Column="1"
                                  Text="{Binding AccessToken}"
@@ -159,37 +204,44 @@
                         <Button Grid.Column="3"
                                 Content="重新生成"
                                 Command="{Binding RegenerateAccessTokenCommand}"
-                                IsEnabled="{Binding IsSettingsEnabled}"
+                                IsEnabled="{Binding CanRegenerateToken}"
                                 FontSize="11"
                                 Padding="8,2"
                                 Margin="6,0,0,0"
                                 VerticalAlignment="Center" />
+                        <Button Grid.Column="4"
+                                Content="清空"
+                                Command="{Binding ClearAccessTokenCommand}"
+                                IsEnabled="{Binding CanClearToken}"
+                                FontSize="11"
+                                Padding="8,2"
+                                Margin="6,0,0,0"
+                                VerticalAlignment="Center"
+                                ToolTip.Tip="清空访问令牌（服务停止时可用）" />
                     </Grid>
 
                     <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" Margin="0,2" />
 
                     <!-- 接口规格说明 -->
-                    <StackPanel Spacing="3">
+                    <StackPanel Spacing="2">
                         <TextBlock Text="📌 支持接口路由与输入协议:" FontSize="11" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                         <TextBlock Text="• POST /ocr : 接收 multipart/form-data、JSON Base64 或纯图片二进制" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                        <TextBlock Text="• GET /health : 服务健康检查与状态探针" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                         <TextBlock Text="• 支持 query 参数 ?splitColumns=true (分列) 与 ?format=text (纯文本)" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                        <TextBlock Text="• 鉴权: 请求头 Authorization: Bearer &lt;访问令牌&gt;" FontSize="11" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
-                        <TextBlock Text="• 安全限制: 单请求体上限 20MB；并发超限返回 429；不接受服务器本地文件路径 (?path= / imagePath 已禁用)" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
+                        <TextBlock Text="{Binding SecurityHintText}" FontSize="11" TextWrapping="Wrap" Foreground="{DynamicResource TextFillColorTertiaryBrush}" />
                     </StackPanel>
                 </StackPanel>
             </Border>
 
             <!-- 右卡片：CPU 核心并发与占空比限流调度 (公共调度器) -->
-            <Border Grid.Column="2" Padding="16,12"
+            <Border Grid.Column="2" Padding="14,10"
                     Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                     BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                     BorderThickness="1"
                     CornerRadius="8">
-                <StackPanel Spacing="10">
+                <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <TextBlock Text="{Binding SchedulerTitle}" FontWeight="SemiBold" FontSize="13" VerticalAlignment="Center" />
+                            <TextBlock Text="{Binding SchedulerTitle}" FontWeight="SemiBold" FontSize="13.5" VerticalAlignment="Center" />
                             <Border Background="{DynamicResource AccentFillColorTertiaryBrush}" CornerRadius="4" Padding="5,1" VerticalAlignment="Center">
                                 <TextBlock Text="{Binding DeviceBadgeText}" FontSize="10" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
                             </Border>
@@ -201,7 +253,7 @@
                     </Grid>
 
                     <!-- 并发上限 Slider -->
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="3">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Grid.Column="0" Text="{Binding ConcurrencyLabel}" FontSize="12" />
                             <TextBlock Grid.Column="1" Text="{Binding ConcurrencyValueText}" FontWeight="SemiBold" FontSize="12" />
@@ -214,7 +266,7 @@
                     </StackPanel>
 
                     <!-- 利用率与负载上限 Slider -->
-                    <StackPanel Spacing="4">
+                    <StackPanel Spacing="3">
                         <Grid ColumnDefinitions="*,Auto">
                             <TextBlock Grid.Column="0" Text="{Binding UsageLimitLabel}" FontSize="12" />
                             <TextBlock Grid.Column="1" Text="{Binding UsageLimitValueText}" FontWeight="SemiBold" FontSize="12" />
@@ -251,36 +303,123 @@
             </Border>
         </Grid>
 
-        <!-- 3. 下部区域：调用示例与实时请求审计日志 -->
-        <Border Grid.Row="2"
-                Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
-                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
-                BorderThickness="1"
-                CornerRadius="8"
-                ClipToBounds="True">
-            <TabControl Margin="4">
+                <!-- 3. 下部区域：调用示例与实时请求审计日志 (高度拓宽，主标题字号加大) -->
+                <Border MinHeight="420"
+                        Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        ClipToBounds="True">
+            <TabControl Classes="main-tabs" Margin="4">
                 <!-- Tab 1: 代码调用示例 -->
                 <TabItem Header="💻 快速调用示例 (cURL / Python / C#)">
-                    <Grid RowDefinitions="Auto,*" Margin="8,4">
-                        <TextBlock Grid.Row="0"
-                                   Text="支持客户端以表单文件、Base64 或原生二进制方式发起 HTTP POST 请求，以下为随动生成的测试调用代码："
-                                   FontSize="12"
-                                   Foreground="{DynamicResource TextFillColorSecondaryBrush}"
-                                   Margin="0,0,0,8" />
+                    <Grid RowDefinitions="Auto,*" Margin="8,6">
+                        <!-- 令牌与鉴权专属操作栏 -->
+                        <Border Grid.Row="0"
+                                Background="{DynamicResource CardBackgroundFillColorSecondaryBrush}"
+                                BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                                BorderThickness="1"
+                                CornerRadius="6"
+                                Padding="12,10"
+                                Margin="0,0,0,10">
+                            <StackPanel Spacing="8">
+                                <!-- 顶栏：主开关与选项 -->
+                                <Grid ColumnDefinitions="Auto,*,Auto">
+                                    <!-- 左侧：开关与状态徽章 -->
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+                                        <TextBlock Text="🔑" FontSize="14" VerticalAlignment="Center" />
+                                        <TextBlock Text="接口令牌鉴权:" FontWeight="SemiBold" FontSize="12.5" VerticalAlignment="Center" />
+                                        <ToggleSwitch IsChecked="{Binding EnableTokenAuth}"
+                                                      IsEnabled="{Binding IsSettingsEnabled}"
+                                                      OnContent="开启鉴权"
+                                                      OffContent="关闭鉴权 (免密直连)"
+                                                      FontSize="11.5"
+                                                      VerticalAlignment="Center" />
+                                        <Border Background="{Binding TokenBadgeColor}" CornerRadius="4" Padding="6,2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding TokenBadgeText}" FontSize="10.5" Foreground="White" FontWeight="Medium" />
+                                        </Border>
+                                    </StackPanel>
 
-                        <TabControl Grid.Row="1">
+                                    <!-- 右侧：本机免令牌直连选项 -->
+                                    <CheckBox Grid.Column="2"
+                                              IsChecked="{Binding AllowLocalWithoutToken}"
+                                              IsEnabled="{Binding EnableTokenAuth}"
+                                              Content="允许本机免令牌直连 (127.0.0.1 免传 Header)"
+                                              FontSize="12"
+                                              VerticalAlignment="Center"
+                                              ToolTip.Tip="开启后：本机编写脚本、调用 cURL 时无需配置 Token；若从局域网外部设备调用，仍然强制校验 Token。" />
+                                </Grid>
+
+                                <!-- 底栏：令牌展示与操作按钮 -->
+                                <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
+                                    <TextBlock Grid.Column="0" Text="访问令牌:" FontSize="12" VerticalAlignment="Center" Margin="0,0,8,0"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                    <TextBox Grid.Column="1"
+                                             Text="{Binding AccessToken}"
+                                             PlaceholderText="已关闭鉴权（所有接口免密调用）"
+                                             IsReadOnly="True"
+                                             IsEnabled="{Binding EnableTokenAuth}"
+                                             FontSize="11.5"
+                                             FontFamily="Consolas, Cascadia Code, Courier New"
+                                             VerticalAlignment="Center"
+                                             ToolTip.Tip="API 鉴权令牌。调用接口时需在请求头携带 Authorization: Bearer &lt;令牌&gt;" />
+                                    <Button Grid.Column="2"
+                                            Command="{Binding CopyAccessTokenCommand}"
+                                            IsEnabled="{Binding EnableTokenAuth}"
+                                            FontSize="11.5"
+                                            Padding="10,4"
+                                            Margin="6,0,0,0"
+                                            VerticalAlignment="Center"
+                                            ToolTip.Tip="复制当前访问令牌到剪贴板">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="📋" FontSize="11" />
+                                            <TextBlock Text="复制令牌" FontSize="11" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Grid.Column="3"
+                                            Command="{Binding RegenerateAccessTokenCommand}"
+                                            IsEnabled="{Binding CanRegenerateToken}"
+                                            FontSize="11.5"
+                                            Padding="10,4"
+                                            Margin="6,0,0,0"
+                                            VerticalAlignment="Center"
+                                            ToolTip.Tip="重新生成一个高强度随机令牌（服务停止时可用）">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="🔄" FontSize="11" />
+                                            <TextBlock Text="重新生成" FontSize="11" />
+                                        </StackPanel>
+                                    </Button>
+                                    <Button Grid.Column="4"
+                                            Command="{Binding ClearAccessTokenCommand}"
+                                            IsEnabled="{Binding CanClearToken}"
+                                            FontSize="11.5"
+                                            Padding="10,4"
+                                            Margin="6,0,0,0"
+                                            VerticalAlignment="Center"
+                                            ToolTip.Tip="清空访问令牌（服务停止时可用）">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="🗑" FontSize="11" />
+                                            <TextBlock Text="清空" FontSize="11" />
+                                        </StackPanel>
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
+                        <TabControl Classes="sub-tabs" Grid.Row="1">
                             <!-- cURL -->
                             <TabItem Header="cURL (命令行)">
-                                <Grid RowDefinitions="*,Auto" Margin="0,6,0,0">
+                                <Grid RowDefinitions="*,Auto" Margin="0,4,0,0">
                                     <TextBox Grid.Row="0"
                                              Text="{Binding CurlExample}"
                                              IsReadOnly="True"
                                              FontFamily="Consolas, Cascadia Code, Courier New"
                                              FontSize="12"
+                                             MinHeight="200"
                                              TextWrapping="NoWrap"
                                              AcceptsReturn="True" />
-                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                                        <Button Command="{Binding CopyCurlCommandCommand}" Padding="12,6">
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                                        <Button Command="{Binding CopyCurlCommandCommand}" Padding="12,5">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <TextBlock Text="📋" FontSize="12" />
                                                 <TextBlock Text="复制 cURL 命令" FontSize="12" />
@@ -292,16 +431,17 @@
 
                             <!-- Python -->
                             <TabItem Header="Python (requests)">
-                                <Grid RowDefinitions="*,Auto" Margin="0,6,0,0">
+                                <Grid RowDefinitions="*,Auto" Margin="0,4,0,0">
                                     <TextBox Grid.Row="0"
                                              Text="{Binding PythonExample}"
                                              IsReadOnly="True"
                                              FontFamily="Consolas, Cascadia Code, Courier New"
                                              FontSize="12"
+                                             MinHeight="200"
                                              TextWrapping="NoWrap"
                                              AcceptsReturn="True" />
-                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                                        <Button Command="{Binding CopyPythonCommandCommand}" Padding="12,6">
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                                        <Button Command="{Binding CopyPythonCommandCommand}" Padding="12,5">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <TextBlock Text="📋" FontSize="12" />
                                                 <TextBlock Text="复制 Python 代码" FontSize="12" />
@@ -313,16 +453,17 @@
 
                             <!-- C# -->
                             <TabItem Header="C# (.NET HttpClient)">
-                                <Grid RowDefinitions="*,Auto" Margin="0,6,0,0">
+                                <Grid RowDefinitions="*,Auto" Margin="0,4,0,0">
                                     <TextBox Grid.Row="0"
                                              Text="{Binding CsharpExample}"
                                              IsReadOnly="True"
                                              FontFamily="Consolas, Cascadia Code, Courier New"
                                              FontSize="12"
+                                             MinHeight="200"
                                              TextWrapping="NoWrap"
                                              AcceptsReturn="True" />
-                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,8,0,0">
-                                        <Button Command="{Binding CopyCsharpCommandCommand}" Padding="12,6">
+                                    <StackPanel Grid.Row="1" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,6,0,0">
+                                        <Button Command="{Binding CopyCsharpCommandCommand}" Padding="12,5">
                                             <StackPanel Orientation="Horizontal" Spacing="6">
                                                 <TextBlock Text="📋" FontSize="12" />
                                                 <TextBlock Text="复制 C# 代码" FontSize="12" />
@@ -358,6 +499,7 @@
 
                         <!-- 日志列表 -->
                         <Border Grid.Row="1"
+                                MinHeight="260"
                                 BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
                                 BorderThickness="1"
                                 CornerRadius="4"
@@ -410,11 +552,12 @@
                     </Grid>
                 </TabItem>
             </TabControl>
-        </Border>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
 
         <!-- 多路并发/并发流安全提示遮罩弹窗 -->
-        <Border Grid.Row="0" Grid.RowSpan="3"
-                Background="#60000000"
+        <Border Background="#60000000"
                 IsVisible="{Binding IsConcurrencyWarningOpen}"
                 HorizontalAlignment="Stretch"
                 VerticalAlignment="Stretch"

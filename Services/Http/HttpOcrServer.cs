@@ -40,9 +40,27 @@ public sealed class HttpOcrServer : IDisposable
     private readonly IOcrTextSorter _textSorter = new DefaultOcrTextSorter();
 
     /// <summary>
-    /// 单个请求体的硬上限（20MB）。超出即刻 413 拒绝，防止通过无界读取打爆进程内存。
+    /// 单个请求体的最大大小上限（字节）。小于等于 0 表示无限制（不限制请求体大小）。
+    /// 亦可在运行时动态设置，立即对后续请求生效。
     /// </summary>
-    private const long MaxRequestBodyBytes = 20L * 1024 * 1024;
+    private long _maxRequestBodyBytes = 0;
+
+    public long MaxRequestBodyBytes
+    {
+        get => _maxRequestBodyBytes;
+        set => _maxRequestBodyBytes = Math.Max(0, value);
+    }
+
+    /// <summary>
+    /// 是否允许来自本机（127.0.0.1 / ::1）的请求免令牌直连。
+    /// 开启后即使配置了令牌，本机调用也不强制要求携带 Authorization 请求头，仅对局域网外部设备强制鉴权。
+    /// </summary>
+    public bool AllowLocalWithoutToken { get; set; } = false;
+
+    /// <summary>
+    /// 是否开启令牌鉴权（默认 true）。关闭时所有接口免令牌直接放行。
+    /// </summary>
+    public bool EnableTokenAuth { get; set; } = true;
 
     /// <summary>
     /// 请求并发闸门的最小配额（即使调度器只有 1 核，也允许 2 个请求同时在途，
@@ -94,7 +112,7 @@ public sealed class HttpOcrServer : IDisposable
     public bool IsRunning => _isRunning;
     public int Port => _port;
     public bool AllowRemote => _allowRemote;
-    public bool RequiresAuth => !string.IsNullOrEmpty(_accessToken);
+    public bool RequiresAuth => EnableTokenAuth && !string.IsNullOrEmpty(_accessToken);
 
     /// <summary>
     /// 当前是否处于"局域网无令牌开放"状态（仅供 UI/日志展示）
@@ -245,7 +263,7 @@ public sealed class HttpOcrServer : IDisposable
             _isRunning = true;
             _acceptLoopTask = Task.Run(() => AcceptConnectionsAsync(_cts.Token));
 
-            _logger?.Info($"HTTP OCR 服务启动成功: 监听端口={_port}, 监听范围={EffectiveBindingText}, 鉴权={(_accessToken != null ? "Bearer 令牌" : "关闭")}, 请求并发上限={gatePermits}, 最大核心={_scheduler.MaxCores}, CPU限制={_scheduler.CpuLimitPercent}%");
+            _logger?.Info($"HTTP OCR 服务启动成功: 监听端口={_port}, 监听范围={EffectiveBindingText}, 鉴权={(_accessToken != null ? "Bearer 令牌" : "关闭")}, 请求并发上限={gatePermits}, 最大核心={_scheduler.MaxCores}, CPU限制={_scheduler.CpuLimitPercent}%, 单请求上限={(MaxRequestBodyBytes <= 0 ? "无限制" : $"{MaxRequestBodyBytes / (1024 * 1024)}MB")}");
             StateChanged?.Invoke(true);
 
             return Task.CompletedTask;
@@ -563,13 +581,24 @@ public sealed class HttpOcrServer : IDisposable
     }
 
     /// <summary>
-    /// 校验 Authorization: Bearer 令牌。未配置令牌时直接放行（仅限本地模式）。
+    /// 校验 Authorization: Bearer 令牌。未配置令牌、关闭令牌鉴权或允许本机免令牌且请求来自本机时直接放行。
     /// </summary>
     private bool IsAuthorized(HttpListenerRequest request)
     {
-        if (string.IsNullOrEmpty(_accessToken))
+        if (!EnableTokenAuth || string.IsNullOrEmpty(_accessToken))
         {
             return true;
+        }
+
+        // 若允许本机免令牌直连且请求来自本机回环地址
+        if (AllowLocalWithoutToken && request.IsLocal)
+        {
+            string? h = request.Headers["Authorization"];
+            // 本机请求若未携带 Authorization 请求头，直接免令牌放行
+            if (string.IsNullOrEmpty(h))
+            {
+                return true;
+            }
         }
 
         string? header = request.Headers["Authorization"];
@@ -597,8 +626,9 @@ public sealed class HttpOcrServer : IDisposable
     }
 
     /// <summary>
-    /// 带上限读取请求体：累计超过 maxBytes 立即抛 <see cref="PayloadTooLargeException"/>，
-    /// 避免 StreamReader.ReadToEndAsync / CopyToAsync 把超大请求整体落进内存。
+    /// 读取请求体：若设置了正数 maxBytes，累计超过时抛 <see cref="PayloadTooLargeException"/>；
+    /// 若 maxBytes 小于等于 0 则不限大小。
+    /// 避免 StreamReader.ReadToEndAsync / CopyToAsync 把超大请求无界且未经池化地落进大对象堆。
     /// </summary>
     private static async Task<byte[]> ReadBodyBoundedAsync(Stream input, long maxBytes, CancellationToken ct)
     {
@@ -611,7 +641,7 @@ public sealed class HttpOcrServer : IDisposable
             while ((read = await input.ReadAsync(buffer.AsMemory(0, buffer.Length), ct).ConfigureAwait(false)) > 0)
             {
                 total += read;
-                if (total > maxBytes)
+                if (maxBytes > 0 && total > maxBytes)
                 {
                     throw new PayloadTooLargeException(maxBytes, total);
                 }
@@ -674,11 +704,12 @@ public sealed class HttpOcrServer : IDisposable
             splitColumns = true;
         }
 
-        // 硬上限：声明长度超限直接拒绝，避免无界读取耗尽内存
+        // 上限检查：若设置了最大体积（maxBytes > 0）且声明长度超限，直接拒绝
         long declaredLength = context.Request.ContentLength64;
-        if (declaredLength > MaxRequestBodyBytes)
+        long maxBytes = MaxRequestBodyBytes;
+        if (maxBytes > 0 && declaredLength > maxBytes)
         {
-            throw new PayloadTooLargeException(MaxRequestBodyBytes, declaredLength);
+            throw new PayloadTooLargeException(maxBytes, declaredLength);
         }
 
         // 安全约束：?path= 查询参数已被移除（原实现可直接读本机任意文件）
@@ -697,7 +728,7 @@ public sealed class HttpOcrServer : IDisposable
 
         if (contentType.StartsWith("multipart/form-data", StringComparison.OrdinalIgnoreCase))
         {
-            var multipart = HttpMultipartParser.Parse(context.Request.InputStream, contentType, MaxRequestBodyBytes, ct);
+            var multipart = HttpMultipartParser.Parse(context.Request.InputStream, contentType, maxBytes, ct);
             if (multipart != null)
             {
                 imageBytes = multipart.FileBytes;
@@ -710,7 +741,7 @@ public sealed class HttpOcrServer : IDisposable
         }
         else if (contentType.StartsWith("application/json", StringComparison.OrdinalIgnoreCase))
         {
-            byte[] jsonBytes = await ReadBodyBoundedAsync(context.Request.InputStream, MaxRequestBodyBytes, ct);
+            byte[] jsonBytes = await ReadBodyBoundedAsync(context.Request.InputStream, maxBytes, ct);
             string jsonBody = Encoding.UTF8.GetString(jsonBytes);
             if (!string.IsNullOrWhiteSpace(jsonBody))
             {
@@ -762,7 +793,7 @@ public sealed class HttpOcrServer : IDisposable
         else
         {
             // 直接传输图片二进制字节流 (e.g. image/png, application/octet-stream)
-            imageBytes = await ReadBodyBoundedAsync(context.Request.InputStream, MaxRequestBodyBytes, ct);
+            imageBytes = await ReadBodyBoundedAsync(context.Request.InputStream, maxBytes, ct);
         }
 
         // 安全约束：?path= 查询参数已被移除（原实现可直接读本机任意文件）
