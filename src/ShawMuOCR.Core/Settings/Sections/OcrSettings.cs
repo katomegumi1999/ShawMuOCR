@@ -179,6 +179,11 @@ public sealed class OcrSettings
     /// </summary>
     public int LongScreenshotMaxHeight { get; set; } = 16_000;
 
+    /// <summary>
+    /// OCR 识别后文本清洗配置
+    /// </summary>
+    public TextCleanSettings TextClean { get; set; } = new();
+
     public OcrSettings Clone() => new()
     {
         ScanExternalModels = ScanExternalModels,
@@ -200,6 +205,7 @@ public sealed class OcrSettings
         MaxSideLen = MaxSideLen,
         EnableIdleSleep = EnableIdleSleep,
         IdleSleepMinutes = IdleSleepMinutes,
-        LongScreenshotMaxHeight = LongScreenshotMaxHeight
+        LongScreenshotMaxHeight = LongScreenshotMaxHeight,
+        TextClean = TextClean.Clone()
     };
 }

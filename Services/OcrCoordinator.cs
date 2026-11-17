@@ -12,6 +12,7 @@ using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Services;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Sorting;
+using ShawMuOCR.Core.TextClean;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.Views;
 using ShawMuOCR.Windows.ScreenCapture;
@@ -926,6 +927,11 @@ public sealed class OcrCoordinator : IOcrCoordinator
 
             var result = await ocrTask;
 
+            if (_settingsService.Current.Ocr.TextClean.Enabled)
+            {
+                result = OcrTextCleaner.CleanResult(result, _settingsService.Current.Ocr.TextClean);
+            }
+
             // 释放旧会话中的图片
             _currentSession?.Dispose();
             if (screenBounds != null)
@@ -1055,7 +1061,12 @@ public sealed class OcrCoordinator : IOcrCoordinator
         return await Task.Run(async () =>
         {
             var engine = await EnsureEngineAsync().ConfigureAwait(false);
-            return await engine.RecognizeAsync(image).ConfigureAwait(false);
+            var result = await engine.RecognizeAsync(image).ConfigureAwait(false);
+            if (_settingsService.Current.Ocr.TextClean.Enabled)
+            {
+                result = OcrTextCleaner.CleanResult(result, _settingsService.Current.Ocr.TextClean);
+            }
+            return result;
         });
     }
 
@@ -1139,6 +1150,10 @@ public sealed class OcrCoordinator : IOcrCoordinator
             try
             {
                 ocrResult = await engine.RecognizeAsync(image);
+                if (_settingsService.Current.Ocr.TextClean.Enabled)
+                {
+                    ocrResult = OcrTextCleaner.CleanResult(ocrResult, _settingsService.Current.Ocr.TextClean);
+                }
             }
             finally
             {
@@ -1333,6 +1348,10 @@ public sealed class OcrCoordinator : IOcrCoordinator
             try
             {
                 ocrResult = await engine.RecognizeAsync(image);
+                if (_settingsService.Current.Ocr.TextClean.Enabled)
+                {
+                    ocrResult = OcrTextCleaner.CleanResult(ocrResult, _settingsService.Current.Ocr.TextClean);
+                }
             }
             finally
             {

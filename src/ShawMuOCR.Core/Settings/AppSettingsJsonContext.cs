@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using ShawMuOCR.Core.TextClean;
 
 namespace ShawMuOCR.Core.Settings;
 
@@ -7,6 +8,8 @@ namespace ShawMuOCR.Core.Settings;
 [JsonSerializable(typeof(GeneralSettings))]
 [JsonSerializable(typeof(HotkeySettings))]
 [JsonSerializable(typeof(OcrSettings))]
+[JsonSerializable(typeof(TextCleanSettings))]
+[JsonSerializable(typeof(TextCleanMode))]
 [JsonSerializable(typeof(AiOcrSettings))]
 [JsonSerializable(typeof(AiSettings))]
 [JsonSerializable(typeof(AiApiProfile))]

@@ -425,6 +425,13 @@ public sealed class AppSettings
         set => Ocr.IdleSleepMinutes = value;
     }
 
+    [JsonIgnore]
+    public TextCleanSettings TextClean
+    {
+        get => Ocr.TextClean;
+        set => Ocr.TextClean = value ?? new();
+    }
+
     // ==========================================
     // 屏幕录制向后兼容桥接属性 (指向 Recording)
     // ==========================================

@@ -14,6 +14,7 @@ using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Scheduling;
 using ShawMuOCR.Core.Settings;
 using ShawMuOCR.Core.Sorting;
+using ShawMuOCR.Core.TextClean;
 using ShawMuOCR.ViewModels;
 using ShawMuOCR.Services.Pdf;
 using SkiaSharp;
@@ -232,6 +233,11 @@ public sealed class BatchOcrProcessor
             var result = await engine.RecognizeAsync(ocrImage, cancellationToken);
             ocrSw.Stop();
 
+            if (_settingsService.Current.Ocr.TextClean.Enabled)
+            {
+                result = OcrTextCleaner.CleanResult(result, _settingsService.Current.Ocr.TextClean);
+            }
+
             // CPU 利用率占空比节流调节；远程 AI 引擎不占本机 CPU，跳过补偿休眠
             await lease.ThrottleAsync(engine.UsesLocalCpu ? ocrSw.ElapsedMilliseconds : 0, cancellationToken);
 
@@ -335,6 +341,11 @@ public sealed class BatchOcrProcessor
                                         var ocrRes = await engine.RecognizeAsync(ocrImg, cancellationToken);
                                         ocrSw.Stop();
 
+                                        if (_settingsService.Current.Ocr.TextClean.Enabled)
+                                        {
+                                            ocrRes = OcrTextCleaner.CleanResult(ocrRes, _settingsService.Current.Ocr.TextClean);
+                                        }
+
                                         await lease.ThrottleAsync(engine.UsesLocalCpu ? ocrSw.ElapsedMilliseconds : 0, cancellationToken);
 
                                         if (ocrRes.IsSuccess)
@@ -374,6 +385,11 @@ public sealed class BatchOcrProcessor
                                 var ocrSw = Stopwatch.StartNew();
                                 var ocrRes = await engine.RecognizeAsync(ocrImg, cancellationToken);
                                 ocrSw.Stop();
+
+                                if (_settingsService.Current.Ocr.TextClean.Enabled)
+                                {
+                                    ocrRes = OcrTextCleaner.CleanResult(ocrRes, _settingsService.Current.Ocr.TextClean);
+                                }
 
                                 await lease.ThrottleAsync(engine.UsesLocalCpu ? ocrSw.ElapsedMilliseconds : 0, cancellationToken);
 

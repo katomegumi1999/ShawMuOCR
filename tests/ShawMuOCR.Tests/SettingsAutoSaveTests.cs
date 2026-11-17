@@ -4,6 +4,7 @@ using System.Threading.Tasks;
 using ShawMuOCR.Core.Hotkey;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Settings;
+using ShawMuOCR.Core.TextClean;
 using ShawMuOCR.ViewModels;
 using Xunit;
 
@@ -511,5 +512,52 @@ public class SettingsAutoSaveTests
         Assert.Equal(52f, settings.AnnotationFontSize);
         Assert.Equal(14f, clone.AnnotationStrokeWidth);
         Assert.Equal(64f, clone.AnnotationFontSize);
+    }
+
+    [Fact]
+    public void SettingsViewModel_TextClean_InitializesAndTogglesModes()
+    {
+        var settingsService = new FakeSettingsService();
+        var vm = new SettingsViewModel(
+            settingsService, new FakeStartupService(), new FakeHotkeyService(), new FakeModelProvider());
+
+        Assert.False(vm.EnableTextClean);
+        Assert.True(vm.IsTextCleanKeepMode);
+        Assert.False(vm.IsTextCleanRemoveMode);
+
+        // 切换模式为移除模式
+        vm.IsTextCleanRemoveMode = true;
+        Assert.False(vm.IsTextCleanKeepMode);
+        Assert.True(vm.IsTextCleanRemoveMode);
+        Assert.Equal(TextCleanMode.Remove, vm.TextCleanMode);
+
+        // 切换模式为保留模式
+        vm.IsTextCleanKeepMode = true;
+        Assert.True(vm.IsTextCleanKeepMode);
+        Assert.False(vm.IsTextCleanRemoveMode);
+        Assert.Equal(TextCleanMode.Keep, vm.TextCleanMode);
+    }
+
+    [Fact]
+    public void SettingsViewModel_TextClean_UpdatesPreview()
+    {
+        var settingsService = new FakeSettingsService();
+        var vm = new SettingsViewModel(
+            settingsService, new FakeStartupService(), new FakeHotkeyService(), new FakeModelProvider());
+
+        vm.CleanPreviewInput = "Hello 123 世界！";
+        // 仅保留中文
+        vm.TextCleanChinese = true;
+        vm.TextCleanEnglish = false;
+        vm.TextCleanNumber = false;
+        vm.TextCleanSpace = false;
+        vm.TextCleanFullWidthPunctuation = false;
+        vm.TextCleanHalfWidthPunctuation = false;
+        vm.TextCleanLineBreak = false;
+        vm.TextCleanTab = false;
+
+        vm.UpdateTextCleanPreview();
+
+        Assert.Equal("世界", vm.CleanPreviewOutput);
     }
 }

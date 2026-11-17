@@ -7,6 +7,7 @@ using ShawMuOCR.Core.Hotkey;
 using ShawMuOCR.Core.Logging;
 using ShawMuOCR.Core.OCR;
 using ShawMuOCR.Core.Settings;
+using ShawMuOCR.Core.TextClean;
 using ShawMuOCR.Core.Translation;
 using ShawMuOCR.OCR;
 using ShawMuOCR.Windows.Clipboard;
@@ -551,6 +552,94 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty]
     private int _logRetentionDays = 7;
 
+    // ==========================================
+    // OCR 文本后清洗设置
+    // ==========================================
+
+    [ObservableProperty]
+    private bool _enableTextClean;
+
+    [ObservableProperty]
+    private TextCleanMode _textCleanMode = TextCleanMode.Keep;
+
+    [ObservableProperty]
+    private bool _textCleanChinese = true;
+
+    [ObservableProperty]
+    private bool _textCleanEnglish = true;
+
+    [ObservableProperty]
+    private bool _textCleanNumber = true;
+
+    [ObservableProperty]
+    private bool _textCleanSpace = true;
+
+    [ObservableProperty]
+    private bool _textCleanFullWidthPunctuation = true;
+
+    [ObservableProperty]
+    private bool _textCleanHalfWidthPunctuation = true;
+
+    [ObservableProperty]
+    private bool _textCleanLineBreak = true;
+
+    [ObservableProperty]
+    private bool _textCleanTab = true;
+
+    public bool IsTextCleanKeepMode
+    {
+        get => TextCleanMode == TextCleanMode.Keep;
+        set
+        {
+            if (value && TextCleanMode != TextCleanMode.Keep)
+            {
+                TextCleanMode = TextCleanMode.Keep;
+                OnPropertyChanged(nameof(IsTextCleanKeepMode));
+                OnPropertyChanged(nameof(IsTextCleanRemoveMode));
+                UpdateTextCleanPreview();
+            }
+        }
+    }
+
+    public bool IsTextCleanRemoveMode
+    {
+        get => TextCleanMode == TextCleanMode.Remove;
+        set
+        {
+            if (value && TextCleanMode != TextCleanMode.Remove)
+            {
+                TextCleanMode = TextCleanMode.Remove;
+                OnPropertyChanged(nameof(IsTextCleanKeepMode));
+                OnPropertyChanged(nameof(IsTextCleanRemoveMode));
+                UpdateTextCleanPreview();
+            }
+        }
+    }
+
+    [ObservableProperty]
+    private string _cleanPreviewInput = "Hello 世界！123 \t\n@#￥%";
+
+    [ObservableProperty]
+    private string _cleanPreviewOutput = string.Empty;
+
+    public void UpdateTextCleanPreview()
+    {
+        var settings = new TextCleanSettings
+        {
+            Enabled = true,
+            Mode = TextCleanMode,
+            Chinese = TextCleanChinese,
+            English = TextCleanEnglish,
+            Number = TextCleanNumber,
+            Space = TextCleanSpace,
+            FullWidthPunctuation = TextCleanFullWidthPunctuation,
+            HalfWidthPunctuation = TextCleanHalfWidthPunctuation,
+            LineBreak = TextCleanLineBreak,
+            Tab = TextCleanTab
+        };
+        CleanPreviewOutput = OcrTextCleaner.Clean(CleanPreviewInput, settings);
+    }
+
     public string SettingsFilePath => _settingsService.SettingsFilePath;
     public string AppDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR");
     public string MuClipDataDirectory => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ShawMuOCR", "Muclip");
@@ -660,6 +749,19 @@ public partial class SettingsViewModel : ViewModelBase
         _enableLogging = current.EnableLogging;
         _enableLogAutoClean = current.EnableLogAutoClean;
         _logRetentionDays = current.LogRetentionDays > 0 ? current.LogRetentionDays : 7;
+
+        var tc = current.Ocr.TextClean;
+        _enableTextClean = tc.Enabled;
+        _textCleanMode = tc.Mode;
+        _textCleanChinese = tc.Chinese;
+        _textCleanEnglish = tc.English;
+        _textCleanNumber = tc.Number;
+        _textCleanSpace = tc.Space;
+        _textCleanFullWidthPunctuation = tc.FullWidthPunctuation;
+        _textCleanHalfWidthPunctuation = tc.HalfWidthPunctuation;
+        _textCleanLineBreak = tc.LineBreak;
+        _textCleanTab = tc.Tab;
+        UpdateTextCleanPreview();
 
         _translateHotkey = current.TranslateHotkey;
         _ocrPopupHotkey = current.OcrPopupHotkey;
@@ -1670,6 +1772,23 @@ public partial class SettingsViewModel : ViewModelBase
             case nameof(EnableLogging):
             case nameof(EnableLogAutoClean):
             case nameof(LogRetentionDays):
+            case nameof(EnableTextClean):
+            case nameof(TextCleanMode):
+            case nameof(TextCleanChinese):
+            case nameof(TextCleanEnglish):
+            case nameof(TextCleanNumber):
+            case nameof(TextCleanSpace):
+            case nameof(TextCleanFullWidthPunctuation):
+            case nameof(TextCleanHalfWidthPunctuation):
+            case nameof(TextCleanLineBreak):
+            case nameof(TextCleanTab):
+                UpdateTextCleanPreview();
+                TriggerAutoSave(debounce: false);
+                break;
+
+            case nameof(CleanPreviewInput):
+                UpdateTextCleanPreview();
+                break;
             case nameof(SelectedExternalModelTypeDisplay):
             case nameof(UseAiApiOcr):
             case nameof(TranslateProvider):
@@ -1935,6 +2054,17 @@ public partial class SettingsViewModel : ViewModelBase
         newSettings.EnableLogAutoClean = EnableLogAutoClean;
         newSettings.LogRetentionDays = LogRetentionDays;
 
+        newSettings.Ocr.TextClean.Enabled = EnableTextClean;
+        newSettings.Ocr.TextClean.Mode = TextCleanMode;
+        newSettings.Ocr.TextClean.Chinese = TextCleanChinese;
+        newSettings.Ocr.TextClean.English = TextCleanEnglish;
+        newSettings.Ocr.TextClean.Number = TextCleanNumber;
+        newSettings.Ocr.TextClean.Space = TextCleanSpace;
+        newSettings.Ocr.TextClean.FullWidthPunctuation = TextCleanFullWidthPunctuation;
+        newSettings.Ocr.TextClean.HalfWidthPunctuation = TextCleanHalfWidthPunctuation;
+        newSettings.Ocr.TextClean.LineBreak = TextCleanLineBreak;
+        newSettings.Ocr.TextClean.Tab = TextCleanTab;
+
         _isSaving = true;
         try
         {
@@ -2100,6 +2230,21 @@ public partial class SettingsViewModel : ViewModelBase
             EnableLogging = current.EnableLogging;
             EnableLogAutoClean = current.EnableLogAutoClean;
             LogRetentionDays = current.LogRetentionDays > 0 ? current.LogRetentionDays : 7;
+
+            var tc = current.Ocr.TextClean;
+            EnableTextClean = tc.Enabled;
+            TextCleanMode = tc.Mode;
+            TextCleanChinese = tc.Chinese;
+            TextCleanEnglish = tc.English;
+            TextCleanNumber = tc.Number;
+            TextCleanSpace = tc.Space;
+            TextCleanFullWidthPunctuation = tc.FullWidthPunctuation;
+            TextCleanHalfWidthPunctuation = tc.HalfWidthPunctuation;
+            TextCleanLineBreak = tc.LineBreak;
+            TextCleanTab = tc.Tab;
+            OnPropertyChanged(nameof(IsTextCleanKeepMode));
+            OnPropertyChanged(nameof(IsTextCleanRemoveMode));
+            UpdateTextCleanPreview();
 
             TranslateProvider = current.TranslateProvider;
             SelectedTranslateSourceLang = TranslateSourceLanguages.FirstOrDefault(x => x.Code == current.TranslateSourceLang) ?? TranslateSourceLanguages[0];

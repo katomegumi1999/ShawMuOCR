@@ -433,6 +433,97 @@
                     </StackPanel>
                 </Border>
 
+                <!-- OCR 文本清洗设置卡片 -->
+                <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
+                        BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
+                        BorderThickness="1"
+                        CornerRadius="8"
+                        Padding="16">
+                    <StackPanel Spacing="14">
+                        <!-- 标题与主开关（默认关） -->
+                        <Grid ColumnDefinitions="*,Auto">
+                            <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                <TextBlock Text="OCR 文本清洗" FontWeight="SemiBold" FontSize="15" />
+                                <TextBlock Text="在识别完成后按自定义规则过滤字符，支持保留或移除指定类型文本"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                           TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1"
+                                          IsChecked="{Binding EnableTextClean}"
+                                          OnContent="已开启"
+                                          OffContent="已关闭"
+                                          VerticalAlignment="Center" />
+                        </Grid>
+
+                        <!-- 详细配置区域（在开启时可用） -->
+                        <StackPanel Spacing="14" IsVisible="{Binding EnableTextClean}">
+                            <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                            <!-- 清洗模式：保留模式 / 移除模式 -->
+                            <Grid ColumnDefinitions="*,Auto">
+                                <StackPanel Grid.Column="0" VerticalAlignment="Center" Margin="0,0,16,0">
+                                    <TextBlock Text="清洗模式" FontWeight="Medium" />
+                                    <TextBlock Text="保留模式仅保留所选字符类型；移除模式剔除所选字符类型、保留其余内容"
+                                               FontSize="12"
+                                               Foreground="{DynamicResource TextFillColorSecondaryBrush}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                                    <RadioButton Content="保留模式 (白名单)"
+                                                 GroupName="TextCleanModeGroupWindow"
+                                                 IsChecked="{Binding IsTextCleanKeepMode}" />
+                                    <RadioButton Content="移除模式 (黑名单)"
+                                                 GroupName="TextCleanModeGroupWindow"
+                                                 IsChecked="{Binding IsTextCleanRemoveMode}" />
+                                </StackPanel>
+                            </Grid>
+
+                            <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                            <!-- 自定义规则选择 -->
+                            <StackPanel Spacing="8">
+                                <TextBlock Text="规则范围配置" FontWeight="Medium" />
+                                <TextBlock Text="请勾选需要生效的字符类型："
+                                           FontSize="12"
+                                           Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+
+                                <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*,*,*,*" Margin="0,6,0,0">
+                                    <CheckBox Grid.Row="0" Grid.Column="0" Content="中文" IsChecked="{Binding TextCleanChinese}" Margin="0,0,8,8" ToolTip.Tip="汉字及常用 CJK 表意文字" />
+                                    <CheckBox Grid.Row="0" Grid.Column="1" Content="英文" IsChecked="{Binding TextCleanEnglish}" Margin="0,0,8,8" ToolTip.Tip="英文字母 (a-z, A-Z，含全角字母)" />
+                                    <CheckBox Grid.Row="0" Grid.Column="2" Content="数字" IsChecked="{Binding TextCleanNumber}" Margin="0,0,8,8" ToolTip.Tip="半角与全角数字 (0-9)" />
+                                    <CheckBox Grid.Row="0" Grid.Column="3" Content="空格" IsChecked="{Binding TextCleanSpace}" Margin="0,0,8,8" ToolTip.Tip="半角空格、全角空格及不换行空格" />
+
+                                    <CheckBox Grid.Row="1" Grid.Column="0" Content="圆角符号 (全角)" IsChecked="{Binding TextCleanFullWidthPunctuation}" Margin="0,0,8,0" ToolTip.Tip="全角及中文标点符号（，。！？：“”《》等）" />
+                                    <CheckBox Grid.Row="1" Grid.Column="1" Content="半角符号" IsChecked="{Binding TextCleanHalfWidthPunctuation}" Margin="0,0,8,0" ToolTip.Tip="半角/ASCII 英文标点与符号 (!@#$%^等)" />
+                                    <CheckBox Grid.Row="1" Grid.Column="2" Content="换行符" IsChecked="{Binding TextCleanLineBreak}" Margin="0,0,8,0" ToolTip.Tip="回车与换行符 (\r, \n)" />
+                                    <CheckBox Grid.Row="1" Grid.Column="3" Content="制表符" IsChecked="{Binding TextCleanTab}" Margin="0,0,8,0" ToolTip.Tip="制表符 Tab (\t)" />
+                                </Grid>
+                            </StackPanel>
+
+                            <Separator Height="1" Background="{DynamicResource DividerStrokeColorDefaultBrush}" />
+
+                            <!-- 实时预览小测试 -->
+                            <Border Background="{DynamicResource SubtleFillColorSecondaryBrush}"
+                                    CornerRadius="6"
+                                    Padding="12">
+                                <StackPanel Spacing="8">
+                                    <TextBlock Text="清洗效果实时预览" FontWeight="Medium" FontSize="13" />
+                                    <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0">
+                                        <TextBlock Grid.Column="0" Text="测试输入：" VerticalAlignment="Center" FontSize="12" Width="70" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <TextBox Grid.Column="1" Text="{Binding CleanPreviewInput}" FontSize="12" />
+                                    </Grid>
+                                    <Grid ColumnDefinitions="Auto,*" Margin="0,2,0,0">
+                                        <TextBlock Grid.Column="0" Text="清洗输出：" VerticalAlignment="Center" FontSize="12" Width="70" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                                        <TextBox Grid.Column="1" Text="{Binding CleanPreviewOutput}" IsReadOnly="True" FontSize="12" Background="{DynamicResource ControlFillColorTransparentBrush}" />
+                                    </Grid>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
                 <!-- 配置文件与日志服务 -->
                 <Border Background="{DynamicResource CardBackgroundFillColorDefaultBrush}"
                         BorderBrush="{DynamicResource CardStrokeColorDefaultBrush}"
